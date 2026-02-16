@@ -6,5 +6,6 @@ export enum ERROR_ENUM {
     'ER410' = 'Please enter a valid OTP',
     'ER411' = 'Please enter valid email and password',
     'ER412' = 'Please enter unique marketing group name',
-    'ER500' = 'Internal server error & some thing went wrong'
+    'ER500' = 'Internal server error & some thing went wrong',
+    'ER600' = 'Internal server error & some thing went wrong'
 }
