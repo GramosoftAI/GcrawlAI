@@ -1,0 +1,107 @@
+/* You can add global styles to this file, and also import other style files */
+@use "@angular/material" as mat;
+@include mat.core();
+$my-app-primary: mat.define-palette(mat.$indigo-palette);
+$my-app-accent: mat.define-palette(mat.$pink-palette, A200, A100, A400);
+$my-app-warn: mat.define-palette(mat.$red-palette);
+$my-app-theme: mat.define-light-theme((color: (primary: $my-app-primary,
+                accent: $my-app-accent,
+                warn: $my-app-warn,
+            ),
+        ));
+@include mat.all-component-themes($my-app-theme);
+@import 'ngx-toastr/toastr';
+
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: #ffffff;
+    background-image:
+        linear-gradient(to right, #eee 1px, transparent 1px),
+        linear-gradient(to bottom, #eee 1px, transparent 1px);
+    background-size: 300px 120px;
+    background-position: center;
+    overflow-x: hidden;
+}
+
+.fs-11 {
+    font-size: 11px !important;
+}
+
+.fs-13 {
+    font-size: 13px !important;
+}
+
+.fs-14 {
+    font-size: 14px !important;
+}
+
+.fs-15 {
+    font-size: 15px !important;
+}
+
+.fs-17 {
+    font-size: 17px !important;
+}
+
+.fw-400 {
+    font-weight: 400 !important;
+}
+
+.fw-600 {
+    font-weight: 600 !important;
+}
+
+.btn-bg-primary {
+    background-color: #21D496 !important;
+    padding: 2px 14px !important;
+    border-radius: 6px !important;
+    margin-left: 12px !important;
+}
+
+.btn-bg-primary img {
+    align-items: center;
+    text-align: center;
+    display: flex;
+    padding: 4px 5px;
+    filter: invert(1) !important;
+}
+
+.bg-white {
+    background-color: #ffffff !important;
+}
+
+.bg-red {
+    background-color: rgb(159, 3, 3) !important;
+}
+
+.text-color-black {
+    color: rgba(6, 0, 0, 0.929) !important;
+}
+
+.text-color-grey {
+    color: rgb(81 78 78 / 93%) !important;
+}
+
+/* Prepare animation */
+.dropdown-menu {
+  display: block !important;
+  opacity: 0;
+  transform: translateY(-15px) scale(0.98);
+  transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.dropdown-menu.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+}
+
