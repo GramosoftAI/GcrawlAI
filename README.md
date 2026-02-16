@@ -1,7 +1,7 @@
 <h3 align="center">
   <a name="readme-top"></a>
   <img
-    src="https://raw.githubusercontent.com/firecrawl/firecrawl/main/img/firecrawl_logo.png"
+    src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/Crawl%20Logo.svg"
     height="200"
   >
 </h3>
