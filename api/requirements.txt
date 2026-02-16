@@ -1,0 +1,22 @@
+# FastAPI Framework
+fastapi==0.115.5
+uvicorn[standard]==0.34.0
+
+# Database
+psycopg2-binary==2.9.10
+
+# Authentication & Security
+PyJWT==2.10.1
+cryptography==44.0.0
+
+# Configuration
+PyYAML==6.0.2
+
+# Email
+# (uses standard library smtplib - no additional package needed)
+
+# HTTP Client (optional, for testing)
+httpx==0.28.1
+
+# Development Tools (optional)
+python-multipart==0.0.20

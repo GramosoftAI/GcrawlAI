@@ -1,42 +1,27 @@
-# See http://help.github.com/ignore-files/ for more about ignoring files.
+config.yaml
 
-# Compiled output
-/dist
-/tmp
-/out-tsc
-/bazel-out
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
-# Node
-/node_modules
-npm-debug.log
-yarn-error.log
+# Virtual env
+venv/
+.venv/
+env/
+.env/
 
-# IDEs and editors
-.idea/
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
+# Playwright / Crawlers
+playwright/.cache/
+browser_data/
+downloads/
+web_crawler/crawl_output-api/
 
-# Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-.history/*
+# Logs & temp
+*.log
+tmp/
+.cache/
 
-# Miscellaneous
-/.angular/cache
-.sass-cache/
-/connect.lock
-/coverage
-/libpeerconnection.log
-testem.log
-/typings
-
-# System files
+# OS
 .DS_Store
 Thumbs.db

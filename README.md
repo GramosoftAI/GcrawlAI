@@ -1,27 +1,148 @@
-# Gramocrawl
+# Web Crawler API & Dashboard
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 16.1.8.
+A comprehensive web crawling solution featuring a FastAPI backend, Streamlit dashboard, and distributed task processing with Celery and Redis.
 
-## Development server
+## 🚀 Features
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+- **Dual Mode Crawling**:
+  - **Single Page**: Direct, real-time crawling of individual pages.
+  - **Full Site**: Distributed crawling of entire websites using Celery workers.
+- **Advanced Extraction**:
+  - Markdown conversion for LLM consumption.
+  - HTML & Screenshot capture.
+  - SEO metadata extraction (Title, Description, Keywords).
+- **Stealth & Anti-Blocking**:
+  - Uses Playwright with stealth plugins to bypass bot detection.
+  - Automatic fallback strategies (Chromium -> Firefox/Camoufox).
+- **Real-time Updates**:
+  - Live progress tracking via WebSockets.
+  - Interactive Streamlit dashboard.
+- **Authentication**:
+  - JWT-based authentication.
+  - Email OTP for signup/verification.
+  - Password reset flow.
 
-## Code scaffolding
+## 🛠️ Technology Stack
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+- **Backend**: FastAPI, Python 3.9+
+- **Frontend**: Streamlit
+- **Database**: PostgreSQL
+- **Task Queue**: Celery + Redis
+- **Browser Automation**: Playwright
+- **Authentication**: JWT, BCrypt
 
-## Build
+## 📋 Prerequisites
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
+- **Python 3.9+**
+- **PostgreSQL** (running on default port 5432)
+- **Redis** (running on default port 6379)
+- **Git**
 
-## Running unit tests
+## ⚙️ Installation
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/GramosoftAI/GcrawlAI.git
+   cd GcrawlAI
+   ```
 
-## Running end-to-end tests
+2. **Create and activate virtual environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   venv\Scripts\activate     # Windows
+   ```
 
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Further help
+4. **Install Playwright browsers**
+   ```bash
+   playwright install
+   ```
 
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+## 🔧 Configuration
+
+1. **Database Config**: Update `config.yaml` with your PostgreSQL credentials.
+   ```yaml
+   postgres:
+     host: "localhost"
+     port: 5432
+     database: "crawlerdb"
+     user: "postgres"
+     password: "your_password"
+   ```
+
+2. **Initialize Database Tables**:
+   ```bash
+   python -m api.db_setup
+   # OR
+   python api/db_setup.py
+   ```
+
+## �‍♂️ Running the Application
+
+You need to run 4 separate processes. It's recommended to use separate terminal windows.
+
+**1. Start Redis Server** (if not running as a service)
+```bash
+redis-server
+```
+Note: Redis server will not run on windows, so use WSL for running redis server. or use docker.
+
+**2. Start Celery Worker**
+```bash
+# Linux (User Recommended)
+celery -A web_crawler.celery_config worker -l info
+
+# Windows
+celery -A web_crawler.celery_config.celery_app worker --loglevel=info --pool=solo
+```
+
+**3. Start Backend API**
+```bash
+# Windows / Development
+uvicorn api.api:app --reload --port 8000
+
+# Linux / Production (User Recommended)
+uvicorn api.api:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 120
+```
+API Docs will be available at: http://localhost:8000/docs
+
+**4. Start Frontend Dashboard**
+```bash
+cd web_crawler
+streamlit run streamlit_app.py
+```
+Dashboard will be available at: http://localhost:8501
+
+## � Project Structure
+
+```
+.
+├── api/                    # FastAPI backend
+│   ├── api.py              # Main API entry point
+│   ├── auth_manager.py     # Authentication logic
+│   └── db_setup.py         # Database initialization
+├── web_crawler/            # Crawler logic
+│   ├── web_crawler.py      # Core crawler orchestrator
+│   ├── page_crawler.py     # Individual page processing
+│   ├── streamlit_app.py    # Frontend dashboard
+│   └── celery_config.py    # Celery configuration
+├── config.yaml             # Application configuration
+└── requirements.txt        # Python dependencies
+```
+
+## 🔐 API Endpoints
+
+- `POST /crawler`: Start a new crawl job (single or all).
+- `GET /crawler/status/{task_id}`: Check Celery task status.
+- `GET /crawl/markdown`: Retrieve generated markdown.
+- `POST /auth/signup/send-otp`: reliable email-based signup.
+- `POST /auth/signup/verify-otp`: reliable email-based signup.
+- `POST /auth/signin`: reliable email-based signin.
+- `POST /auth/forgot-password`: reliable email-based forgot password.
+- `POST /auth/reset-password`: reliable email-based reset password.
+
