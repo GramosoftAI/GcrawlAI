@@ -1,0 +1,205 @@
+/* ================= PAGE ================= */
+
+.page {
+  padding: 20px;
+  max-width: 950px;
+  width: 100%;
+}
+
+/* ================= SCRAPE BAR ================= */
+
+.scrape-bar {
+  background: #fff;
+  padding: 12px 16px;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, .08);
+  width: auto;
+}
+
+/* ================= INPUT ================= */
+
+.search-field {
+  border-bottom: 1px solid #e9e1e1;
+  padding-bottom: 6px;
+}
+
+.search-field input {
+  width: 100%;
+  font-size: 13px !important;
+}
+
+.form-control:focus {
+  box-shadow: none !important;
+}
+
+/* ================= TABS ================= */
+
+.custom-tabs {
+  display: flex;
+  background: #f3f3f3;
+  border-radius: 6px;
+  gap: 4px;
+  padding: 4px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.custom-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.custom-tabs .nav-link {
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #666;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+}
+
+.custom-tabs .nav-link i {
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.custom-tabs .nav-link.active {
+  background: #fff;
+  color: #111;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.custom-tabs .nav-link.active i {
+  opacity: 1;
+}
+
+/* ================= BUTTON ================= */
+
+.btn-bg-primary {
+  background: #21D496;
+  border: none;
+  padding: 6px 18px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner-border {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* ================= IMAGE ================= */
+
+.internet-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* ================= RESULT ================= */
+
+app-report-page {
+  width: 100%;
+}
+
+/* ================= GRID FIX ================= */
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 20px;
+}
+
+/* ================= RESPONSIVE ================= */
+
+@media (max-width: 992px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+
+  .page {
+    padding-left: 0px !important;
+    padding-right: 0px !important;
+  }
+
+  .custom-tabs .nav-link {
+    font-size: 10px;
+    padding: 5px 10px;
+  }
+
+  .btn-bg-primary {
+    width: auto;
+  }
+
+}
+
+@media (max-width: 480px) {
+
+  .page {
+    padding-left: 0px !important;
+    padding-right: 0px !important;
+  }
+
+  .custom-tabs {
+    gap: 2px;
+  }
+
+  .custom-tabs .nav-link {
+    padding: 4px 8px;
+  }
+
+  .internet-img {
+    width: 14px;
+    height: 14px;
+  }
+
+  .form-control {
+    font-size: 12px !important;
+  }
+
+}
+
+.fav-icon {
+  width: 16px;
+  height: 14px;
+  object-fit: cover;
+}
+
+.dropdown-toggle {
+  font-size: 12px;
+  background: transparent;
+  color: grey;
+  padding: 2px 8px;
+}
+
+.dropdown-menu.show {
+  width: 400px;
+  border-radius: 12px;
+}
+
+.filter-box .nav-tabs .nav-item.show .nav-link,
+.nav-tabs .nav-link.active {
+  color: #2bc168;
+  background-color: var(--bs-nav-tabs-link-active-bg);
+  box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px;
+  padding: 1px 5px !important;
+  border-radius: 4px;
+}
+
+.filter-box .nav-link {
+  padding: 0px 7px !important;
+}
+
+.filter-img {
+  width: 15px;
+  height: 15px;
+  object-fit: cover;
+}

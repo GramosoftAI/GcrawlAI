@@ -1,0 +1,28 @@
+<div class="d-flex justify-content-center pt-3">
+    <img src="/assets/img/ampd.png" alt="" class="logo">
+</div>
+
+<h1 class="text-center" mat-dialog-title>
+    {{title}}
+</h1>
+
+<div mat-dialog-content style="min-width: 350px;" class="hi">
+    <p class="text-center">{{message}}</p>
+    <div class="password-cred" [ngClass]="{'bg-white' : isClick}" *ngIf="type == 'RP'">
+        <p class="mt-3"><span class="fw-bold">User Name:</span> {{ pwdData?.id }}</p>
+        <p class="mb-0"><span class="fw-bold">Password :</span> {{ pwdData?.pwd }}</p>
+        <button class="btn border-0 btn-copy" (mousedown)="isClick = true" (mouseup)="isClick = false" matTooltip="Click here to copy" matTooltipPosition="below" >
+            <mat-icon>copy_all</mat-icon>
+        </button>
+    </div>
+</div>
+
+
+<div mat-dialog-actions>
+    <div class="d-flex justify-content-center w-100">
+        <div class="btn-group">
+            <button *ngIf="type !== 'AL' && type !== 'RP'" type="button" class="btn btn-theme-secondary px-5 mx-2" (click)="onDismiss()">No</button>
+            <button type="button" class="btn btn-theme-primary px-5 mx-2" (click)="onConfirm()">{{ type == 'AL' || type == 'RP' ? 'Ok' : 'Yes' }}</button>
+        </div>
+    </div>
+</div>
