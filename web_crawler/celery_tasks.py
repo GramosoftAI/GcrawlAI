@@ -35,7 +35,7 @@ def crawl_website(
     start_url: str,
     config_dict: Dict,
     enable_md: bool = True,
-    enable_html: bool = False,
+    enable_html: bool = True,
     enable_ss: bool = False,
     enable_json: bool = False,
     enable_links: bool = True,
@@ -139,7 +139,7 @@ def crawl_single_page(self, url: str, config_dict: Dict) -> Dict:
         enable_html=False,
         enable_ss=False,
         enable_json=True,
-        enable_links=False
+        enable_links=True
     )
 
 

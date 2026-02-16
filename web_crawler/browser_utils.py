@@ -228,7 +228,7 @@ class BrowserUtils:
     def wait_for_ready(page: Page) -> bool:
         """Wait for page to be ready"""
         try:
-            page.wait_for_load_state("networkidle", timeout=10_000)
+            page.wait_for_load_state("networkidle", timeout=3000)
             return True
         except Exception:
             try:

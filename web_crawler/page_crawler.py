@@ -145,31 +145,34 @@ class PageCrawler:
                 )
                 
                 context = browser.new_context(
-                    viewport=None,
+                    viewport={"width": 1920, "height": 1080},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                     java_script_enabled=True,
                     ignore_https_errors=True
                 )
                 
                 page = context.new_page()
-                
-                if self.config.use_stealth:
-                    self.browser_utils.apply_stealth(page)
-                
-                if self.config.use_custom_headers:
-                    self.browser_utils.set_custom_headers(page)
-                
-                page.route("**/*", self.browser_utils.block_resources)
+                text_content = page.evaluate("document.body.innerText")
+                if len(text_content.strip()) < 200:
+                    if self.config.use_stealth:
+                        self.browser_utils.apply_stealth(page)
+                    
+                    if self.config.use_custom_headers:
+                        self.browser_utils.set_custom_headers(page)
+                    
+                    page.route("**/*", self.browser_utils.block_resources)
+                    self.browser_utils.check_cloudflare(page, self.config)
+                    if not self.browser_utils.wait_for_ready(page):
+                        raise Exception("Page not ready")
                 
                 response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
                 
                 if not response or response.status != 200:
                     raise Exception(f"HTTP {response.status if response else 'None'}")
                 
-                if not self.browser_utils.wait_for_ready(page):
-                    raise Exception("Page not ready")
                 
-                self.browser_utils.check_cloudflare(page, self.config)
+                
+                
                 
                 # Validate content
                 text_content = page.evaluate("document.body.innerText")
@@ -269,19 +272,29 @@ class PageCrawler:
         
         return result
 
-    def scroll_to_bottom(self, page, max_scrolls=10, wait_time=2000):
+    def scroll_to_bottom(self, page, max_scrolls=10, wait_time=500):
         """
-        Scroll page until no new content loads
+        Incrementally scroll page to trigger lazy loading
         """
-        last_height = page.evaluate("document.body.scrollHeight")
-
-        for _ in range(max_scrolls):
+        try:
+            prev_height = -1
+            for _ in range(max_scrolls):
+                # Scroll in chunks
+                page.mouse.wheel(0, 1000)
+                page.wait_for_timeout(200)
+                
+                # Check if height changed
+                curr_height = page.evaluate("document.body.scrollHeight")
+                if curr_height == prev_height:
+                    break
+                prev_height = curr_height
+                
+                # Small wait between major chunks
+                page.wait_for_timeout(wait_time)
+                
+            # Final ensure bottom
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             page.wait_for_timeout(wait_time)
-
-            new_height = page.evaluate("document.body.scrollHeight")
-
-            if new_height == last_height:
-                break
-
-            last_height = new_height
+            
+        except Exception as e:
+            logger.warning(f"Scroll failed: {e}")

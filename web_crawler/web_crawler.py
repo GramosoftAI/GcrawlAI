@@ -86,6 +86,10 @@ class WebCrawler:
 
             elapsed = perf_counter() - start_perf
             
+            if enable_links and result and "links" in result:
+                with open(self.config.links_file, "w", encoding="utf-8") as f:
+                    f.write("\n".join(sorted(result["links"])))
+            
             file_name = result["markdown_file"] if crawl_mode == "single" else "None"
 
             summary = {

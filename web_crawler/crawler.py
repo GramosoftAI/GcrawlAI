@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def main(
     start_url: str,
     enable_md: bool = True,
-    enable_html: bool = False,
+    enable_html: bool = True,
     enable_ss: bool = False,
     enable_json: bool = False,
     enable_links: bool = True,
@@ -45,7 +45,7 @@ def main(
     BASE_DIR = Path(__file__).resolve().parent
     
     # Create unique crawl ID and directory
-    crawl_id = uuid.uuid4().hex
+    crawl_id = client_id if client_id else uuid.uuid4().hex
     crawl_dir = BASE_DIR / "crawl_output-api" / f"crawl_{crawl_id}"
     crawl_dir.mkdir(parents=True, exist_ok=True)
     
@@ -74,6 +74,16 @@ def main(
 
     if crawl_mode == "single":
         summary["markdown_path"] = summary["markdown_file"]
+
+        if client_id:
+            from web_crawler.redis_events import publish_event
+            publish_event(
+                crawl_id=client_id,
+                payload={
+                    "type": "crawl_completed",
+                    "summary": summary
+                }
+            )
     else:
         summary["markdown_path"] = str(crawl_dir)
     

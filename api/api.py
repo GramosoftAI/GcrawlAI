@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse
@@ -20,6 +20,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from api.websocket_manager import WebSocketManager
 import redis
 import json
+import uuid
 
 ws_manager = WebSocketManager()
 redis_client = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
@@ -107,7 +108,7 @@ def root():
 # ================= CRAWLER ENDPOINT =================
 
 @app.post("/crawler", response_model=CrawlResponse)
-def run_crawler(payload: CrawlRequest):
+def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
     """
     single → direct crawl (no celery)
     all    → celery multiprocess crawl
@@ -126,17 +127,19 @@ def run_crawler(payload: CrawlRequest):
 
         # ---------- SINGLE PAGE ----------
         if payload.crawl_mode == "single":
-            result = crawl_main(
+            crawl_id = uuid.uuid4().hex
+
+            background_tasks.add_task(
+                crawl_main,
                 start_url=str(payload.url),
                 crawl_mode="single",
                 enable_links=True,
-                config=config
+                config=config,
+                client_id=crawl_id
             )
 
-            crawl_id = result["crawl_id"]
-            markdown_path = result["markdown_path"]
-
-            status = "completed"
+            markdown_path = ""
+            status = "queued"
             task_id = None
 
         # ---------- FULL SITE (CELERY) ----------

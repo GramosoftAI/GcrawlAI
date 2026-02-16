@@ -7,12 +7,12 @@ from typing import Optional
 @dataclass
 class CrawlConfig:
     max_pages: int = 10
-    max_workers: int = 4
+    max_workers: int = 8
     timezone: str = "Asia/Kolkata"
 
     headless: bool = True
-    page_timeout: int = 90_000
-    nav_timeout: int = 90_000
+    page_timeout: int = 30_000
+    nav_timeout: int = 60_000
 
     use_stealth: bool = True
     simulate_human: bool = False
