@@ -23,7 +23,7 @@
 
 <div>
   <p align="center">
-    <a href="https://twitter.com/firecrawl_dev">
+    <a href="#">
       <img src="https://camo.githubusercontent.com/8c6c7b3530573136a2550b2858664b1e2f38d3926e8b844a051f4ec182c99fac/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f466f6c6c6f772532306f6e253230582d3030303030303f7374796c653d666f722d7468652d6261646765266c6f676f3d78266c6f676f436f6c6f723d7768697465" alt="Follow on X" />
     </a>
     <a href="https://www.linkedin.com/company/104100957">
