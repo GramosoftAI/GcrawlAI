@@ -1,5 +1,3 @@
-config.yaml
-
 # Environment variables
 .env
 .env.local

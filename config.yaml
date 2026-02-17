@@ -1,0 +1,26 @@
+# ==================== PostgreSQL Database Configuration ====================
+postgres:
+  host: "${POSTGRES_HOST:localhost}"
+  port: "${POSTGRES_PORT:5432}"
+  database: "${POSTGRES_DATABASE:crawlerdb}"
+  user: "${POSTGRES_USER:postgres}"
+  password: "${POSTGRES_PASSWORD:password}"
+
+# ==================== Security Configuration ====================
+security:
+  jwt_secret_key: "${JWT_SECRET_KEY}"
+  jwt_algorithm: "${JWT_ALGORITHM:HS256}"
+  access_token_expire_minutes: "${ACCESS_TOKEN_EXPIRE_MINUTES:1440}"
+  password_reset_token_expire_hours: "${PASSWORD_RESET_TOKEN_EXPIRE_HOURS:24}"
+  encryption_key: "${ENCRYPTION_KEY}"
+
+# ==================== Email Configuration ====================
+email:
+  host: "${EMAIL_HOST:smtp.example.com}"
+  port: "${EMAIL_PORT:587}"
+  username: "${EMAIL_USERNAME}"
+  password: "${EMAIL_PASSWORD}"
+  from_email: "${EMAIL_FROM}"
+  from_name: "${EMAIL_FROM_NAME:GScraper}"
+  use_tls: "${EMAIL_USE_TLS:true}"
+  reset_password_url: "${RESET_PASSWORD_URL:https://app.gramopro.ai/auth/reset_password}"
