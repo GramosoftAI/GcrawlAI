@@ -10,6 +10,7 @@ PyJWT==2.10.1
 cryptography==44.0.0
 
 # Configuration
+python-dotenv==1.0.0
 PyYAML==6.0.2
 
 # Email

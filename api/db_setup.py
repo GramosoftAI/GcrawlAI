@@ -14,6 +14,11 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 import os
+import re
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +43,7 @@ class DatabaseSetup:
     
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """
-        Load configuration from YAML file
+        Load configuration from YAML file with environment variable substitution
         
         Args:
             config_path: Path to configuration file
@@ -52,7 +57,10 @@ class DatabaseSetup:
                 raise FileNotFoundError(f"Configuration file not found: {config_path}")
             
             with open(config_file, 'r') as f:
-                config = yaml.safe_load(f)
+                raw_config = yaml.safe_load(f)
+            
+            # Substitute environment variables
+            config = self._substitute_env_vars(raw_config)
             
             logger.info(f"Configuration loaded from {config_path}")
             return config
@@ -60,6 +68,27 @@ class DatabaseSetup:
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}", exc_info=True)
             raise
+    
+    @staticmethod
+    def _substitute_env_vars(data):
+        """
+        Recursively substitute environment variables in configuration.
+        Supports format: ${VAR_NAME} or ${VAR_NAME:default_value}
+        """
+        if isinstance(data, dict):
+            return {key: DatabaseSetup._substitute_env_vars(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [DatabaseSetup._substitute_env_vars(item) for item in data]
+        elif isinstance(data, str):
+            # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
+            def replace_var(match):
+                var_name = match.group(1)
+                default_value = match.group(2)
+                return os.getenv(var_name, default_value or "")
+            
+            return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', replace_var, data)
+        else:
+            return data
     
     def _get_db_connection(self, autocommit: bool = False):
         """
