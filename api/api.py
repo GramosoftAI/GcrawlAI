@@ -15,6 +15,8 @@ import logging
 import traceback
 import markdown
 import os
+from dotenv import load_dotenv
+import re
 
 from fastapi import WebSocket, WebSocketDisconnect
 from api.websocket_manager import WebSocketManager
@@ -25,7 +27,49 @@ import uuid
 ws_manager = WebSocketManager()
 redis_client = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
 
+import yaml
+from pathlib import Path
 
+# Load environment variables from .env file
+load_dotenv()
+
+_CONFIG = None
+
+
+def substitute_env_vars(data):
+    """
+    Recursively substitute environment variables in configuration.
+    Supports format: ${VAR_NAME} or ${VAR_NAME:default_value}
+    """
+    if isinstance(data, dict):
+        return {key: substitute_env_vars(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [substitute_env_vars(item) for item in data]
+    elif isinstance(data, str):
+        # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
+        def replace_var(match):
+            var_name = match.group(1)
+            default_value = match.group(2)
+            return os.getenv(var_name, default_value or "")
+        
+        return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', replace_var, data)
+    else:
+        return data
+
+
+def load_config():
+    global _CONFIG
+    if _CONFIG is None:
+        config_path = "config.yaml"
+        with open(config_path, "r", encoding="utf-8") as f:
+            raw_config = yaml.safe_load(f)
+            # Substitute environment variables
+            _CONFIG = substitute_env_vars(raw_config)
+    return _CONFIG
+
+def get_db_config():
+    config = load_config()
+    return config["postgres"]
 
 # ================= INTERNAL IMPORTS =================
 
@@ -76,13 +120,8 @@ async def startup_event():
 # ================= DB =================
 
 def get_db_connection():
-    return psycopg2.connect(
-        dbname="crawlerdb",
-        user="postgres",
-        password="password",
-        host="localhost",
-        port=5432
-    )
+    db_config = get_db_config()
+    return psycopg2.connect(**db_config)
 
 # ================= MODELS =================
 

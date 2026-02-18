@@ -26,8 +26,14 @@ import yaml
 from pathlib import Path
 import jwt
 from cryptography.fernet import Fernet
+import os
+import re
+from dotenv import load_dotenv
 
 from api.email_service import EmailService
+
+# Load environment variables from .env file
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -189,7 +195,7 @@ class JWTManager:
         to_encode = data.copy()
         
         # Add expiration time
-        expire = datetime.utcnow() + timedelta(minutes=self.access_token_expire_minutes)
+        expire = datetime.now() + timedelta(minutes=int(self.access_token_expire_minutes))
         to_encode.update({"exp": expire})
         
         # Encode token
@@ -272,7 +278,7 @@ class AuthManager:
     
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """
-        Load configuration from YAML file
+        Load configuration from YAML file with environment variable substitution
         
         Args:
             config_path: Path to configuration file
@@ -286,7 +292,10 @@ class AuthManager:
                 raise FileNotFoundError(f"Configuration file not found: {config_path}")
             
             with open(config_file, 'r') as f:
-                config = yaml.safe_load(f)
+                raw_config = yaml.safe_load(f)
+            
+            # Substitute environment variables
+            config = self._substitute_env_vars(raw_config)
             
             logger.info(f"Configuration loaded from {config_path}")
             return config
@@ -294,6 +303,27 @@ class AuthManager:
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}", exc_info=True)
             raise
+    
+    @staticmethod
+    def _substitute_env_vars(data):
+        """
+        Recursively substitute environment variables in configuration.
+        Supports format: ${VAR_NAME} or ${VAR_NAME:default_value}
+        """
+        if isinstance(data, dict):
+            return {key: AuthManager._substitute_env_vars(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [AuthManager._substitute_env_vars(item) for item in data]
+        elif isinstance(data, str):
+            # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
+            def replace_var(match):
+                var_name = match.group(1)
+                default_value = match.group(2)
+                return os.getenv(var_name, default_value or "")
+            
+            return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', replace_var, data)
+        else:
+            return data
     
     def _initialize_email_service(self):
         """Initialize email service if configured"""
@@ -362,7 +392,7 @@ class AuthManager:
             otp = ''.join([str(secrets.randbelow(10)) for _ in range(5)])
             
             # Calculate expiry (5 minutes from now)
-            expires_at = datetime.utcnow() + timedelta(minutes=5)
+            expires_at = datetime.now() + timedelta(minutes=5)
             
             # Store OTP in signup_otps table
             cursor.execute("""
@@ -441,7 +471,7 @@ class AuthManager:
                 }
             
             # Check if OTP has expired
-            if datetime.utcnow() > otp_record['expires_at']:
+            if datetime.now() > otp_record['expires_at']:
                 cursor.close()
                 conn.close()
                 logger.warning(f"[FAILED] OTP expired for {email}")
@@ -491,7 +521,7 @@ class AuthManager:
                 otp_record['password_hash'],
                 otp_record['password_salt'],
                 True,
-                datetime.utcnow()
+                datetime.now()
             ))
             
             user_data = cursor.fetchone()
@@ -605,7 +635,7 @@ class AuthManager:
             # Update last login
             cursor.execute("""
                 UPDATE users SET last_login = %s WHERE user_id = %s
-            """, (datetime.utcnow(), user['user_id']))
+            """, (datetime.now(), user['user_id']))
             
             conn.commit()
             cursor.close()
@@ -753,7 +783,7 @@ class AuthManager:
                 UPDATE users
                 SET password_hash = %s, password_salt = %s, updated_at = %s
                 WHERE email = %s
-            """, (hashed_password, salt, datetime.utcnow(), email.lower()))
+            """, (hashed_password, salt, datetime.now(), email.lower()))
             
             if cursor.rowcount == 0:
                 conn.close()
