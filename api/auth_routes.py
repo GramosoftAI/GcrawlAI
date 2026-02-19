@@ -230,7 +230,7 @@ async def send_signup_otp(request: SignupOTPRequest):
         return OTPResponse(
             success=success,
             message=message,
-            otp=otp
+            # otp=otp
         )
     
     except HTTPException:

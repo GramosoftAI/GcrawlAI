@@ -20,11 +20,12 @@ logger = logging.getLogger(__name__)
 
 def main(
     start_url: str,
-    enable_md: bool = True,
-    enable_html: bool = True,
+    enable_md: bool = False,
+    enable_html: bool = False,
     enable_ss: bool = False,
     enable_json: bool = False,
     enable_links: bool = True,
+    enable_seo: bool = False,
     client_id: Optional[str] = None,
     websocket_manager = None,
     crawl_mode: str = "all",
@@ -56,6 +57,8 @@ def main(
     # Create subdirectories
     (Path(config.output_dir) / "html").mkdir(parents=True, exist_ok=True)
     (Path(config.output_dir) / "screenshots").mkdir(parents=True, exist_ok=True)
+    (Path(config.output_dir) / "markdown").mkdir(parents=True, exist_ok=True)
+    (Path(config.output_dir) / "seo").mkdir(parents=True, exist_ok=True)
     
     # Initialize and run crawler
     crawler = WebCrawler(config)
@@ -67,6 +70,7 @@ def main(
         enable_ss=enable_ss,
         enable_json=enable_json,
         enable_links=enable_links,
+        enable_seo=enable_seo,
         client_id=client_id,
         websocket_manager=websocket_manager,
         crawl_mode=crawl_mode

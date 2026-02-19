@@ -16,7 +16,7 @@
   <a href="#">
     <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/contributors.svg" alt="GitHub Contributors">
   </a>
-  <a href="#">
+  <a href="https://gcrawl.gramopro.ai/">
     <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/visits.svg" alt="Visit gcrawl.ai">
   </a>
 </div>
@@ -186,7 +186,7 @@ Dashboard will be available at: http://localhost:8501
 
 - `POST /crawler`: Start a new crawl job (single or all).
 - `GET /crawler/status/{task_id}`: Check Celery task status.
-- `GET /crawl/markdown`: Retrieve generated markdown.
+- `GET /crawl/get/content`: Retrieve generated content.
 - `POST /auth/signup/send-otp`: reliable email-based signup.
 - `POST /auth/signup/verify-otp`: reliable email-based signup.
 - `POST /auth/signin`: reliable email-based signin.

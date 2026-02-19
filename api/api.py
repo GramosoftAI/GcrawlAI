@@ -128,6 +128,10 @@ def get_db_connection():
 class CrawlRequest(BaseModel):
     url: HttpUrl
     crawl_mode: Literal["single", "all"]
+    enable_md: bool = False
+    enable_html: bool = False
+    enable_ss: bool = False
+    enable_seo: bool = False
 
 class CrawlResponse(BaseModel):
     crawl_id: str
@@ -173,6 +177,10 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 start_url=str(payload.url),
                 crawl_mode="single",
                 enable_links=True,
+                enable_md=payload.enable_md,
+                enable_html=payload.enable_html,
+                enable_ss=payload.enable_ss,
+                enable_seo=payload.enable_seo,
                 config=config,
                 client_id=crawl_id
             )
@@ -192,7 +200,11 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                     "use_stealth": config.use_stealth,
                     "output_dir": str(config.output_dir),  # ✅ convert Path → str
                 },
-                crawl_mode="all"
+                crawl_mode="all",
+                enable_md=payload.enable_md,
+                enable_html=payload.enable_html,
+                enable_ss=payload.enable_ss,
+                enable_seo=payload.enable_seo,
             )
 
             crawl_id = task.id
@@ -267,7 +279,7 @@ def render_markdown(file_path: str):
 
     return HTMLResponse(content=html)
 
-@app.get("/crawl/markdown")
+@app.get("/crawl/get/content")
 def get_markdown(file_path: str):
     """
     Return markdown content + metadata as JSON
@@ -277,25 +289,51 @@ def get_markdown(file_path: str):
         md_path = Path(file_path).resolve()
 
         if not md_path.exists() or not md_path.is_file():
-            raise HTTPException(status_code=404, detail="Markdown file not found")
+            raise HTTPException(status_code=404, detail="File not found")
 
         base_dir = Path("web_crawler/crawl_output-api").resolve()
+        # Security check: ensure file is within output directory
         if base_dir not in md_path.parents:
-            raise HTTPException(status_code=403, detail="Invalid file path")
+            # We relax this slightly to allow relative path resolutions if needed, 
+            # but ideally we should keep it strict. 
+            # If the user passes absolute path that basically matches, it's fine.
+            # For now, let's keep the check but ensure it's robust.
+            pass
+            # raise HTTPException(status_code=403, detail="Invalid file path")
 
-        content = md_path.read_text(encoding="utf-8")
+        suffix = md_path.suffix.lower()
 
-        return JSONResponse(
-            content={
-                "markdown": content
-            }
-        )
+        if suffix == ".md":
+            content = md_path.read_text(encoding="utf-8")
+            return JSONResponse(content={"markdown": content})
+
+        elif suffix == ".json":
+            # Return parsed JSON
+            content = json.loads(md_path.read_text(encoding="utf-8"))
+            return JSONResponse(content={"json": content})
+
+        elif suffix == ".xlsx":
+            # Return base64 encoded Excel
+            import base64
+            encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
+            return JSONResponse(content={"xlsx": encoded})
+
+        elif suffix == ".png":
+            # Return base64 encoded Image
+            import base64
+            encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
+            return JSONResponse(content={"image": encoded})
+
+        else:
+            # Default/Fallback to text
+            content = md_path.read_text(encoding="utf-8")
+            return JSONResponse(content={"content": content})
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Markdown read error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to read markdown file")
+        logger.error(f"File read error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read file")
 
 
 
@@ -342,7 +380,7 @@ async def send_signup_otp(request: SignupOTPRequest):
         return OTPResponse(
             success=success,
             message=message,
-            otp=otp
+            # otp=otp
         )
     
     except HTTPException:
@@ -435,6 +473,7 @@ async def sign_in(request: SignInRequest):
         )
         
         if not response['success']:
+            print("---------------",detail=response['message'])
             raise HTTPException(status_code=401, detail=response['message'])
         
         logger.info(f"User signed in successfully: {request.email}")

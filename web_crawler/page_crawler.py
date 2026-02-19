@@ -5,10 +5,12 @@ Individual page crawling logic
 import logging
 import asyncio
 import sys
+import json
 from typing import Optional, Dict
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
 from bs4 import BeautifulSoup
+from web_crawler.seo_report import CrawlReportWriter
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -42,12 +44,16 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Process loaded page and extract data"""
         md_path = None
         html_path = None
         screenshot_path = None
+        seo_json_path = None
+        seo_md_path = None
+        seo_xlsx_path = None
         
         try:
             # Scroll to load dynamic content
@@ -60,6 +66,15 @@ class PageCrawler:
             canonical = normalize_url(seo.get("canonical", url))
             title_safe = self.file_manager.safe_filename(seo.get("title"))
             prefix = f"{count}_{title_safe}"
+
+            if enable_seo:
+                try:
+                    writer = CrawlReportWriter(self.config.output_dir)
+                    seo_json_path = writer.save_single_json(prefix, seo)
+                    seo_md_path = writer.save_single_markdown(prefix, seo)
+                    seo_xlsx_path = writer.save_single_excel(prefix, seo)
+                except Exception as e:
+                    logger.error(f"Failed to save per-page SEO report for {url}: {e}")
             
             # Save HTML
             if enable_html:
@@ -82,8 +97,9 @@ class PageCrawler:
             if enable_md:
                 try:
                     markdown = self.content_processor.convert_to_markdown(html, url)
-                    md_filename = f"{count}_{title_safe}.md"
-                    md_path = Path(self.config.output_dir) / md_filename
+                    # md_filename = f"{count}_{title_safe}.md"
+                    # md_path = Path(self.config.output_dir) / md_filename
+                    md_path = str(self.config.md_dir / f"{prefix}.md")
                     
                     with open(md_path, "w", encoding="utf-8") as f:
                         f.write(markdown)
@@ -94,10 +110,16 @@ class PageCrawler:
                 publish_event(
                     crawl_id=client_id,
                     payload={
-                        "type": "markdown_ready",
+                        "type": "page_processed",
                         "page": count,
                         "url": url,
-                        "file_path": str(md_path)
+                        "title": seo.get("title", "No Title"),
+                        "markdown_file": str(md_path) if md_path else None,
+                        "html_file": html_path,
+                        "screenshot": screenshot_path,
+                        "seo_json": seo_json_path,
+                        "seo_md": seo_md_path,
+                        "seo_xlsx": seo_xlsx_path,
                     }
                 )
 
@@ -127,6 +149,7 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Crawl page using Chromium with stealth"""
@@ -179,7 +202,7 @@ class PageCrawler:
                 if len(text_content.strip()) < 200:
                     raise Exception(f"Content too short ({len(text_content.strip())} chars)")
                 
-                result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, client_id)
+                result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                 browser.close()
                 
                 return result
@@ -195,6 +218,7 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Fallback crawl using Camoufox"""
@@ -225,7 +249,7 @@ class PageCrawler:
                     browser.close()
                     return None
                 
-                result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, client_id)
+                result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                 browser.close()
                 
                 return result
@@ -241,6 +265,7 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str],
         websocket_manager
     ) -> Optional[Dict]:
@@ -255,7 +280,7 @@ class PageCrawler:
         })
         
         # Try Chromium first
-        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, client_id)
+        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
         
         if result:
             logger.info(f"Chromium success: {url}")
@@ -263,7 +288,7 @@ class PageCrawler:
         
         # Fallback to Camoufox
         logger.info(f"Trying Camoufox fallback for: {url}")
-        # result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, client_id)
+        # result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
         
         if result:
             logger.info(f"Camoufox success: {url}")

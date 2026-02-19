@@ -29,20 +29,48 @@ class ContentProcessor:
     
     @staticmethod
     def extract_seo(soup: BeautifulSoup, page_url: str) -> Dict:
-        """Extract SEO metadata"""
+        """Extract SEO metadata (sync with seo.py)"""
         def get_meta(name=None, prop=None):
-            attrs = {"name": name} if name else {"property": prop}
-            tag = soup.find("meta", attrs=attrs)
-            return tag.get("content", "").strip() if tag else ""
-        
-        canonical_tag = soup.find("link", rel="canonical")
-        
+            if name:
+                tag = soup.find("meta", attrs={"name": name})
+            else:
+                tag = soup.find("meta", attrs={"property": prop})
+            return tag.get("content").strip() if tag and tag.get("content") else None
+
+        # Link counts
+        internal_links = 0
+        external_links = 0
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+            if href.startswith("/"):
+                internal_links += 1
+            elif href.startswith("http"):
+                external_links += 1
+
+        # Image stats
+        images = soup.find_all("img")
+        images_missing_alt = len([img for img in images if not img.get("alt")])
+
         return {
-            "title": soup.title.text.strip() if soup.title else "",
+            "url": page_url,
+            "title": soup.title.string.strip() if soup.title else None,
+            "title_length": len(soup.title.string.strip()) if soup.title else 0,
             "meta_description": get_meta(name="description"),
-            "canonical": canonical_tag["href"] if canonical_tag else page_url,
-            "h1_count": len(soup.find_all("h1")),
-            "word_count": len(" ".join(soup.stripped_strings).split()),
+            "meta_description_length": len(get_meta(name="description") or ""),
+            "canonical": (
+                soup.find("link", rel="canonical").get("href")
+                if soup.find("link", rel="canonical")
+                else None
+            ),
+            "h1": [h.get_text(strip=True) for h in soup.find_all("h1")],
+            "h2": [h.get_text(strip=True) for h in soup.find_all("h2")],
+            "images_total": len(images),
+            "images_missing_alt": images_missing_alt,
+            "internal_links": internal_links,
+            "external_links": external_links,
+            "og_title": get_meta(prop="og:title"),
+            "og_description": get_meta(prop="og:description"),
+            "twitter_title": get_meta(name="twitter:title"),
         }
     
     @staticmethod
