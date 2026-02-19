@@ -20,7 +20,7 @@ class CrawlReportWriter:
     # 1️⃣ JSON
     # ------------------------------------------------
     def save_json(self, domain: str, pages: List[Dict], links: List[str] = None) -> str:
-        file_path = self.output_dir / f"{domain}_seo.json"
+        file_path = self.output_dir / "seo" / f"{domain}_seo.json"
 
         output = {
             "total_pages": len(pages),
@@ -37,7 +37,7 @@ class CrawlReportWriter:
     # 2️⃣ Markdown
     # ------------------------------------------------
     def save_markdown(self, domain: str, pages: List[Dict], links: List[str] = None) -> str:
-        file_path = self.output_dir / f"{domain}_seo.md"
+        file_path = self.output_dir / "seo" / f"{domain}_seo.md"
 
         md = f"# SEO Crawl Report — {domain}\n\n"
         md += f"## Total Pages: {len(pages)}\n\n"
@@ -84,7 +84,7 @@ class CrawlReportWriter:
     # 3️⃣ Excel
     # ------------------------------------------------
     def save_excel(self, domain: str, pages: List[Dict]) -> str:
-        file_path = self.output_dir / f"{domain}_seo.xlsx"
+        file_path = self.output_dir / "seo" / f"{domain}_seo.xlsx"
 
         wb = Workbook()
         ws = wb.active
