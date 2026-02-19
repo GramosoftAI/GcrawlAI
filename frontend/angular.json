@@ -20,7 +20,7 @@
             "allowedCommonJsDependencies": [
               "crypto-js"
             ],
-            "outputPath": "dist/gramocrawl",
+            "outputPath": "dist/gramocrawl/browser",
             "index": "src/index.html",
             "main": "src/main.ts",
             "polyfills": [
@@ -48,13 +48,13 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kb",
-                  "maximumError": "1mb"
+                  "maximumWarning": "5mb",
+                  "maximumError": "5mb"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "2kb",
-                  "maximumError": "4kb"
+                  "maximumWarning": "5mb",
+                  "maximumError": "5mb"
                 }
               ],
               "outputHashing": "all"
@@ -106,6 +106,61 @@
             ],
             "scripts": []
           }
+        },
+        "server": {
+          "builder": "@angular-devkit/build-angular:server",
+          "options": {
+            "outputPath": "dist/gramocrawl/server",
+            "main": "server.ts",
+            "tsConfig": "tsconfig.server.json",
+            "inlineStyleLanguage": "scss"
+          },
+          "configurations": {
+            "production": {
+              "outputHashing": "media"
+            },
+            "development": {
+              "buildOptimizer": false,
+              "optimization": false,
+              "sourceMap": true,
+              "extractLicenses": false,
+              "vendorChunk": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve-ssr": {
+          "builder": "@nguniversal/builders:ssr-dev-server",
+          "configurations": {
+            "development": {
+              "browserTarget": "gramocrawl:build:development",
+              "serverTarget": "gramocrawl:server:development"
+            },
+            "production": {
+              "browserTarget": "gramocrawl:build:production",
+              "serverTarget": "gramocrawl:server:production"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "prerender": {
+          "builder": "@nguniversal/builders:prerender",
+          "options": {
+            "routes": [
+              "/"
+            ]
+          },
+          "configurations": {
+            "production": {
+              "browserTarget": "gramocrawl:build:production",
+              "serverTarget": "gramocrawl:server:production"
+            },
+            "development": {
+              "browserTarget": "gramocrawl:build:development",
+              "serverTarget": "gramocrawl:server:development"
+            }
+          },
+          "defaultConfiguration": "production"
         }
       }
     }

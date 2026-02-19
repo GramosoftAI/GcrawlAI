@@ -14,17 +14,12 @@ export class AuthService {
 
   constructor(private localService: LocalStorageService, private router: Router, private dataService: DataService, public dialog: MatDialog) { }
 
-  login(data: any, value: any) {
-    debugger
+  login(data: any) {
     this.localService.setAccessToken(data.access_token);
     this.localService.setUserDetails(data);
     this.dataService.setData();
     if (data.user?.is_active === true) {
-      this.router.navigate(['/main'], {
-        queryParams: {
-          isLogin: value
-        }
-      });
+      this.router.navigate(['/main']);
     }
     else {
       this.router.navigate(['/404']);
