@@ -1,153 +1,186 @@
 <section>
   <div class="container">
     <div class="page d-flex flex-column mx-auto align-items-center w-100">
+      <!-- ================================================= -->
+      <!-- ================= AFTER CRAWL ================== -->
+      <!-- ================================================= -->
 
-      <div class="scrape-bar mb-3 mt-2">
+      <ng-container *ngIf="crawlID !== null; else beforeCrawlForm">
+        <form [formGroup]="crawlform" (ngSubmit)="Onsubmit('after')">
+          <!-- Top Tabs -->
+          <ul class="nav custom-tabs mx-auto mx-md-0 no-animation mb-3" role="tablist">
+            <ng-container *ngTemplateOutlet="tabsResult"></ng-container>
+          </ul>
 
-        <form [formGroup]="crawlform" (ngSubmit)="Onsubmit()">
-
-          <!-- URL Field -->
-          <div class="d-flex search-field align-items-center">
-            <img src="/assets/image/internet.png" alt="" class="internet-img me-2">
-            <input type="text" formControlName="url" class="form-control border-0 p-0"
-              placeholder="https://example.com">
-          </div>
-
-          <!-- Tabs + Submit -->
-          <div class="mt-3" *ngIf="!crawlID">
-
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
-
-              <!-- Tabs -->
-              <ul class="nav custom-tabs mx-auto mx-md-0" role="tablist">
-
-                <li class="nav-item">
-                  <button type="button" class="nav-link" [class.active]="crawlform.value.button === 'scrape'"
-                    (click)="setButton('scrape')">
-                    <i class="bi bi-grid"></i> Scrape
-                  </button>
-                </li>
-
-                <li class="nav-item">
-                  <button disabled type="button" class="nav-link" [class.active]="crawlform.value.button === 'search'"
-                    (click)="setButton('search')">
-                    <i class="bi bi-search"></i> Search
-                  </button>
-                </li>
-
-                <li class="nav-item">
-                  <button disabled type="button" class="nav-link" [class.active]="crawlform.value.button === 'agent'"
-                    (click)="setButton('agent')">
-                    <i class="bi bi-robot"></i>
-                    Agent <span class="badge-new">New</span>
-                  </button>
-                </li>
-
-                <li class="nav-item">
-                  <button disabled type="button" class="nav-link" [class.active]="crawlform.value.button === 'map'"
-                    (click)="setButton('map')">
-                    <i class="bi bi-map"></i> Map
-                  </button>
-                </li>
-
-                <li class="nav-item">
-                  <button type="button" class="nav-link" [class.active]="crawlform.value.button === 'crawl'"
-                    (click)="setButton('crawl')">
-                    <i class="bi bi-bug"></i> Crawl
-                  </button>
-                </li>
-
-              </ul>
-
-              <!-- Submit -->
-              <button type="submit" class="btn btn-bg-primary w-md-auto">
-                <img src="/assets/image/right-arrow.png" alt="" *ngIf="!isLoading">
-                <div *ngIf="isLoading" class="spinner-border text-danger" role="status">
-                  <span class="visually-hidden">Loading...</span>
-                </div>
-              </button>
-
+          <div class="scrape-bar mb-3 mt-2">
+            <!-- URL Field -->
+            <div class="d-flex search-field align-items-center">
+              <img src="/assets/image/internet.png" alt="" class="internet-img me-2 no-animation">
+              <input type="text" formControlName="url"
+                class="no-animation _mat-animation-noopable form-control border-0 p-0"
+                placeholder="https://example.com">
             </div>
 
-          </div>
-          <div class="d-flex justify-content-between w-100 mt-3 mb-1" *ngIf="crawlID">
-            <div class="popup">
-              <div class="d-flex">
-                <img src="/assets/image/filter.png" alt="" class="fav-icon my-auto">
-                <img src="/assets/image/dashboard.png" alt="" class="fav-icon my-auto ms-3">
-                <div class="dropdown ms-3">
-                  <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                    aria-expanded="false">
-                    Format: Markdown
-                  </button>
-                  <ul class="dropdown-menu">
-                    <li class="py-2 d-flex">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/markdown.png" alt="" class="filter-img"> Markdown</a>
-                    </li>
-                    <li class="py-2 d-flex">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/summary.png" alt="" class="filter-img"> Summary</a>
-                    </li>
-                    <li class="py-2 d-flex">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/link.png" alt="" class="filter-img"> Links</a>
-                    </li>
-                    <li class="d-flex justify-content-between py-2">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/html.png" alt="" class="filter-img"> HTML</a>
-                      <ul class="filter-box nav nav-tabs" id="myTab" role="tablist" style="display: contents;">
-                        <li class="nav-item me-3" role="presentation">
-                          <button class="nav-link active px-0 fw-600 fs-11" id="home-tab" data-bs-toggle="tab"
-                            data-bs-target="#home-tab-pane" type="button" role="tab" aria-controls="home-tab-pane"
-                            aria-selected="true">Cleaned</button>
-                        </li>
-                        <li class="nav-item me-2" role="presentation">
-                          <button class="nav-link px-0 fs-11 fw-600" id="profile-tab" data-bs-toggle="tab"
-                            data-bs-target="#profile-tab-pane" type="button" role="tab" aria-controls="profile-tab-pane"
-                            aria-selected="false">Raw</button>
-                        </li>
-                      </ul>
-                    </li>
-                    <li class="py-2 d-flex d-flex justify-content-between">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/screenshot.png" alt="" class="filter-img"> Scrennshots</a>
-                      <ul class="filter-box nav nav-tabs" id="myTab" role="tablist" style="display: contents;">
-                        <li class="nav-item me-3" role="presentation">
-                          <button class="nav-link active px-0 fw-600 fs-11" id="home-tab" data-bs-toggle="tab"
-                            data-bs-target="#home-tab-pane" type="button" role="tab" aria-controls="home-tab-pane"
-                            aria-selected="true">Viewport</button>
-                        </li>
-                        <li class="nav-item me-2 text-nowrap" role="presentation">
-                          <button class="nav-link px-0 fs-11 fw-600" id="profile-tab" data-bs-toggle="tab"
-                            data-bs-target="#profile-tab-pane" type="button" role="tab" aria-controls="profile-tab-pane"
-                            aria-selected="false">Full page</button>
-                        </li>
-                      </ul>
-                    </li>
-                    <li class="py-2 d-flex">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/json.png" alt="" class="filter-img"> JSON</a></li>
-                    <li class="py-2 d-flex">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/brand.png" alt="" class="filter-img"> Branding</a></li>
-                    <li class="py-2 d-flex">
-                      <a class="dropdown-item" href="#"><img src="/assets/image/image.png" alt="" class="filter-img"> Images</a></li>
-                  </ul>
+            <!-- Bottom Action Bar -->
+            <div class="d-flex justify-content-between w-100 mt-3 mb-1">
+              <!-- Left -->
+              <div class="popup">
+                <div class="d-flex">
+                  <img src="/assets/image/filter.png" alt="" class="fav-icon my-auto">
+                  <img src="/assets/image/dashboard.png" alt="" class="fav-icon my-auto ms-3">
+                  <div class="dropdown ms-3">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                      aria-expanded="false">
+                      Format: Markdown
+                    </button>
+                    <ul class="dropdown-menu">
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/markdown.png" class="filter-img">
+                          Markdown
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/summary.png" class="filter-img">
+                          Summary
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/link.png" class="filter-img">
+                          Links
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/html.png" class="filter-img">
+                          HTML
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/screenshot.png" class="filter-img">
+                          Scrennshots
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/json.png" class="filter-img">
+                          JSON
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/brand.png" class="filter-img">
+                          Branding
+                        </a>
+                      </li>
+                      <li class="py-2 d-flex">
+                        <a class="dropdown-item" href="#">
+                          <img src="/assets/image/image.png" class="filter-img">
+                          Images
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="submit-btn d-flex ms-5 ps-5">
-              <button type="button" class="btn btn-light fs-13 p-2 py-1">
-                <img src="/assets/image/download.png" class="fav-icon">
-                Get code
-              </button>
 
-              <button type="button" class="btn btn-bg-primary fs-13 p-2 py-1">
-                Start scraping
-              </button>
+              <!-- Right -->
+              <div class="submit-btn d-flex ms-5 ps-5">
+                <button type="button" class="btn btn-light fs-13 p-2 py-1">
+                  <img src="/assets/image/download.png" class="fav-icon">
+                  Get code
+                </button>
+                <button type="submit" class="btn btn-bg-primary fs-13 p-2 py-1">
+                  Submit
+                </button>
+              </div>
             </div>
           </div>
         </form>
-      </div>
+      </ng-container>
 
-      <!-- Result Section -->
-      <app-report-page *ngIf="markdownBlocks && markdownBlocks.length" [blocks]="markdownBlocks" class="w-100 mt-4">
+      <!-- ================================================= -->
+      <!-- ================= BEFORE CRAWL ================= -->
+      <!-- ================================================= -->
+
+      <ng-template #beforeCrawlForm>
+        <form [formGroup]="crawlform" (ngSubmit)="Onsubmit('before')">
+          <div class="scrape-bar mb-3 mt-2">
+            <!-- URL Field -->
+            <div class="d-flex search-field align-items-center">
+              <img src="/assets/image/internet.png" alt="" class="internet-img me-2 no-animation">
+              <input type="text" formControlName="url"
+                class="no-animation _mat-animation-noopable form-control border-0 p-0"
+                placeholder="https://example.com">
+            </div>
+
+            <!-- Tabs + Submit -->
+            <div class="mt-3">
+              <div class="bg-transparent d-flex flex-column flex-md-row
+                       align-items-md-center justify-content-between gap-3">
+                <!-- Tabs -->
+                <ul class="nav custom-tabs mx-auto mx-md-0 no-animation" role="tablist">
+                  <ng-container *ngTemplateOutlet="tabsResult"></ng-container>
+                </ul>
+
+                <!-- Submit -->
+                <button type="submit" class="btn btn-bg-primary w-md-auto py-2">
+                  <span *ngIf="!isLoading">Submit</span>
+                  <div *ngIf="isLoading" class="spinner-border text-danger" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </ng-template>
+
+      <!-- ================================================= -->
+      <!-- ================= RESULT ======================== -->
+      <!-- ================================================= -->
+
+      <app-report-page *ngIf="markdownBlocks && markdownBlocks.length" [blocks]="markdownBlocks" [formsvalue]="formdata"
+        class="w-100 mt-4">
       </app-report-page>
-
     </div>
   </div>
 </section>
+<ng-template #tabsResult>
+  <li class="nav-item">
+    <button type="button" class="nav-link" [class.active]="crawlform.get('button')?.value === 'scrape'"
+      (click)="setButton('scrape')">
+      <i class="bi bi-grid"></i>
+      Scrape
+    </button>
+  </li>
+  <li class="nav-item">
+    <button disabled type="button" class="nav-link">
+      <i class="bi bi-search"></i>
+      Search
+    </button>
+  </li>
+  <li class="nav-item">
+    <button disabled type="button" class="nav-link">
+      <i class="bi bi-robot"></i>
+      Agent
+      <span class="badge-new">New</span>
+    </button>
+  </li>
+  <li class="nav-item">
+    <button disabled type="button" class="nav-link">
+      <i class="bi bi-map"></i>
+      Map
+    </button>
+  </li>
+  <li class="nav-item">
+    <button type="button" class="nav-link" [class.active]="crawlform.get('button')?.value === 'crawl'"
+      (click)="setButton('crawl')">
+      <i class="bi bi-bug"></i>
+      Crawl
+    </button>
+  </li>
+</ng-template>

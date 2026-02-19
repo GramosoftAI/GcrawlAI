@@ -4,19 +4,19 @@
 
     <!-- Top Share Bar -->
     <div
-      class="scrape-details d-flex flex-wrap justify-content-between align-items-center my-3 gap-2"
-      *ngIf="parsedBlocks.length"
+      class="no-animation scrape-details d-flex flex-wrap justify-content-between align-items-center my-3 gap-2"
+      *ngIf="parsedBlocks?.length"
     >
 
       <a
         class="text-color-black text-break text-center"
-        [href]="parsedBlocks[0].url"
+        [href]="parsedBlocks[0]?.url"
         target="_blank"
       >
-        {{ parsedBlocks[0].url }}
+        {{ parsedBlocks[0]?.url }}
       </a>
 
-      <button type="button" class="btn btn-light fs-13 p-2 py-1">
+      <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
         <img src="assets/image/upload.png" class="fav-icon">
         Share
       </button>
@@ -26,29 +26,29 @@
 
     <!-- Header Section -->
     <div
-      class="header-actions d-flex flex-wrap justify-content-between align-items-center mt-4 mb-5 gap-3"
+      class="no-animation header-actions d-flex flex-wrap justify-content-between align-items-center mt-4 mb-5 gap-3"
     >
 
       <span>
-        <h5 class="fs-17 text-break">
-          {{ parsedBlocks[0].title }}
+        <h5 class="fs-17 text-break dark-grey">
+          {{ parsedBlocks[0]?.title }}
         </h5>
 
         <a
           class="text-color-grey fs-13 text-break"
-          [href]="parsedBlocks[0].url"
+          [href]="parsedBlocks[0]?.url"
           target="_blank"
         >
-          {{ parsedBlocks[0].url }}
+          {{ parsedBlocks[0]?.url }}
         </a>
       </span>
 
 
       <div class="d-flex flex-wrap gap-2">
 
-        <button
+        <button *ngIf="token"
           type="button"
-          class="btn btn-light fs-13 p-2 py-1"
+          class="btn dark-btn fs-13 p-2 py-1"
           data-bs-toggle="modal"
           data-bs-target="#exampleModal"
         >
@@ -56,12 +56,12 @@
           Report issue
         </button>
 
-        <button type="button" class="btn btn-light fs-13 p-2 py-1">
+        <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
           <img src="/assets/image/download.png" class="fav-icon">
           JSON
         </button>
 
-        <button type="button" class="btn btn-light fs-13 p-2 py-1">
+        <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
           <img src="/assets/image/download.png" class="fav-icon">
           Markdown
         </button>
@@ -73,7 +73,7 @@
 
     <!-- Tabs -->
     <ul
-      class="nav nav-pills mb-3 mt-4 bg-white scroll-tabs"
+      class="no-animation nav nav-pills mb-3 mt-4 scroll-tabs"
       id="pills-tab"
       role="tablist"
     >
@@ -117,7 +117,7 @@
 
     <!-- Tab Content -->
     <div
-      class="tab-content mx-auto"
+      class="tab-content mx-auto no-animation"
       [ngStyle]="{ overflow: token ? 'auto' : 'hidden' }"
     >
 
@@ -132,12 +132,12 @@
           <div class="d-flex justify-content-between flex-wrap gap-2">
 
             <h3 class="title">
-              {{ i + 1 }}. {{ block.title }}
+              {{ i + 1 }}. {{ block?.title }}
             </h3>
 
             <button
               *ngIf="token"
-              class="btn btn-sm btn-primary"
+              class="btn-bg-primary-light txt-red"
               (click)="download(block.raw, i)"
             >
               Download .md
@@ -147,7 +147,7 @@
 
 
           <pre class="content">
-{{ block.raw }}
+{{ block?.raw }}
           </pre>
 
         </div>

@@ -52,6 +52,15 @@ export class LocalStorageService {
     return null;
   }
 
+    public setformDetails(data: any): void {
+    this.setItem('formdetails', data)
+  }
+
+    public getformDetails(): string | null {
+    const firstLogin = this.getItem('formdetails');
+    return firstLogin || null;
+  }
+
   public setfirstLogin(data: boolean): void {
     this.setItem('firstLogin', data)
   }

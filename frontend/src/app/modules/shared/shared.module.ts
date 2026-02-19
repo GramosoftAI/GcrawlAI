@@ -14,7 +14,7 @@ import { AlertComponent } from './component/alert/alert.component';
 import { ErrorPageComponent } from './component/error-page/error-page.component';
 import { LoaderComponent } from './component/loader/loader.component';
 import { ToastrModule } from 'ngx-toastr';
-import { CanvaAnimeComponent } from './component/canva-anime/canva-anime.component';
+import { AnimatebgComponent } from './component/animatebg/animatebg.component';
 
 @NgModule({
   declarations: [
@@ -25,7 +25,7 @@ import { CanvaAnimeComponent } from './component/canva-anime/canva-anime.compone
     TimerPipe,
     ErrorPageComponent,
     LoaderComponent,
-    CanvaAnimeComponent
+    AnimatebgComponent,
   ],
   imports: [
     ReactiveFormsModule,
@@ -42,10 +42,10 @@ import { CanvaAnimeComponent } from './component/canva-anime/canva-anime.compone
     })
   ],
   exports: [
+    AnimatebgComponent,
     HeaderComponent,
     FooterComponent,
     OtpModalComponent,
-    CanvaAnimeComponent,
     LoaderComponent,
     MatDialogModule,
     NgOtpInputModule,

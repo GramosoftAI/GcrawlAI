@@ -13,33 +13,29 @@ import { ActivatedRoute, Router } from '@angular/router';
 export class ReportPageComponent implements OnChanges {
   token: any;
   @Input() blocks: string[] = [];
+  @Input() formsvalue: any;
   parsedBlocks: any[] = [];
   reportForm: FormGroup;
 
-  constructor(private sanitizer: DomSanitizer, private route: ActivatedRoute, private router: Router, private localService: LocalStorageService, private Fb: FormBuilder) {
+  constructor(private sanitizer: DomSanitizer, private router: Router, private localService: LocalStorageService, private Fb: FormBuilder) {
     this.reportForm = this.Fb.group({
 
     })
   }
 
   ngOnInit(): void {
-    debugger
     this.token = this.localService.getAccessToken();
-    this.route.queryParams.subscribe(params => {
-      const isLogin = [params['isLogin'] === true];
-       console.log('isLogin', isLogin)
-    })
     console.log('token', this.token)
   }
 
   isLogin() {
-    debugger
     this.localService.setfirstLogin(true)
     this.router.navigate(['/auth'])
   }
 
   ngOnChanges(changes: SimpleChanges) {
-    debugger
+    this.formsvalue = this.formsvalue
+    this.localService.setformDetails(this.formsvalue)
     if (changes['blocks'] && this.blocks?.length) {
       Promise.all(this.blocks.map(md =>
         this.parseMarkdown(md)

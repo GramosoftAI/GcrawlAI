@@ -1,26 +1,22 @@
-/* ================= PAGE ================= */
-
 .page {
   padding: 20px;
   max-width: 950px;
   width: 100%;
 }
 
-/* ================= SCRAPE BAR ================= */
-
 .scrape-bar {
-  background: #fff;
+  background: var(--card-bg-color);
   padding: 12px 16px;
   border-radius: 16px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, .08);
   width: auto;
+  border: 1px solid #716e6e;
 }
-
-/* ================= INPUT ================= */
 
 .search-field {
   border-bottom: 1px solid #e9e1e1;
   padding-bottom: 6px;
+  background: transparent !important;
 }
 
 .search-field input {
@@ -30,18 +26,23 @@
 
 .form-control:focus {
   box-shadow: none !important;
+  color: var(--text-color) !important;
 }
 
-/* ================= TABS ================= */
+.form-control {
+  color: var(--text-color) !important;
+  background-color: transparent !important;
+}
 
 .custom-tabs {
   display: flex;
-  background: #f3f3f3;
+  background: var(--grid-line-color);
   border-radius: 6px;
   gap: 4px;
   padding: 4px;
   overflow-x: auto;
   white-space: nowrap;
+  opacity: 0.8;
 }
 
 .custom-tabs::-webkit-scrollbar {
@@ -53,7 +54,7 @@
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
-  color: #666;
+  color: var(--text-color-secondary);
   background: transparent;
   display: flex;
   align-items: center;
@@ -67,16 +68,14 @@
 }
 
 .custom-tabs .nav-link.active {
-  background: #fff;
-  color: #111;
+  background: var(--card-bg-color);
+     color: #02a157;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .custom-tabs .nav-link.active i {
   opacity: 1;
 }
-
-/* ================= BUTTON ================= */
 
 .btn-bg-primary {
   background: #21D496;
@@ -93,29 +92,22 @@
   height: 16px !important;
 }
 
-/* ================= IMAGE ================= */
-
 .internet-img {
   width: 16px;
   height: 16px;
   object-fit: contain;
+  filter: contrast(0.5);
 }
-
-/* ================= RESULT ================= */
 
 app-report-page {
   width: 100%;
 }
-
-/* ================= GRID FIX ================= */
 
 .layout {
   display: grid;
   grid-template-columns: 1fr 1.2fr;
   gap: 20px;
 }
-
-/* ================= RESPONSIVE ================= */
 
 @media (max-width: 992px) {
   .layout {
@@ -171,6 +163,7 @@ app-report-page {
   width: 16px;
   height: 14px;
   object-fit: cover;
+  filter: contrast(0.5);
 }
 
 .dropdown-toggle {
@@ -202,4 +195,9 @@ app-report-page {
   width: 15px;
   height: 15px;
   object-fit: cover;
+}
+
+.form-control::placeholder {
+  color: #828181;
+  opacity: 1;
 }

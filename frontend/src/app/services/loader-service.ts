@@ -6,15 +6,24 @@ import { BehaviorSubject, Subject } from 'rxjs';
 })
 export class LoaderService {
   showLoader = new Subject<boolean>();
+  private counter = 0;
 
   constructor() {
   }
 
   show() {
-    this.showLoader.next(true);
+    this.counter++;
+    if (this.counter === 1) {
+      this.showLoader.next(true);
+    }
   }
 
   hide() {
-    this.showLoader.next(false);
+    if (this.counter > 0) {
+      this.counter--;
+      if (this.counter === 0) {
+        this.showLoader.next(false);
+      }
+    }
   }
 }
