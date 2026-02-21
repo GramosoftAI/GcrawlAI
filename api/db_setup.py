@@ -216,13 +216,13 @@ class DatabaseSetup:
             crawl_id VARCHAR(64) UNIQUE NOT NULL,
             url TEXT NOT NULL,
             crawl_mode VARCHAR(20) NOT NULL,
-            markdown_path TEXT,
-            internal_links TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            status VARCHAR(20) DEFAULT 'queued',
-            error TEXT,
             updated_at TIMESTAMP,
-            task_id VARCHAR(255)
+            task_id VARCHAR(255),
+            SEO BOOLEAN DEFAULT FALSE,
+            HTML BOOLEAN DEFAULT FALSE,
+            Screenshot BOOLEAN DEFAULT FALSE,
+            Markdown BOOLEAN DEFAULT FALSE
         );
         """
 
@@ -241,6 +241,49 @@ class DatabaseSetup:
 
         except Exception as e:
             logger.error(f"✗ Failed to create crawl_jobs table: {e}", exc_info=True)
+            return False
+
+    def create_crawl_events_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS crawl_events (
+            id SERIAL PRIMARY KEY,
+            crawl_id VARCHAR(64) NOT NULL,
+            event_type VARCHAR(50) NOT NULL,
+            url TEXT,
+            title TEXT,
+            markdown_file TEXT,
+            html_file TEXT,
+            screenshot TEXT,
+            seo_json TEXT,
+            seo_md TEXT,
+            seo_xlsx TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_crawl_job
+                FOREIGN KEY (crawl_id)
+                REFERENCES crawl_jobs (crawl_id)
+                ON DELETE CASCADE,
+            CONSTRAINT unique_crawl_file 
+                UNIQUE (crawl_id, markdown_file)
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_crawl_events_crawl_id ON crawl_events(crawl_id);
+        """
+
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            logger.info("✓ crawl_events table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create crawl_events table: {e}", exc_info=True)
             return False
 
 
@@ -284,9 +327,10 @@ class DatabaseSetup:
         users_created = self.create_users_table()
         otps_created = self.create_signup_otps_table()
         crawl_jobs_created = self.create_crawl_jobs_table()
+        crawl_events_created = self.create_crawl_events_table()
         crawls_created = self.create_crawls_table()
 
-        if all([users_created, otps_created, crawl_jobs_created, crawls_created]):
+        if all([users_created, otps_created, crawl_jobs_created, crawl_events_created, crawls_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:

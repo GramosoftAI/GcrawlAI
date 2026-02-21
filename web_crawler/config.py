@@ -20,7 +20,6 @@ class CrawlConfig:
     bypass_cloudflare: bool = True
 
     output_dir: str = "crawl_output-api"
-    # camoufox_path: Optional[str] = None
     camoufox_path: Optional[str] = r"C:\Users\ganes\AppData\Local\camoufox\camoufox\Cache\camoufox.exe"
 
     def __post_init__(self):

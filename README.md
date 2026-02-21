@@ -74,6 +74,27 @@ A comprehensive web crawling solution featuring a FastAPI backend, Streamlit das
 - **Redis** (running on default port 6379)
 - **Git**
 
+### Linux System Dependencies
+
+If you are running on Linux (Debian/Ubuntu), you will need to install the following system dependencies for the automated browsers to function correctly:
+
+```bash
+sudo apt update
+
+sudo apt install -y \
+libnss3 \
+libatk1.0-0t64 \
+libatk-bridge2.0-0t64 \
+libcups2t64 \
+libxcomposite1 \
+libxdamage1 \
+libxrandr2 \
+libgbm1 \
+libasound2t64 \
+libpangocairo-1.0-0 \
+libgtk-3-0t64
+```
+
 ## ⚙️ Installation
 
 1. **Clone the repository**
@@ -148,7 +169,7 @@ celery -A web_crawler.celery_config.celery_app worker --loglevel=info --pool=sol
 
 ```bash
 # Windows / Development
-uvicorn api.api:app --reload --port 8000
+uvicorn api.api:app --port 8000
 
 # Linux / Production (User Recommended)
 uvicorn api.api:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 120
@@ -163,9 +184,11 @@ cd web_crawler
 streamlit run streamlit_app.py
 ```
 
+<a href="https://github.com/GramosoftAI/GcrawlAI/blob/main/frontend/README.md">ReadMe for Angular Frontend</a>
+
 Dashboard will be available at: http://localhost:8501
 
-## � Project Structure
+##  Project Structure
 
 ```
 .

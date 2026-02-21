@@ -19,7 +19,9 @@ class FileManager:
     @staticmethod
     def safe_filename(text: str, max_len: int = 80) -> str:
         """Convert text to safe filesystem name"""
-        text = text.strip().replace("&", "and")
+        if not text:
+            return "page"
+        text = str(text).strip().replace("&", "and")
         text = re.sub(r"[^\w\s-]", "", text)
         text = re.sub(r"\s+", "_", text)
         return text[:max_len] if text else "page"
