@@ -222,7 +222,12 @@ class DatabaseSetup:
             SEO BOOLEAN DEFAULT FALSE,
             HTML BOOLEAN DEFAULT FALSE,
             Screenshot BOOLEAN DEFAULT FALSE,
-            Markdown BOOLEAN DEFAULT FALSE
+            Markdown BOOLEAN DEFAULT FALSE,
+            user_id INTEGER,
+            CONSTRAINT fk_crawl_jobs_user
+                FOREIGN KEY (user_id)
+                REFERENCES users (user_id)
+                ON DELETE CASCADE
         );
         """
 

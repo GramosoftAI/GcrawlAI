@@ -1,4 +1,4 @@
-<h3 align="center">
+<h3 align="center" style="background-color: #fdfdfdff; border-radius: 10px;">
   <a name="readme-top"></a>
   <img
     src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/Crawl%20Logo.svg"
@@ -178,11 +178,6 @@ uvicorn api.api:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 
 API Docs will be available at: http://localhost:8000/docs
 
 **4. Start Frontend Dashboard**
-
-```bash
-cd web_crawler
-streamlit run streamlit_app.py
-```
 
 <a href="https://github.com/GramosoftAI/GcrawlAI/blob/main/frontend/README.md">ReadMe for Angular Frontend</a>
 

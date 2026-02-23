@@ -132,6 +132,7 @@ class CrawlRequest(BaseModel):
     enable_html: bool = False
     enable_ss: bool = False
     enable_seo: bool = False
+    user_id: Optional[int] = None
 
 class CrawlResponse(BaseModel):
     crawl_id: str
@@ -236,8 +237,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
         cur.execute(
             """
             INSERT INTO crawl_jobs
-            (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 crawl_id,
@@ -248,7 +249,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 payload.enable_seo,
                 payload.enable_html,
                 payload.enable_ss,
-                payload.enable_md
+                payload.enable_md,
+                payload.user_id
             )
         )
 
@@ -540,7 +542,6 @@ async def sign_in(request: SignInRequest):
         )
         
         if not response['success']:
-            print("---------------",detail=response['message'])
             raise HTTPException(status_code=401, detail=response['message'])
         
         logger.info(f"User signed in successfully: {request.email}")
