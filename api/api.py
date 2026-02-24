@@ -20,12 +20,14 @@ import re
 
 from fastapi import WebSocket, WebSocketDisconnect
 from api.websocket_manager import WebSocketManager
+import redis.asyncio as aioredis
 import redis
 import json
 import uuid
 
 ws_manager = WebSocketManager()
-redis_client = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+redis_client_sync = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+redis_client_async = aioredis.from_url("redis://localhost:6379/0", decode_responses=True)
 
 import yaml
 from pathlib import Path
@@ -960,11 +962,11 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
         logger.error(f"Error replaying historical events: {e}")
 
     # 2. Otherwise subscribe for live updates
-    pubsub = redis_client.pubsub()
-    pubsub.subscribe(f"crawl:{crawl_id}")
+    pubsub = redis_client_async.pubsub()
+    await pubsub.subscribe(f"crawl:{crawl_id}")
 
     try:
-        for message in pubsub.listen():
+        async for message in pubsub.listen():
             if message["type"] != "message":
                 continue
 
