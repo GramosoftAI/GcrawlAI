@@ -17,16 +17,35 @@ $my-app-theme: mat.define-light-theme((color: (primary: $my-app-primary,
     padding: 0;
 }
 
+:root {
+    --background-color: #ffffff;
+    --text-color: rgba(6, 0, 0, 0.929);
+    --text-color-secondary: rgb(81 78 78 / 93%);
+    --grid-line-color: #eee;
+    --card-bg-color: #ffffff;
+}
+
+.dark-theme {
+    --background-color: #121212;
+    --text-color: #e0e0e0;
+    --text-color-secondary: #b0b0b0;
+    --grid-line-color: #333;
+    --card-bg-color: #1e1e1e;
+    --bg-transparent: transparent;
+}
+
 body {
     margin: 0;
     min-height: 100vh;
-    background-color: #ffffff;
+    background-color: var(--background-color);
+    color: var(--text-color);
     background-image:
-        linear-gradient(to right, #eee 1px, transparent 1px),
-        linear-gradient(to bottom, #eee 1px, transparent 1px);
+        linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px);
     background-size: 300px 120px;
     background-position: center;
     overflow-x: hidden;
+    transition: background-color 0.3s, color 0.3s;
 }
 
 .fs-11 {
@@ -57,8 +76,28 @@ body {
     font-weight: 600 !important;
 }
 
+.txt-white {
+    color: #fff !important;
+}
+
+.txt-red {
+    color: #FF595E !important;
+}
+
+.txt-green {
+    color: #21D496 !important;
+}
+
 .btn-bg-primary {
     background-color: #21D496 !important;
+    padding: 2px 14px !important;
+    border-radius: 6px !important;
+    margin-left: 12px !important;
+}
+
+.btn-bg-primary-light {
+    background-color: transparent !important;
+    border: 1px solid #21D496;
     padding: 2px 14px !important;
     border-radius: 6px !important;
     margin-left: 12px !important;
@@ -73,35 +112,34 @@ body {
 }
 
 .bg-white {
-    background-color: #ffffff !important;
+    background-color: var(--card-bg-color) !important;
 }
 
 .bg-red {
-    background-color: rgb(159, 3, 3) !important;
+    background-color: #FF595E !important;
 }
 
 .text-color-black {
-    color: rgba(6, 0, 0, 0.929) !important;
+    color: var(--text-color) !important;
 }
 
 .text-color-grey {
-    color: rgb(81 78 78 / 93%) !important;
+    color: var(--text-color-secondary) !important;
 }
 
 /* Prepare animation */
 .dropdown-menu {
-  display: block !important;
-  opacity: 0;
-  transform: translateY(-15px) scale(0.98);
-  transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
-  visibility: hidden;
-  pointer-events: none;
+    display: block !important;
+    opacity: 0;
+    transform: translateY(-15px) scale(0.98);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .dropdown-menu.show {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  visibility: visible;
-  pointer-events: auto;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    visibility: visible;
+    pointer-events: auto;
 }
-

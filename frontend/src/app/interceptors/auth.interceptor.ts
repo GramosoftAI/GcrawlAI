@@ -99,9 +99,7 @@ export class AuthInterceptor implements HttpInterceptor {
                             }
                         }
                         else {
-                            debugger
                             if (event.status !== 200) {
-                                debugger
                                 const message = event.status !== 200 ? event.body?.message : 'Some thing went wrong';
                                 const dialogData = new AlertDialog("Alert", message, 'AL');
                                 const dialogRef = this.dialog.open(AlertComponent, {

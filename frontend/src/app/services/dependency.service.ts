@@ -1,27 +1,35 @@
-import { CurrencyPipe, DatePipe } from "@angular/common";
-import { Injectable } from "@angular/core";
+import { Injectable, Inject, PLATFORM_ID } from "@angular/core";
+import { isPlatformBrowser } from "@angular/common";
 import { MatDialog } from "@angular/material/dialog";
-import { DataService } from "./data.service";
 import { FormControl, FormGroup } from "@angular/forms";
 
 @Injectable({
-    providedIn: 'root'
+  providedIn: 'root'
 })
-
 export class DependencyService {
-    constructor(public dialog: MatDialog) {
-    }
 
-    getFormControl(formGroup: FormGroup, str: string): FormControl<any> {
-        return formGroup.get(str) as FormControl<any>
-    }
+  private isBrowser: boolean;
 
-    getFormData(file: File) {
-        const formData = new FormData();
-        formData.append('image', file);
-    }
+  constructor(
+    public dialog: MatDialog,
+    @Inject(PLATFORM_ID) private platformId: Object
+  ) {
+    this.isBrowser = isPlatformBrowser(this.platformId);
+  }
 
-    goBack(): void {
-        window.history.back();
+  getFormControl(formGroup: FormGroup, str: string): FormControl<any> {
+    return formGroup.get(str) as FormControl<any>;
+  }
+
+  getFormData(file: File): FormData {
+    const formData = new FormData();
+    formData.append('image', file);
+    return formData;
+  }
+
+  goBack(): void {
+    if (this.isBrowser) {
+      window.history.back();
     }
+  }
 }

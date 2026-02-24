@@ -2,16 +2,47 @@
     <div class="container">
         <div class="d-flex justify-content-between w-100">
             <div class="logo">
-                <img src="/assets/image/gramologo.svg" alt="" class="me-3">
+                <img [src]="isDarkTheme() ? '/assets/image/GcrawlWhiteLogo.svg' : '/assets/image/Logo.svg'"
+                    class="me-3 logo" alt="Logo">
             </div>
-            <div>
-                <button routerLink="/auth" type="button" class="btn btn-danger me-3 fs-13 p-2 py-1">
+
+            <div class="d-flex">
+                <!-- If NOT Logged In -->
+                <button *ngIf="!token" (click)="Onclick()" type="button" class="btn btn-danger me-3 fs-13 p-2 py-1">
                     Signup
                 </button>
 
-                <button type="button" class="btn btn-light fs-13 p-2 py-1">
-                    <img class="fav-icon" src="/assets/image/github.png" alt=""> 11.1k
+
+                <!-- If Logged In -->
+                <div *ngIf="token" class="dropdown me-3">
+
+                    <button class="btn btn-danger dropdown-toggle fs-13 p-2 py-2" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                        {{ userDetails?.user?.name }}
+                    </button>
+
+                    <ul class="dropdown-menu">
+
+                        <li>
+                            <a class="dropdown-item" (click)="logout()">
+                                Logout
+                            </a>
+                        </li>
+
+                    </ul>
+
+                </div>
+
+
+                <button (click)="themeService.toggleTheme()" type="button" class="btn btn-light fs-13 px-3 py-1 me-2">
+                    <img class="fav-icon"
+                        [src]="isDarkTheme() ? '/assets/image/dark-mode.png' : '/assets/image/light-mode.png'" alt="">
                 </button>
+                <a href="https://github.com/GramosoftAI/GcrawlAI" target="_blank" rel="noopener noreferrer"
+                    class="btn btn-light fs-13 p-2">
+                    <img class="fav-icon" src="/assets/image/github.png" alt=""> 11.1k
+                </a>
+
             </div>
         </div>
     </div>

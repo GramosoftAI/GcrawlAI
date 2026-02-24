@@ -12,7 +12,6 @@ import { LoaderService } from "../services/loader-service";
 
 @Injectable()
 export class LoaderInterceptor implements HttpInterceptor {
-    requestCount = 0;
     constructor(private loaderService: LoaderService) {
     }
     intercept(
@@ -20,14 +19,12 @@ export class LoaderInterceptor implements HttpInterceptor {
         next: HttpHandler
     ): Observable<HttpEvent<any>> {
 
-        this.loaderService.show()
-        this.requestCount++;
+        this.loaderService.show();
 
         return next.handle(req).pipe(
             delay(500),
             finalize(() => {
-                this.requestCount--;
-                if (this.requestCount === 0 && req.headers.get('NoToStopLoader') !== 'TRUE') {
+                if (req.headers.get('NoToStopLoader') !== 'TRUE') {
                     this.loaderService.hide();
                 }
             }),

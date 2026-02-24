@@ -40,7 +40,7 @@ export class SigninComponent {
     this.loginForm = this.fb.group({
       email: new FormControl('', [Validators.required]),
       password: new FormControl('', [Validators.required, Validators.minLength(8), Validators.pattern(/^(?=.*[0-9])(?=.*[!@#$%^&*])[A-Za-z0-9!@#$%^&*]{8,}$/)]),
-      name: new FormControl('test', [Validators.required]),
+      name: new FormControl('', [Validators.required]),
       firstLogin: new FormControl(false, [Validators.required])
     });
 
@@ -54,7 +54,17 @@ export class SigninComponent {
   }
 
   ngOnInit(): void {
-    this.firstLogin = this.localService.getfirstLogin()
+    this.firstLogin = this.localService.getfirstLogin();
+
+    this.loginForm.get('email')?.valueChanges.subscribe(email => {
+      if (email && email.includes('@')) {
+        const username = email.split('@')[0];
+        const shortName = username.substring(0, 10);
+        this.loginForm.patchValue({
+          name: shortName
+        });
+      }
+    });
   }
 
   passwordMatchValidator(control: AbstractControl): ValidationErrors | null {
@@ -92,16 +102,21 @@ export class SigninComponent {
   }
 
   loginSubmit() {
-    debugger
-    const isLoginfirst = this.firstLogin
+    if (this.loginForm.invalid) {
+      return
+    }
     this.apiService.post(URLS.signin, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
       if (res.success === true) {
-        this.authService.login(res, isLoginfirst);
+        this.authService.login(res);
+        console.log('loginformvalues', this.loginForm.value)
       };
     })
   }
 
   signUpSubmit() {
+    if (this.loginForm.invalid) {
+      return
+    }
     this.apiService.post(URLS.signup, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
       if (res.success === true) {
         this.openOtpModal();

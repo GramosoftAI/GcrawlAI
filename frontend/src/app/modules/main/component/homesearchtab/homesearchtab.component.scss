@@ -1,15 +1,15 @@
 .badge-new {
-    background: #eee;
-    color: #555;
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    margin-left: 4px;
+  background: var(--grid-line-color);
+  color: var(--text-color-secondary);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 4px;
 }
 
 .batch-btn {
   border: 1px solid #21D496;
-  color: #0b0c0c;
+  color: var(--text-color);
   padding: 3px 14px;
   font-size: 11px;
   border-radius: 9px;
