@@ -371,7 +371,7 @@ class AuthManager:
             password: User's password (will be hashed and stored temporarily)
         
         Returns:
-            Tuple of (success, message, otp)
+            Tuple of (success, message, otp, status_code)
         """
         try:
             conn = self._get_db_connection()
@@ -383,7 +383,7 @@ class AuthManager:
                 cursor.close()
                 conn.close()
                 logger.warning(f"[FAILED] OTP generation failed: User already exists for {email}")
-                return False, "User already exists with this email", None
+                return False, "User already exists with this email", None, 409
             
             # Hash password
             hashed_password, salt = self.password_hasher.hash_password(password)
@@ -429,14 +429,14 @@ class AuthManager:
             
             logger.info(f"[SUCCESS] OTP generated successfully for: {email}")
             
-            return True, f"OTP sent to {email}. Valid for 5 minutes.", otp
+            return True, f"OTP sent to {email}. Valid for 5 minutes.", otp, 200
         
         except psycopg2.Error as e:
             logger.error(f"Database error generating OTP: {e}", exc_info=True)
-            return False, f"OTP generation failed: {str(e)}", None
+            return False, f"OTP generation failed: {str(e)}", None, 500
         except Exception as e:
             logger.error(f"Error generating OTP: {e}", exc_info=True)
-            return False, f"OTP generation failed: {str(e)}", None
+            return False, f"OTP generation failed: {str(e)}", None, 500
     
     def verify_signup_otp(self, email: str, otp: str) -> Dict[str, Any]:
         """
@@ -467,7 +467,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] OTP verification failed: No OTP found for {email}")
                 return {
                     'success': False,
-                    'message': "No OTP found for this email"
+                    'message': "No OTP found for this email",
+                    'status_code': 404
                 }
             
             # Check if OTP has expired
@@ -477,7 +478,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] OTP expired for {email}")
                 return {
                     'success': False,
-                    'message': "OTP has expired"
+                    'message': "OTP has expired",
+                    'status_code': 400
                 }
             
             # Check if max attempts exceeded
@@ -487,7 +489,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] OTP verification failed: Max attempts exceeded for {email}")
                 return {
                     'success': False,
-                    'message': "Maximum OTP verification attempts exceeded"
+                    'message': "Maximum OTP verification attempts exceeded",
+                    'status_code': 429
                 }
             
             # Verify OTP
@@ -502,7 +505,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] OTP verification failed: Invalid OTP for {email}")
                 return {
                     'success': False,
-                    'message': "Invalid OTP"
+                    'message': "Invalid OTP",
+                    'status_code': 400
                 }
             
             # Mark as verified
@@ -563,20 +567,23 @@ class AuthManager:
                     'created_at': str(user_data['created_at']),
                     'is_active': user_data['is_active']
                 },
-                'expires_in': self.access_token_expire_minutes * 60
+                'expires_in': self.access_token_expire_minutes * 60,
+                'status_code': 200
             }
         
         except psycopg2.Error as e:
             logger.error(f"Database error during OTP verification: {e}", exc_info=True)
             return {
                 'success': False,
-                'message': f"OTP verification failed: {str(e)}"
+                'message': f"OTP verification failed: {str(e)}",
+                'status_code': 500
             }
         except Exception as e:
             logger.error(f"Error during OTP verification: {e}", exc_info=True)
             return {
                 'success': False,
-                'message': f"OTP verification failed: {str(e)}"
+                'message': f"OTP verification failed: {str(e)}",
+                'status_code': 500
             }
     
     def sign_in(self, email: str, password: str) -> Dict[str, Any]:
@@ -608,7 +615,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] Sign-in failed: User not found for {email}")
                 return {
                     'success': False,
-                    'message': "Invalid email or password"
+                    'message': "Invalid email or password",
+                    'status_code': 401
                 }
             
             # Verify password
@@ -620,7 +628,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] Sign-in failed: Invalid password for {email}")
                 return {
                     'success': False,
-                    'message': "Invalid email or password"
+                    'message': "Invalid email or password",
+                    'status_code': 401
                 }
             
             if not user['is_active']:
@@ -629,7 +638,8 @@ class AuthManager:
                 logger.warning(f"[FAILED] Sign-in failed: Account is not active for {email}")
                 return {
                     'success': False,
-                    'message': "Account is not active"
+                    'message': "Account is not active",
+                    'status_code': 403
                 }
             
             # Update last login
@@ -661,23 +671,26 @@ class AuthManager:
                     'created_at': str(user['created_at']),
                     'is_active': user['is_active']
                 },
-                'expires_in': self.access_token_expire_minutes * 60
+                'expires_in': self.access_token_expire_minutes * 60,
+                'status_code': 200
             }
         
         except psycopg2.Error as e:
             logger.error(f"Database error during sign-in: {e}", exc_info=True)
             return {
                 'success': False,
-                'message': f"Sign-in failed: {str(e)}"
+                'message': f"Sign-in failed: {str(e)}",
+                'status_code': 500
             }
         except Exception as e:
             logger.error(f"Error during sign-in: {e}", exc_info=True)
             return {
                 'success': False,
-                'message': f"Sign-in failed: {str(e)}"
+                'message': f"Sign-in failed: {str(e)}",
+                'status_code': 500
             }
-    
-    def request_password_reset(self, email: str) -> Tuple[bool, str, Optional[str]]:
+
+    def request_password_reset(self, email: str) -> Tuple[bool, str, Optional[str], int]:
         """
         Generate a password reset token for the user
         
@@ -685,7 +698,7 @@ class AuthManager:
             email: User's email address
         
         Returns:
-            Tuple of (success, message, encrypted_token)
+            Tuple of (success, message, encrypted_token, status_code)
         """
         try:
             conn = self._get_db_connection()
@@ -700,7 +713,7 @@ class AuthManager:
             
             if not user:
                 logger.warning(f"[FAILED] Password reset requested for non-existent user: {email}")
-                return False, "If an account exists with this email, a reset link will be sent", None
+                return False, "If an account exists with this email, a reset link will be sent", None, 404
             
             # Encrypt email in token
             reset_token = encrypt_email(user['email'], self.encryption_key)
@@ -728,13 +741,13 @@ class AuthManager:
             
             logger.info(f"[SUCCESS] Password reset token generated for: {email}")
             
-            return True, "Password reset email sent successfully", reset_token
+            return True, "Password reset email sent successfully", reset_token, 200
         
         except Exception as e:
             logger.error(f"Error generating reset token: {e}", exc_info=True)
-            return False, f"Error generating reset token: {str(e)}", None
+            return False, f"Error generating reset token: {str(e)}", None, 500
     
-    def reset_password_with_token(self, token: str, new_password: str) -> Tuple[bool, str]:
+    def reset_password_with_token(self, token: str, new_password: str) -> Tuple[bool, str, int]:
         """
         Reset password using encrypted email token
         
@@ -743,7 +756,7 @@ class AuthManager:
             new_password: New password
         
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message, status_code)
         """
         try:
             # Decrypt email from token
@@ -751,16 +764,16 @@ class AuthManager:
             
             if not email:
                 logger.warning("[FAILED] Invalid or expired password reset token")
-                return False, "Invalid or expired password reset token"
+                return False, "Invalid or expired password reset token", 400
             
             # Reset password using the decrypted email
             return self._reset_password(email, new_password)
         
         except Exception as e:
             logger.error(f"Error during token-based password reset: {e}", exc_info=True)
-            return False, f"Password reset failed: {str(e)}"
+            return False, f"Password reset failed: {str(e)}", 500
     
-    def _reset_password(self, email: str, new_password: str) -> Tuple[bool, str]:
+    def _reset_password(self, email: str, new_password: str) -> Tuple[bool, str, int]:
         """
         Reset user password (internal method)
         
@@ -769,7 +782,7 @@ class AuthManager:
             new_password: New password
         
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message, status_code)
         """
         try:
             conn = self._get_db_connection()
@@ -788,21 +801,21 @@ class AuthManager:
             if cursor.rowcount == 0:
                 conn.close()
                 logger.warning(f"[FAILED] User not found for password reset: {email}")
-                return False, "User not found"
+                return False, "User not found", 404
             
             conn.commit()
             cursor.close()
             conn.close()
             
             logger.info(f"[SUCCESS] Password reset successfully for: {email}")
-            return True, "Password reset successfully"
+            return True, "Password reset successfully", 200
         
         except psycopg2.Error as e:
-            logger.error(f"Database error during password reset: {e}", exc_info=True)
-            return False, f"Password reset failed: {str(e)}"
+            logger.error(f"Database error resetting password: {e}", exc_info=True)
+            return False, f"Password reset failed: {str(e)}", 500
         except Exception as e:
-            logger.error(f"Error during password reset: {e}", exc_info=True)
-            return False, f"Password reset failed: {str(e)}"
+            logger.error(f"Error resetting password: {e}", exc_info=True)
+            return False, f"Password reset failed: {str(e)}", 500
     
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """

@@ -52,7 +52,7 @@ class WebCrawler:
     ) -> Dict:
         """Main crawl orchestration"""
 
-        max_pages = 1 if crawl_mode == "single" else self.config.max_pages
+        max_pages = 1 if crawl_mode == "single" or crawl_mode == "links" else self.config.max_pages
 
         tz = pytz.timezone(self.config.timezone)
         start_time = datetime.now(tz)
@@ -73,7 +73,7 @@ class WebCrawler:
         # =========================================================
         # SINGLE PAGE MODE (NO THREADING)
         # =========================================================
-        if crawl_mode == "single":
+        if crawl_mode == "single" or crawl_mode == "links":
             logger.info("🔹 Single-page crawl mode")
 
             result = self.page_crawler.crawl_page(
@@ -119,6 +119,8 @@ class WebCrawler:
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
                 "markdown_file": file_name,
+                "links_file_path": str(self.config.links_file),
+                "summary_file_path": str(self.config.summary_file),
             }
 
             with open(self.config.summary_file, "w", encoding="utf-8") as f:
@@ -262,6 +264,8 @@ class WebCrawler:
             "total_links_found": len(self.all_links),
             "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+            "links_file_path": str(self.config.links_file),
+            "summary_file_path": str(self.config.summary_file),
         }
 
         with open(self.config.summary_file, "w", encoding="utf-8") as f:

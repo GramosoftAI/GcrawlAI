@@ -68,7 +68,7 @@ def websocket_listener(crawl_id: str, message_queue: queue.Queue):
 # ================= UI: SIDEBAR CONFIG =================
 with st.sidebar:
     st.header("⚙️ Crawl Settings")
-    crawl_mode = st.selectbox("Crawl Mode", ["single", "all"], help="Select 'single' for one page or 'all' to spider the site.")
+    crawl_mode = st.selectbox("Crawl Mode", ["single", "all", "links"], help="Select 'single' for one page or 'all' to spider the site.")
     
     st.subheader("Data Extraction")
     enable_md = st.toggle("Enable Markdown", value=True)
@@ -174,6 +174,8 @@ if st.session_state.crawl_id:
         st.info("🔄 Crawl in progress. Listening for new pages...", icon="⏳")
     elif len(st.session_state.processed_pages) > 0:
         st.success("✅ Crawl completed successfully.", icon="🎉")
+    else:
+        st.error("❌ Crawl failed: 0 pages processed. The URL may be invalid or blocked the crawler.", icon="🚨")
 
     # Render all saved pages gracefully
     for page in st.session_state.processed_pages:

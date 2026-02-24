@@ -85,7 +85,23 @@ def main(
                 crawl_id=client_id,
                 payload={
                     "type": "crawl_completed",
-                    "summary": summary
+                    "summary": summary,
+                    "links_file_path": summary.get("links_file_path"),
+                    "summary_file_path": summary.get("summary_file_path")
+                }
+            )
+    elif crawl_mode == "links":
+        summary["markdown_path"] = summary["markdown_file"]
+
+        if client_id:
+            from web_crawler.redis_events import publish_event
+            publish_event(
+                crawl_id=client_id,
+                payload={
+                    "type": "crawl_completed",
+                    "summary": summary,
+                    "links_file_path": summary.get("links_file_path"),
+                    "summary_file_path": summary.get("summary_file_path")
                 }
             )
     else:

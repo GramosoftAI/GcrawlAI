@@ -224,6 +224,8 @@ class DatabaseSetup:
             Screenshot BOOLEAN DEFAULT FALSE,
             Markdown BOOLEAN DEFAULT FALSE,
             user_id INTEGER,
+            links_file_path TEXT,
+            summary_file_path TEXT,
             CONSTRAINT fk_crawl_jobs_user
                 FOREIGN KEY (user_id)
                 REFERENCES users (user_id)
@@ -291,40 +293,6 @@ class DatabaseSetup:
             logger.error(f"✗ Failed to create crawl_events table: {e}", exc_info=True)
             return False
 
-
-    def create_crawls_table(self) -> bool:
-        create_table_query = """
-        CREATE TABLE IF NOT EXISTS crawls (
-            id SERIAL PRIMARY KEY,
-            crawl_id VARCHAR(64) UNIQUE NOT NULL,
-            url TEXT NOT NULL,
-            markdown_path TEXT NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            user_id INTEGER,
-            CONSTRAINT fk_crawls_user
-                FOREIGN KEY (user_id)
-                REFERENCES users (user_id)
-                ON DELETE CASCADE
-        );
-        """
-
-        try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(create_table_query)
-            conn.commit()
-
-            cursor.close()
-            conn.close()
-
-            logger.info("✓ crawls table created successfully (or already exists)")
-            return True
-
-        except Exception as e:
-            logger.error(f"✗ Failed to create crawls table: {e}", exc_info=True)
-            return False
-
     
     def setup_all_tables(self) -> bool:
         logger.info("Starting database setup...")
@@ -333,9 +301,8 @@ class DatabaseSetup:
         otps_created = self.create_signup_otps_table()
         crawl_jobs_created = self.create_crawl_jobs_table()
         crawl_events_created = self.create_crawl_events_table()
-        crawls_created = self.create_crawls_table()
 
-        if all([users_created, otps_created, crawl_jobs_created, crawl_events_created, crawls_created]):
+        if all([users_created, otps_created, crawl_jobs_created, crawl_events_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:

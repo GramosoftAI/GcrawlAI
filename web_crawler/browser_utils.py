@@ -33,17 +33,19 @@ class BrowserUtils:
             ]
             
             if any(domain in url for domain in blocked_domains):
-                route.abort()
+                try: 
+                    route.abort()
+                except Exception:
+                    pass
                 return
             
-            route.continue_()
-        except Exception as e:
-            # Ignore errors such as TargetClosedError when the page is closed
-            # during request interception.
             try:
                 route.continue_()
             except Exception:
                 pass
+        except Exception as e:
+            # Ignore errors such as TargetClosedError or CancelledError
+            pass
 
     @staticmethod
     def apply_stealth(page: Page) -> None:

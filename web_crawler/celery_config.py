@@ -44,6 +44,7 @@ celery_app.conf.update(
     task_routes={
         'celery_tasks.crawl_website': {'queue': 'crawl_queue'},
         'celery_tasks.crawl_single_page': {'queue': 'page_queue'},
+        'celery_tasks.crawl_links': {'queue': 'page_queue'},
     },
     
     # Concurrency

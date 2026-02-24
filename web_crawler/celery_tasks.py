@@ -95,7 +95,9 @@ def crawl_website(
             crawl_id=task_id,
             payload={
                 "type": "crawl_completed",
-                "summary": summary
+                "summary": summary,
+                "links_file_path": summary.get("links_file_path"),
+                "summary_file_path": summary.get("summary_file_path")
             }
         )
         
@@ -137,6 +139,29 @@ def crawl_single_page(self, url: str, config_dict: Dict) -> Dict:
         start_url=url,
         config_dict=config_dict,
         crawl_mode="single",
+        enable_md=True,
+        enable_html=False,
+        enable_ss=False,
+        enable_json=True,
+        enable_links=True,
+        enable_seo=False,
+    )
+
+@celery_app.task(
+    name='celery_tasks.crawl_links',
+    bind=True,
+    max_retries=2,
+    time_limit=300,  # 5 minutes max
+)
+def crawl_links(self, url: str, config_dict: Dict) -> Dict:
+    """
+    Celery task to crawl a single page (faster, for single-page mode)
+    """
+    return crawl_website(
+        self,
+        start_url=url,
+        config_dict=config_dict,
+        crawl_mode="links",
         enable_md=True,
         enable_html=False,
         enable_ss=False,

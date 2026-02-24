@@ -170,7 +170,8 @@ class PageCrawler:
                         '--window-size=1920,1080',
                         '--disable-blink-features=AutomationControlled',
                         '--disable-web-security',
-                        '--disable-features=IsolateOrigins,site-per-process'
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--disable-dev-shm-usage'
                     ]
                 )
                 
@@ -193,7 +194,10 @@ class PageCrawler:
                 
                 page = context.new_page()
                 text_content = page.evaluate("document.body.innerText")
-                if len(text_content.strip()) < 200:
+                if len(text_content.strip()) > 200:
+                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                    return result
+                else:
                     if self.config.use_stealth:
                         self.browser_utils.apply_stealth(page)
                     
@@ -211,11 +215,7 @@ class PageCrawler:
                     response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
                     
                     if not response or response.status != 200:
-                        raise Exception(f"HTTP {response.status if response else 'None'}")
-                    
-                    # Check for cloudflare again after page loads
-                    self.browser_utils.check_cloudflare(page, self.config)
-                    
+                        raise Exception(f"HTTP {response.status if response else 'None'}")   
                     # Validate content
                     text_content = page.evaluate("document.body.innerText")
                     if len(text_content.strip()) < 200:
@@ -225,12 +225,31 @@ class PageCrawler:
                     return result
                 
                 finally:
-                    # Clean up routes before closing browser to prevent async TargetClosedError tracebacks
+                    # Clean up routes before closing browser to prevent async TargetClosedError/CancelledError tracebacks
                     try:
                         page.unroute("**/*")
                     except Exception:
                         pass
-                    browser.close()
+                    # Small wait to let pending routes settle before closing context
+                    try:
+                        page.wait_for_timeout(100)
+                    except Exception:
+                        pass
+                        
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                    
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                    
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
                 
         except Exception as e:
             logger.warning(f"Chromium failed for {url}: {e}")
@@ -281,7 +300,29 @@ class PageCrawler:
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                     return result
                 finally:
-                    browser.close()
+                    try:
+                        page.unroute("**/*")
+                    except Exception:
+                        pass
+                    try:
+                        page.wait_for_timeout(100)
+                    except Exception:
+                        pass
+                        
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                        
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                        
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
                 
         except Exception as e:
             logger.error(f"Camoufox failed for {url}: {e}")
