@@ -221,18 +221,9 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
     links  → celery multiprocess crawl
     """
     try:
-        import requests
-        try:
-            # Fast check to ensure the URL is reachable before starting headless browsers
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            r = requests.get(str(payload.url), headers=headers, timeout=10, stream=True)
-            r.close()
-            if r.status_code == 404:
-                raise HTTPException(status_code=400, detail="URL returned 404 Not Found.")
-        except requests.exceptions.HTTPError:
-            pass # ignore other http errors like 403, 500, which might be bypassed by crawler
-        except requests.exceptions.RequestException:
-            raise HTTPException(status_code=400, detail="URL is unreachable or connection timed out.")
+        # Removed requests.get() pre-validation entirely because overly-aggressive 
+        # anti-bot systems (like Batik Air) return ConnectionError/Timeout before 
+        # our stealth Chromium even has a chance to execute.
 
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
