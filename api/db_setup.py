@@ -20,6 +20,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+config_path = os.path.join(BASE_DIR, "config.yaml")
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 class DatabaseSetup:
     """Handles database initialization and table creation"""
     
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = config_path):
         """
         Initialize database setup
         
@@ -206,19 +209,100 @@ class DatabaseSetup:
             logger.error(f"✗ Unexpected error creating signup_otps table: {e}", exc_info=True)
             return False
     
+    def create_crawl_jobs_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS crawl_jobs (
+            id SERIAL PRIMARY KEY,
+            crawl_id VARCHAR(64) UNIQUE NOT NULL,
+            url TEXT NOT NULL,
+            crawl_mode VARCHAR(20) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP,
+            task_id VARCHAR(255),
+            SEO BOOLEAN DEFAULT FALSE,
+            HTML BOOLEAN DEFAULT FALSE,
+            Screenshot BOOLEAN DEFAULT FALSE,
+            Markdown BOOLEAN DEFAULT FALSE,
+            user_id INTEGER,
+            links_file_path TEXT,
+            summary_file_path TEXT,
+            CONSTRAINT fk_crawl_jobs_user
+                FOREIGN KEY (user_id)
+                REFERENCES users (user_id)
+                ON DELETE CASCADE
+        );
+        """
+
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            logger.info("✓ crawl_jobs table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create crawl_jobs table: {e}", exc_info=True)
+            return False
+
+    def create_crawl_events_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS crawl_events (
+            id SERIAL PRIMARY KEY,
+            crawl_id VARCHAR(64) NOT NULL,
+            event_type VARCHAR(50) NOT NULL,
+            url TEXT,
+            title TEXT,
+            markdown_file TEXT,
+            html_file TEXT,
+            screenshot TEXT,
+            seo_json TEXT,
+            seo_md TEXT,
+            seo_xlsx TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_crawl_job
+                FOREIGN KEY (crawl_id)
+                REFERENCES crawl_jobs (crawl_id)
+                ON DELETE CASCADE,
+            CONSTRAINT unique_crawl_file 
+                UNIQUE (crawl_id, markdown_file)
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_crawl_events_crawl_id ON crawl_events(crawl_id);
+        """
+
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            logger.info("✓ crawl_events table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create crawl_events table: {e}", exc_info=True)
+            return False
+
+    
     def setup_all_tables(self) -> bool:
-        """
-        Create all required database tables
-        
-        Returns:
-            True if all tables created successfully, False otherwise
-        """
         logger.info("Starting database setup...")
-        
+
         users_created = self.create_users_table()
         otps_created = self.create_signup_otps_table()
-        
-        if users_created and otps_created:
+        crawl_jobs_created = self.create_crawl_jobs_table()
+        crawl_events_created = self.create_crawl_events_table()
+
+        if all([users_created, otps_created, crawl_jobs_created, crawl_events_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:
@@ -306,17 +390,16 @@ class DatabaseSetup:
 def main():
     """Main execution function"""
     try:
-        # db_setup = DatabaseSetup("config.yaml")
+        # Get project root (one level up from api/)
+        BASE_DIR = Path(__file__).resolve().parent.parent
+        config_path = BASE_DIR / "config.yaml"
 
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(BASE_DIR, "config.yaml")
-        db_setup = DatabaseSetup(config_path)
+        db_setup = DatabaseSetup(str(config_path))
         
         # Create all tables
         success = db_setup.setup_all_tables()
         
         if success:
-            # Verify tables were created
             db_setup.verify_tables_exist()
             logger.info("\n" + "="*50)
             logger.info("Database setup completed successfully!")

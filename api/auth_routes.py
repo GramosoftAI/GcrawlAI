@@ -100,6 +100,8 @@ class UserResponse(BaseModel):
 
 class AuthResponse(BaseModel):
     """Authentication response model"""
+    status_code: int = 200
+    status: str = "success"
     success: bool
     message: str
     access_token: Optional[str] = None
@@ -109,6 +111,8 @@ class AuthResponse(BaseModel):
 
 class OTPResponse(BaseModel):
     """OTP generation response model"""
+    status_code: int = 200
+    status: str = "success"
     success: bool
     message: str
     otp: Optional[str] = None
@@ -116,12 +120,16 @@ class OTPResponse(BaseModel):
 
 class StandardResponse(BaseModel):
     """Standard API response model"""
+    status_code: int = 200
+    status: str = "success"
     success: bool
     message: str
 
 
 class CurrentUserResponse(BaseModel):
     """Current user info response model"""
+    status_code: int = 200
+    status: str = "success"
     success: bool
     user: UserResponse
 
@@ -146,6 +154,33 @@ app.add_middleware(
 
 # Initialize AuthManager (global instance)
 auth_manager: Optional[AuthManager] = None
+
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status_code": exc.status_code,
+            "status": "error",
+            "message": str(exc.detail) if hasattr(exc, "detail") else str(exc)
+        },
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status_code": 422,
+            "status": "error",
+            "message": "Validation Error",
+            "detail": exc.errors()
+        },
+    )
 
 
 @app.on_event("startup")
@@ -172,6 +207,7 @@ async def shutdown_event():
 async def root():
     """API health check endpoint"""
     return {
+        "status_code": 200,
         "status": "running",
         "service": "Authentication API",
         "version": "1.0.0"
@@ -182,6 +218,7 @@ async def root():
 async def health_check():
     """Detailed health check"""
     return {
+        "status_code": 200,
         "status": "healthy",
         "auth_manager": "initialized" if auth_manager else "not initialized"
     }
@@ -216,21 +253,21 @@ async def send_signup_otp(request: SignupOTPRequest):
                 detail="Authentication service not initialized"
             )
         
-        success, message, otp = auth_manager.generate_signup_otp(
+        success, message, otp, status_code = auth_manager.generate_signup_otp(
             request.name,
             request.email,
             request.password
         )
         
         if not success:
-            raise HTTPException(status_code=400, detail=message)
+            raise HTTPException(status_code=status_code, detail=message)
         
         logger.info(f"OTP sent successfully to {request.email}")
         
         return OTPResponse(
             success=success,
             message=message,
-            otp=otp
+            # otp=otp
         )
     
     except HTTPException:
@@ -275,7 +312,7 @@ async def verify_signup_otp(request: VerifyOTPRequest):
         )
         
         if not response['success']:
-            raise HTTPException(status_code=400, detail=response['message'])
+            raise HTTPException(status_code=response.get('status_code', 400), detail=response['message'])
         
         logger.info(f"OTP verified successfully for {request.email}")
         
@@ -323,7 +360,7 @@ async def sign_in(request: SignInRequest):
         )
         
         if not response['success']:
-            raise HTTPException(status_code=401, detail=response['message'])
+            raise HTTPException(status_code=response.get('status_code', 401), detail=response['message'])
         
         logger.info(f"User signed in successfully: {request.email}")
         
@@ -367,7 +404,7 @@ async def forgot_password(request: ForgotPasswordRequest):
                 detail="Authentication service not initialized"
             )
         
-        success, message, encrypted_token = auth_manager.request_password_reset(
+        success, message, encrypted_token, status_code = auth_manager.request_password_reset(
             request.email
         )
         
@@ -416,13 +453,13 @@ async def reset_password(request: ResetPasswordRequest):
                 detail="Authentication service not initialized"
             )
         
-        success, message = auth_manager.reset_password_with_token(
+        success, message, status_code = auth_manager.reset_password_with_token(
             request.token,
             request.new_password
         )
         
         if not success:
-            raise HTTPException(status_code=400, detail=message)
+            raise HTTPException(status_code=status_code, detail=message)
         
         logger.info("Password reset successful via encrypted token")
         

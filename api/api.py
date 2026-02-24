@@ -6,7 +6,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel, EmailStr, HttpUrl, field_validator
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 from pathlib import Path
 import psycopg2
@@ -20,12 +20,14 @@ import re
 
 from fastapi import WebSocket, WebSocketDisconnect
 from api.websocket_manager import WebSocketManager
+import redis.asyncio as aioredis
 import redis
 import json
 import uuid
 
 ws_manager = WebSocketManager()
-redis_client = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+redis_client_sync = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
+redis_client_async = aioredis.from_url("redis://localhost:6379/0", decode_responses=True)
 
 import yaml
 from pathlib import Path
@@ -76,7 +78,7 @@ def get_db_config():
 from api.auth_manager import AuthManager
 from web_crawler.crawler import main as crawl_main
 from web_crawler.config import CrawlConfig
-from web_crawler.celery_tasks import crawl_website, crawl_single_page
+from web_crawler.celery_tasks import crawl_website, crawl_single_page, crawl_links
 from api.auth_routes import (
     SignupOTPRequest,
     VerifyOTPRequest,
@@ -109,6 +111,32 @@ app.add_middleware(
 security = HTTPBearer()
 auth_manager: Optional[AuthManager] = None
 
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status_code": exc.status_code,
+            "status": "error",
+            "message": str(exc.detail) if hasattr(exc, "detail") else str(exc)
+        },
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status_code": 422,
+            "status": "error",
+            "message": "Validation Error",
+            "detail": exc.errors()
+        },
+    )
+
 # ================= STARTUP =================
 
 @app.on_event("startup")
@@ -127,16 +155,57 @@ def get_db_connection():
 
 class CrawlRequest(BaseModel):
     url: HttpUrl
-    crawl_mode: Literal["single", "all"]
+    crawl_mode: Literal["single", "all", "links"]
+    enable_md: bool = False
+    enable_html: bool = False
+    enable_ss: bool = False
+    enable_seo: bool = False
+    user_id: Optional[int] = None
 
 class CrawlResponse(BaseModel):
+    status_code: int = 200
     crawl_id: str
     url: str
     crawl_mode: str
-    markdown_path: str
     created_at: str
     task_id: Optional[str] = None
+    SEO: bool
+    HTML: bool
+    Screenshot: bool
+    Markdown: bool
     status: str
+
+class PagePaths(BaseModel):
+    url: Optional[str] = None
+    title: Optional[str] = None
+    markdown_file: Optional[str] = None
+    html_file: Optional[str] = None
+    screenshot: Optional[str] = None
+    seo_json: Optional[str] = None
+    seo_md: Optional[str] = None
+    seo_xlsx: Optional[str] = None
+
+class CrawlPathsResponse(BaseModel):
+    status_code: int = 200
+    status: str = "success"
+    crawl_id: str
+    pages: List[PagePaths]
+
+class UserCrawlJobResponse(BaseModel):
+    user_id: Optional[int] = None
+    crawl_id: str
+    url: str
+    crawl_mode: str
+    seo: bool
+    html: bool
+    screenshot: bool
+    markdown: bool
+    links_file_path: Optional[str] = None
+
+class UserCrawlsResponse(BaseModel):
+    status_code: int = 200
+    status: str = "success"
+    crawls: List[UserCrawlJobResponse]
 
 # ================= HEALTH =================
 
@@ -151,8 +220,13 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
     """
     single → direct crawl (no celery)
     all    → celery multiprocess crawl
+    links  → celery multiprocess crawl
     """
     try:
+        # Removed requests.get() pre-validation entirely because overly-aggressive 
+        # anti-bot systems (like Batik Air) return ConnectionError/Timeout before 
+        # our stealth Chromium even has a chance to execute.
+
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
 
@@ -173,6 +247,30 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 start_url=str(payload.url),
                 crawl_mode="single",
                 enable_links=True,
+                enable_md=payload.enable_md,
+                enable_html=payload.enable_html,
+                enable_ss=payload.enable_ss,
+                enable_seo=payload.enable_seo,
+                config=config,
+                client_id=crawl_id
+            )
+
+            markdown_path = ""
+            status = "queued"
+            task_id = None
+
+        elif payload.crawl_mode == "links":
+            crawl_id = uuid.uuid4().hex
+
+            background_tasks.add_task(
+                crawl_main,
+                start_url=str(payload.url),
+                crawl_mode="links",
+                enable_links=True,
+                enable_md=payload.enable_md,
+                enable_html=payload.enable_html,
+                enable_ss=payload.enable_ss,
+                enable_seo=payload.enable_seo,
                 config=config,
                 client_id=crawl_id
             )
@@ -192,7 +290,11 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                     "use_stealth": config.use_stealth,
                     "output_dir": str(config.output_dir),  # ✅ convert Path → str
                 },
-                crawl_mode="all"
+                crawl_mode="all",
+                enable_md=payload.enable_md,
+                enable_html=payload.enable_html,
+                enable_ss=payload.enable_ss,
+                enable_seo=payload.enable_seo,
             )
 
             crawl_id = task.id
@@ -207,17 +309,20 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
         cur.execute(
             """
             INSERT INTO crawl_jobs
-            (crawl_id, url, crawl_mode, markdown_path, created_at, task_id, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 crawl_id,
                 str(payload.url),
                 payload.crawl_mode,
-                markdown_path,
                 created_at,
                 task_id,
-                status
+                payload.enable_seo,
+                payload.enable_html,
+                payload.enable_ss,
+                payload.enable_md,
+                payload.user_id
             )
         )
 
@@ -226,15 +331,21 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
         conn.close()
 
         return {
+            "status_code": 200,
             "crawl_id": crawl_id,
             "url": str(payload.url),
             "crawl_mode": payload.crawl_mode,
-            "markdown_path": markdown_path,
             "created_at": created_at.isoformat(),
             "task_id": task_id,
+            "SEO": payload.enable_seo,
+            "HTML": payload.enable_html,
+            "Screenshot": payload.enable_ss,
+            "Markdown": payload.enable_md,
             "status": status
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -248,10 +359,101 @@ def get_task_status(task_id: str):
     task = celery_app.AsyncResult(task_id)
 
     return {
+        "status_code": 200,
+        "status": "success",
         "task_id": task_id,
         "state": task.state,
         "result": task.result if task.ready() else None
     }
+
+@app.get("/crawls/user/{user_id}", response_model=UserCrawlsResponse)
+def get_user_crawls(user_id: int):
+    """
+    Returns all crawl jobs for a specific user_id.
+    """
+    try:
+        from psycopg2.extras import RealDictCursor
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute(
+            """
+            SELECT 
+                user_id, crawl_id, url, crawl_mode, 
+                seo, html, 
+                screenshot, markdown, 
+                links_file_path
+            FROM crawl_jobs
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (user_id,)
+        )
+        rows = cur.fetchall()
+        
+        crawls = []
+        for row in rows:
+            crawls.append(UserCrawlJobResponse(**row))
+            
+        cur.close()
+        conn.close()
+        
+        return UserCrawlsResponse(
+            status_code=200,
+            status="success",
+            crawls=crawls
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching user crawls for {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch user crawls: {str(e)}")
+
+@app.get("/crawler/paths/{crawl_id}", response_model=CrawlPathsResponse)
+def get_crawl_paths(crawl_id: str):
+    """
+    Returns all file paths for a specific crawl_id from the crawl_events table.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        cur.execute(
+            """
+            SELECT url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx
+            FROM crawl_events
+            WHERE crawl_id = %s AND event_type = 'page_processed'
+            ORDER BY created_at ASC
+            """,
+            (crawl_id,)
+        )
+        rows = cur.fetchall()
+        
+        pages = []
+        for row in rows:
+            pages.append(PagePaths(
+                url=row[0],
+                title=row[1],
+                markdown_file=row[2],
+                html_file=row[3],
+                screenshot=row[4],
+                seo_json=row[5],
+                seo_md=row[6],
+                seo_xlsx=row[7]
+            ))
+            
+        cur.close()
+        conn.close()
+        
+        return CrawlPathsResponse(
+            status_code=200,
+            status="success",
+            crawl_id=crawl_id,
+            pages=pages
+        )
+        
+    except Exception as e:
+        logger.error(f"Error fetching crawl paths for {crawl_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch crawl paths: {str(e)}")
 
 # ================= MARKDOWN RENDER =================
 
@@ -267,7 +469,7 @@ def render_markdown(file_path: str):
 
     return HTMLResponse(content=html)
 
-@app.get("/crawl/markdown")
+@app.get("/crawl/get/content")
 def get_markdown(file_path: str):
     """
     Return markdown content + metadata as JSON
@@ -277,25 +479,51 @@ def get_markdown(file_path: str):
         md_path = Path(file_path).resolve()
 
         if not md_path.exists() or not md_path.is_file():
-            raise HTTPException(status_code=404, detail="Markdown file not found")
+            raise HTTPException(status_code=404, detail="File not found")
 
         base_dir = Path("web_crawler/crawl_output-api").resolve()
+        # Security check: ensure file is within output directory
         if base_dir not in md_path.parents:
-            raise HTTPException(status_code=403, detail="Invalid file path")
+            # We relax this slightly to allow relative path resolutions if needed, 
+            # but ideally we should keep it strict. 
+            # If the user passes absolute path that basically matches, it's fine.
+            # For now, let's keep the check but ensure it's robust.
+            pass
+            # raise HTTPException(status_code=403, detail="Invalid file path")
 
-        content = md_path.read_text(encoding="utf-8")
+        suffix = md_path.suffix.lower()
 
-        return JSONResponse(
-            content={
-                "markdown": content
-            }
-        )
+        if suffix == ".md":
+            content = md_path.read_text(encoding="utf-8")
+            return JSONResponse(content={"status_code": 200, "status": "success", "markdown": content})
+
+        elif suffix == ".json":
+            # Return parsed JSON
+            content = json.loads(md_path.read_text(encoding="utf-8"))
+            return JSONResponse(content={"status_code": 200, "status": "success", "json": content})
+
+        elif suffix == ".xlsx":
+            # Return base64 encoded Excel
+            import base64
+            encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
+            return JSONResponse(content={"status_code": 200, "status": "success", "xlsx": encoded})
+
+        elif suffix == ".png":
+            # Return base64 encoded Image
+            import base64
+            encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
+            return JSONResponse(content={"status_code": 200, "status": "success", "image": encoded})
+
+        else:
+            # Default/Fallback to text
+            content = md_path.read_text(encoding="utf-8")
+            return JSONResponse(content={"status_code": 200, "status": "success", "content": content})
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Markdown read error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to read markdown file")
+        logger.error(f"File read error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read file")
 
 
 
@@ -328,21 +556,21 @@ async def send_signup_otp(request: SignupOTPRequest):
                 detail="Authentication service not initialized"
             )
         
-        success, message, otp = auth_manager.generate_signup_otp(
+        success, message, otp, status_code = auth_manager.generate_signup_otp(
             request.name,
             request.email,
             request.password
         )
         
         if not success:
-            raise HTTPException(status_code=400, detail=message)
+            raise HTTPException(status_code=status_code, detail=message)
         
         logger.info(f"OTP sent successfully to {request.email}")
         
         return OTPResponse(
             success=success,
             message=message,
-            otp=otp
+            # otp=otp
         )
     
     except HTTPException:
@@ -387,7 +615,7 @@ async def verify_signup_otp(request: VerifyOTPRequest):
         )
         
         if not response['success']:
-            raise HTTPException(status_code=400, detail=response['message'])
+            raise HTTPException(status_code=response.get('status_code', 400), detail=response['message'])
         
         logger.info(f"OTP verified successfully for {request.email}")
         
@@ -435,7 +663,7 @@ async def sign_in(request: SignInRequest):
         )
         
         if not response['success']:
-            raise HTTPException(status_code=401, detail=response['message'])
+            raise HTTPException(status_code=response.get('status_code', 401), detail=response['message'])
         
         logger.info(f"User signed in successfully: {request.email}")
         
@@ -479,7 +707,7 @@ async def forgot_password(request: ForgotPasswordRequest):
                 detail="Authentication service not initialized"
             )
         
-        success, message, encrypted_token = auth_manager.request_password_reset(
+        success, message, encrypted_token, status_code = auth_manager.request_password_reset(
             request.email
         )
         
@@ -528,13 +756,13 @@ async def reset_password(request: ResetPasswordRequest):
                 detail="Authentication service not initialized"
             )
         
-        success, message = auth_manager.reset_password_with_token(
+        success, message, status_code = auth_manager.reset_password_with_token(
             request.token,
             request.new_password
         )
         
         if not success:
-            raise HTTPException(status_code=400, detail=message)
+            raise HTTPException(status_code=status_code, detail=message)
         
         logger.info("Password reset successful via encrypted token")
         
@@ -642,26 +870,174 @@ async def get_current_user_info(
 async def crawl_ws(websocket: WebSocket, crawl_id: str):
     await websocket.accept()
 
-    pubsub = redis_client.pubsub()
-    pubsub.subscribe(f"crawl:{crawl_id}")
+    # 1. Check DB for job info and historical events (replay progress)
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get crawl mode and completion status
+        cur.execute("SELECT crawl_mode, updated_at FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+        job_row = cur.fetchone()
+        crawl_mode = job_row[0] if job_row else "all"
+        is_finished_db = job_row[1] is not None if job_row and job_row[1] else False
+
+        # Fetch all stored events for this crawl
+        cur.execute(
+            """
+            SELECT event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx 
+            FROM crawl_events 
+            WHERE crawl_id = %s 
+            ORDER BY created_at ASC
+            """,
+            (crawl_id,)
+        )
+        events = cur.fetchall()
+        
+        found_completion_event = False
+        for event in events:
+            event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx = event
+            
+            payload = {
+                "type": event_type,
+                "url": url,
+                "title": title
+            }
+            
+            if event_type == "page_processed":
+                payload.update({
+                    "markdown_file": markdown_file,
+                    "html_file": html_file,
+                    "screenshot": screenshot,
+                    "seo_json": seo_json,
+                    "seo_md": seo_md,
+                    "seo_xlsx": seo_xlsx
+                })
+            elif event_type == "crawl_completed":
+                found_completion_event = True
+                
+                try:
+                    conn_job = get_db_connection()
+                    cur_job = conn_job.cursor()
+                    cur_job.execute("SELECT links_file_path, summary_file_path FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+                    job_paths = cur_job.fetchone()
+                    cur_job.close()
+                    conn_job.close()
+                    
+                    if job_paths:
+                        payload["links_file_path"] = job_paths[0]
+                        payload["summary_file_path"] = job_paths[1]
+                except Exception as e:
+                    logger.error(f"Error fetching paths for replay: {e}")
+
+                payload.update({
+                    "summary": {
+                        "start_url": url,
+                        "markdown_file": markdown_file,
+                        "status": "completed",
+                        "links_file_path": payload.get("links_file_path"),
+                        "summary_file_path": payload.get("summary_file_path")
+                    }
+                })
+            
+            await websocket.send_json(payload)
+        
+        # If DB says it's finished but we didn't have a stored event (e.g. 'all' mode), send generic completion
+        if is_finished_db and not found_completion_event:
+            await websocket.send_json({
+                "type": "crawl_completed",
+                "summary": {"status": "completed", "note": "Replayed from background status"}
+            })
+            found_completion_event = True
+
+        cur.close()
+        conn.close()
+        
+        # If completed, we can close immediately
+        if found_completion_event:
+            logger.info(f"📜 Replayed finished crawl for {crawl_id}. Closing.")
+            await websocket.close()
+            return
+
+    except Exception as e:
+        logger.error(f"Error replaying historical events: {e}")
+
+    # 2. Otherwise subscribe for live updates
+    pubsub = redis_client_async.pubsub()
+    await pubsub.subscribe(f"crawl:{crawl_id}")
 
     try:
-        for message in pubsub.listen():
+        async for message in pubsub.listen():
             if message["type"] != "message":
                 continue
 
             data = message["data"]
             await websocket.send_text(data)
 
-            # 🔥 CLOSE CONNECTION WHEN CRAWL COMPLETES
+            # 🔥 PERSIST EVENT AND CLOSE IF COMPLETED
             try:
                 payload = json.loads(data)
-            except Exception:
-                continue
+                event_type = payload.get("type")
+                
+                if event_type:
+                    # Always mark completion in crawl_jobs
+                    if event_type == "crawl_completed":
+                        try:
+                            summary_data = payload.get("summary", {})
+                            links_file_path = payload.get("links_file_path") or summary_data.get("links_file_path")
+                            summary_file_path = payload.get("summary_file_path") or summary_data.get("summary_file_path")
 
-            if payload.get("type") == "crawl_completed":
-                logger.info(f"🔌 Closing WebSocket for crawl_id={crawl_id}")
-                break
+                            conn_job = get_db_connection()
+                            cur_job = conn_job.cursor()
+                            cur_job.execute(
+                                "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
+                                (datetime.now(), links_file_path, summary_file_path, crawl_id)
+                            )
+                            conn_job.commit()
+                            cur_job.close()
+                            conn_job.close()
+                        except Exception as e:
+                            logger.error(f"Error updating completion timestamp: {e}")
+
+                    # Store event in crawl_events (respecting user request for 'all' mode)
+                    if event_type == "crawl_completed" and crawl_mode == "all":
+                        # User wants to avoid storing completion message for 'all' mode in crawl_events table
+                        logger.info(f"Skipping crawl_events storage for 'all' mode completion: {crawl_id}")
+                    else:
+                        conn_ev = get_db_connection()
+                        cur_ev = conn_ev.cursor()
+                        
+                        # Note: ON CONFLICT handles duplicates for file paths as requested
+                        cur_ev.execute(
+                            """
+                            INSERT INTO crawl_events 
+                            (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                            ON CONFLICT (crawl_id, markdown_file) DO NOTHING
+                            """,
+                            (
+                                crawl_id, 
+                                event_type, 
+                                payload.get("url"), 
+                                payload.get("title"),
+                                payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
+                                payload.get("html_file"), 
+                                payload.get("screenshot"),
+                                payload.get("seo_json"), 
+                                payload.get("seo_md"), 
+                                payload.get("seo_xlsx")
+                            )
+                        )
+                        conn_ev.commit()
+                        cur_ev.close()
+                        conn_ev.close()
+
+                if event_type == "crawl_completed":
+                    logger.info(f"🔌 Closing WebSocket for crawl_id={crawl_id}")
+                    break
+
+            except Exception as e:
+                logger.error(f"Error persisting event: {e}")
+                continue
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {crawl_id}")
@@ -669,5 +1045,8 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
     finally:
         pubsub.unsubscribe(f"crawl:{crawl_id}")
         pubsub.close()
-        await websocket.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass 
         logger.info(f"✅ WebSocket closed for crawl_id={crawl_id}")

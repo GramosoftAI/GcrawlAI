@@ -34,11 +34,12 @@ def crawl_website(
     self,
     start_url: str,
     config_dict: Dict,
-    enable_md: bool = True,
-    enable_html: bool = True,
+    enable_md: bool = False,
+    enable_html: bool = False,
     enable_ss: bool = False,
     enable_json: bool = False,
     enable_links: bool = True,
+    enable_seo: bool = False,
     crawl_mode: str = "all",
 ) -> Dict:
     """
@@ -81,6 +82,7 @@ def crawl_website(
             enable_ss=enable_ss,
             enable_json=enable_json,
             enable_links=True,
+            enable_seo=enable_seo,
             client_id=task_id,  # Use task_id as client_id
             websocket_manager=None,  # No WebSocket in Celery
             crawl_mode=crawl_mode,
@@ -93,7 +95,9 @@ def crawl_website(
             crawl_id=task_id,
             payload={
                 "type": "crawl_completed",
-                "summary": summary
+                "summary": summary,
+                "links_file_path": summary.get("links_file_path"),
+                "summary_file_path": summary.get("summary_file_path")
             }
         )
         
@@ -139,7 +143,31 @@ def crawl_single_page(self, url: str, config_dict: Dict) -> Dict:
         enable_html=False,
         enable_ss=False,
         enable_json=True,
-        enable_links=True
+        enable_links=True,
+        enable_seo=False,
+    )
+
+@celery_app.task(
+    name='celery_tasks.crawl_links',
+    bind=True,
+    max_retries=2,
+    time_limit=300,  # 5 minutes max
+)
+def crawl_links(self, url: str, config_dict: Dict) -> Dict:
+    """
+    Celery task to crawl a single page (faster, for single-page mode)
+    """
+    return crawl_website(
+        self,
+        start_url=url,
+        config_dict=config_dict,
+        crawl_mode="links",
+        enable_md=True,
+        enable_html=False,
+        enable_ss=False,
+        enable_json=True,
+        enable_links=True,
+        enable_seo=False,
     )
 
 

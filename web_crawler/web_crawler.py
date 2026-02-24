@@ -16,6 +16,7 @@ from threading import Semaphore, Thread
 from web_crawler.config import CrawlConfig
 from web_crawler.file_manager import FileManager
 from web_crawler.page_crawler import PageCrawler
+from web_crawler.seo_report import CrawlReportWriter
 from web_crawler.utils import normalize_url
 
 logger = logging.getLogger(__name__)
@@ -39,18 +40,19 @@ class WebCrawler:
     def crawl(
         self,
         start_url: str,
-        enable_md: bool = True,
-        enable_html: bool = True,
-        enable_ss: bool = True,
+        enable_md: bool = False,
+        enable_html: bool = False,
+        enable_ss: bool = False,
         enable_json: bool = True,
         enable_links: bool = True,
+        enable_seo: bool = False,
         client_id: Optional[str] = None,
         websocket_manager=None,
         crawl_mode: str = "all"
     ) -> Dict:
         """Main crawl orchestration"""
 
-        max_pages = 1 if crawl_mode == "single" else self.config.max_pages
+        max_pages = 1 if crawl_mode == "single" or crawl_mode == "links" else self.config.max_pages
 
         tz = pytz.timezone(self.config.timezone)
         start_time = datetime.now(tz)
@@ -71,7 +73,7 @@ class WebCrawler:
         # =========================================================
         # SINGLE PAGE MODE (NO THREADING)
         # =========================================================
-        if crawl_mode == "single":
+        if crawl_mode == "single" or crawl_mode == "links":
             logger.info("🔹 Single-page crawl mode")
 
             result = self.page_crawler.crawl_page(
@@ -80,17 +82,33 @@ class WebCrawler:
                 enable_md=enable_md,
                 enable_html=enable_html,
                 enable_ss=enable_ss,
+                enable_seo=enable_seo,
                 client_id=client_id,
                 websocket_manager=websocket_manager,
             )
 
             elapsed = perf_counter() - start_perf
             
-            if enable_links and result and "links" in result:
-                with open(self.config.links_file, "w", encoding="utf-8") as f:
-                    f.write("\n".join(sorted(result["links"])))
+            if result:
+                if enable_seo:
+                    try:
+                        writer = CrawlReportWriter(self.config.output_dir)
+                        domain = urlparse(start_url).netloc
+                        
+                        # For single page, links are just from that page
+                        page_links = result.get("links", [])
+                        
+                        writer.save_json(domain, [result], page_links)
+                        writer.save_markdown(domain, [result], page_links)
+                        writer.save_excel(domain, [result])
+                    except Exception as e:
+                        logger.error(f"Failed to save SEO report: {e}")
+
+                if enable_links and "links" in result:
+                    with open(self.config.links_file, "w", encoding="utf-8") as f:
+                        f.write("\n".join(sorted(result["links"])))
             
-            file_name = result["markdown_file"] if crawl_mode == "single" else "None"
+            file_name = result.get("markdown_file", "None") if result and crawl_mode == "single" else "None"
 
             summary = {
                 "start_url": start_url,
@@ -101,6 +119,8 @@ class WebCrawler:
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
                 "markdown_file": file_name,
+                "links_file_path": str(self.config.links_file),
+                "summary_file_path": str(self.config.summary_file),
             }
 
             with open(self.config.summary_file, "w", encoding="utf-8") as f:
@@ -123,6 +143,7 @@ class WebCrawler:
                     enable_md,
                     enable_html,
                     enable_ss,
+                    enable_seo,
                     client_id,
                     websocket_manager,
                 )
@@ -212,6 +233,24 @@ class WebCrawler:
             with open(self.config.json_file, "w", encoding="utf-8") as f:
                 json.dump(self.pages_data, f, indent=2)
 
+        if enable_seo:
+            try:
+                writer = CrawlReportWriter(self.config.output_dir)
+                domain = urlparse(start_url).netloc
+                
+                # Match seo.py structure: expects (domain, seo_data, links)
+                # But CrawlReportWriter.save_outputs matches seo.py logic if we update it
+                # For now, let's use the existing writer methods but ensure data is correct
+                
+                # We need to pass the list of all links found
+                all_links_list = sorted(list(self.all_links))
+                
+                writer.save_json(domain, self.pages_data, all_links_list)
+                writer.save_markdown(domain, self.pages_data, all_links_list)
+                writer.save_excel(domain, self.pages_data)
+            except Exception as e:
+                logger.error(f"Failed to save SEO report: {e}")
+
         # =========================================================
         # SUMMARY
         # =========================================================
@@ -225,6 +264,8 @@ class WebCrawler:
             "total_links_found": len(self.all_links),
             "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+            "links_file_path": str(self.config.links_file),
+            "summary_file_path": str(self.config.summary_file),
         }
 
         with open(self.config.summary_file, "w", encoding="utf-8") as f:

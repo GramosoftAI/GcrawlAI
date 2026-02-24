@@ -21,6 +21,6 @@ email:
   username: "${EMAIL_USERNAME}"
   password: "${EMAIL_PASSWORD}"
   from_email: "${EMAIL_FROM}"
-  from_name: "${EMAIL_FROM_NAME:GScraper}"
+  from_name: "${EMAIL_FROM_NAME:Gcrawler}"
   use_tls: "${EMAIL_USE_TLS:true}"
   reset_password_url: "${RESET_PASSWORD_URL:https://app.gramopro.ai/auth/reset_password}"

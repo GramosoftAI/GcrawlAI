@@ -20,7 +20,6 @@ class CrawlConfig:
     bypass_cloudflare: bool = True
 
     output_dir: str = "crawl_output-api"
-    # camoufox_path: Optional[str] = None
     camoufox_path: Optional[str] = r"C:\Users\ganes\AppData\Local\camoufox\camoufox\Cache\camoufox.exe"
 
     def __post_init__(self):
@@ -30,7 +29,9 @@ class CrawlConfig:
         """Rebuild all output paths (important when output_dir changes)"""
         base = Path(self.output_dir)
         self.html_dir = base / "html"
+        self.md_dir = base / "markdown"
         self.screenshot_dir = base / "screenshots"
         self.links_file = base / "links.txt"
         self.json_file = base / "pages.json"
         self.summary_file = base / "summary.json"
+        self.seo_dir = base / "seo"

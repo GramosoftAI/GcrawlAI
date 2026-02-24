@@ -5,10 +5,13 @@ Individual page crawling logic
 import logging
 import asyncio
 import sys
+import json
 from typing import Optional, Dict
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
 from bs4 import BeautifulSoup
+from web_crawler.seo_report import CrawlReportWriter
+import platform
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -42,12 +45,16 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Process loaded page and extract data"""
         md_path = None
         html_path = None
         screenshot_path = None
+        seo_json_path = None
+        seo_md_path = None
+        seo_xlsx_path = None
         
         try:
             # Scroll to load dynamic content
@@ -57,9 +64,21 @@ class PageCrawler:
             soup = BeautifulSoup(html, "lxml")
             seo = self.content_processor.extract_seo(soup, url)
             
-            canonical = normalize_url(seo.get("canonical", url))
-            title_safe = self.file_manager.safe_filename(seo.get("title"))
+            canonical_url = seo.get("canonical")
+            canonical = normalize_url(canonical_url if canonical_url else url)
+            
+            title = seo.get("title")
+            title_safe = self.file_manager.safe_filename(title if title else "page")
             prefix = f"{count}_{title_safe}"
+
+            if enable_seo:
+                try:
+                    writer = CrawlReportWriter(self.config.output_dir)
+                    seo_json_path = writer.save_single_json(prefix, seo)
+                    seo_md_path = writer.save_single_markdown(prefix, seo)
+                    seo_xlsx_path = writer.save_single_excel(prefix, seo)
+                except Exception as e:
+                    logger.error(f"Failed to save per-page SEO report for {url}: {e}")
             
             # Save HTML
             if enable_html:
@@ -82,8 +101,9 @@ class PageCrawler:
             if enable_md:
                 try:
                     markdown = self.content_processor.convert_to_markdown(html, url)
-                    md_filename = f"{count}_{title_safe}.md"
-                    md_path = Path(self.config.output_dir) / md_filename
+                    # md_filename = f"{count}_{title_safe}.md"
+                    # md_path = Path(self.config.output_dir) / md_filename
+                    md_path = str(self.config.md_dir / f"{prefix}.md")
                     
                     with open(md_path, "w", encoding="utf-8") as f:
                         f.write(markdown)
@@ -94,10 +114,16 @@ class PageCrawler:
                 publish_event(
                     crawl_id=client_id,
                     payload={
-                        "type": "markdown_ready",
+                        "type": "page_processed",
                         "page": count,
                         "url": url,
-                        "file_path": str(md_path)
+                        "title": seo.get("title", "No Title"),
+                        "markdown_file": str(md_path) if md_path else None,
+                        "html_file": html_path,
+                        "screenshot": screenshot_path,
+                        "seo_json": seo_json_path,
+                        "seo_md": seo_md_path,
+                        "seo_xlsx": seo_xlsx_path,
                     }
                 )
 
@@ -127,6 +153,7 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Crawl page using Chromium with stealth"""
@@ -140,7 +167,11 @@ class PageCrawler:
                         '--disable-infobars',
                         '--ignore-certificate-errors',
                         '--window-position=0,0',
-                        '--window-size=1920,1080'
+                        '--window-size=1920,1080',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-web-security',
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--disable-dev-shm-usage'
                     ]
                 )
                 
@@ -148,12 +179,25 @@ class PageCrawler:
                     viewport={"width": 1920, "height": 1080},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                     java_script_enabled=True,
-                    ignore_https_errors=True
+                    ignore_https_errors=True,
+                    bypass_csp=True,
+                    extra_http_headers={
+                        "sec-ch-ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": '"Windows"'
+                    }
                 )
+                
+                # Apply stealth directly to context via stealth_sync instead of just page
+                from playwright_stealth import Stealth
+                Stealth().apply_stealth_sync(context)
                 
                 page = context.new_page()
                 text_content = page.evaluate("document.body.innerText")
-                if len(text_content.strip()) < 200:
+                if len(text_content.strip()) > 200:
+                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                    return result
+                else:
                     if self.config.use_stealth:
                         self.browser_utils.apply_stealth(page)
                     
@@ -161,28 +205,51 @@ class PageCrawler:
                         self.browser_utils.set_custom_headers(page)
                     
                     page.route("**/*", self.browser_utils.block_resources)
+                    # Note: checking cloudflare on about:blank will do nothing, but let's keep it as before
                     self.browser_utils.check_cloudflare(page, self.config)
                     if not self.browser_utils.wait_for_ready(page):
+                        page.unroute("**/*")
                         raise Exception("Page not ready")
                 
-                response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                try:
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                    
+                    if not response or response.status != 200:
+                        raise Exception(f"HTTP {response.status if response else 'None'}")   
+                    # Validate content
+                    text_content = page.evaluate("document.body.innerText")
+                    if len(text_content.strip()) < 200:
+                        raise Exception(f"Content too short ({len(text_content.strip())} chars)")
+                    
+                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                    return result
                 
-                if not response or response.status != 200:
-                    raise Exception(f"HTTP {response.status if response else 'None'}")
-                
-                
-                
-                
-                
-                # Validate content
-                text_content = page.evaluate("document.body.innerText")
-                if len(text_content.strip()) < 200:
-                    raise Exception(f"Content too short ({len(text_content.strip())} chars)")
-                
-                result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, client_id)
-                browser.close()
-                
-                return result
+                finally:
+                    # Clean up routes before closing browser to prevent async TargetClosedError/CancelledError tracebacks
+                    try:
+                        page.unroute("**/*")
+                    except Exception:
+                        pass
+                    # Small wait to let pending routes settle before closing context
+                    try:
+                        page.wait_for_timeout(100)
+                    except Exception:
+                        pass
+                        
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                    
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                    
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
                 
         except Exception as e:
             logger.warning(f"Chromium failed for {url}: {e}")
@@ -195,6 +262,7 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Fallback crawl using Camoufox"""
@@ -204,31 +272,57 @@ class PageCrawler:
         
         try:
             with sync_playwright() as p:
-                browser = p.firefox.launch(
-                    executable_path=self.config.camoufox_path,
-                    headless=self.config.headless
-                )
+                if platform.system() == "Windows":
+                    browser = p.firefox.launch(
+                        executable_path=self.config.camoufox_path,
+                        headless=self.config.headless
+                    )
+                elif platform.system() == "Linux":
+                    browser = p.firefox.launch(
+                        headless=self.config.headless
+                    )
                 
-                context = browser.new_context()
-                page = context.new_page()
-                
-                response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
-                
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(4000)
-                
-                if not response or response.status != 200:
-                    browser.close()
-                    return None
-                
-                if not self.browser_utils.wait_for_ready(page):
-                    browser.close()
-                    return None
-                
-                result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, client_id)
-                browser.close()
-                
-                return result
+                try:
+                    context = browser.new_context()
+                    page = context.new_page()
+                    
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                    
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    page.wait_for_timeout(4000)
+                    
+                    if not response or response.status != 200:
+                        return None
+                    
+                    if not self.browser_utils.wait_for_ready(page):
+                        return None
+                    
+                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                    return result
+                finally:
+                    try:
+                        page.unroute("**/*")
+                    except Exception:
+                        pass
+                    try:
+                        page.wait_for_timeout(100)
+                    except Exception:
+                        pass
+                        
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                        
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                        
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
                 
         except Exception as e:
             logger.error(f"Camoufox failed for {url}: {e}")
@@ -241,6 +335,7 @@ class PageCrawler:
         enable_md: bool,
         enable_html: bool,
         enable_ss: bool,
+        enable_seo: bool,
         client_id: Optional[str],
         websocket_manager
     ) -> Optional[Dict]:
@@ -255,15 +350,15 @@ class PageCrawler:
         })
         
         # Try Chromium first
-        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, client_id)
+        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
         
         if result:
             logger.info(f"Chromium success: {url}")
             return result
-        
+    
         # Fallback to Camoufox
         logger.info(f"Trying Camoufox fallback for: {url}")
-        # result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, client_id)
+        result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
         
         if result:
             logger.info(f"Camoufox success: {url}")
