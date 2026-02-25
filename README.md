@@ -277,7 +277,7 @@ GcrawlAI is released under the **MIT License**.
 ```
 MIT License
 
-Copyright (c) 2025 Gramosoft Private Limited
+Copyright (c) 2026 Gramosoft Private Limited
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -311,7 +311,7 @@ See the [LICENSE](./LICENSE) file for full details.
 ---
 
 <p align="center">
-  Built with ❤️ by <a href="https://www.linkedin.com/showcase/gcrawlai/gramosoft-private-limited/">Gramosoft Private Limited</a>
+  Built with ❤️ by <a href="https://gramosoft.tech">Gramosoft Private Limited</a>
   <br><br>
   ⭐ If GcrawlAI saves you time, please <strong>star the repo</strong> — it helps others discover it!
   <br><br>
