@@ -4,8 +4,98 @@
   object-fit: cover;
 }
 
+.fav-icons {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  filter: invert(1);
+}
+
 .logo {
-  width: 111px;
+  width: 141px;
   height: auto;
   object-fit: cover;
+  display: flex;
+  align-items: center;
+}
+
+
+.btn-danger-soft {
+  background: rgba(255, 89, 94, 0.1);
+  color: var(--danger);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.btn-danger-soft:hover {
+  background: rgba(255, 89, 94, 0.2);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.btn-outline {
+  border: 1px solid var(--card-border);
+  color: var(--text-main);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-outline:hover {
+  background: var(--tab-hover);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .logo img {
+    width: 90px;
+  }
+
+  .header-actions {
+    gap: 10px;
+  }
+
+  .btn-outline {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .btn-danger-soft {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo img {
+    width: 80px;
+  }
+
+  .header-actions {
+    gap: 8px;
+  }
+
+  .btn-outline,
+  .btn-danger-soft {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  /* Hide text on very small screens if needed, or adjust layout */
+  .btn-light.fs-13 {
+    font-size: 11px !important;
+    padding: 4px !important;
+  }
 }

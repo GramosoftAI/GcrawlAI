@@ -1,69 +1,54 @@
-<section class="main-section mx-auto">
+<section class="main-section mx-auto mt-5">
 
   <div class="container">
 
     <!-- Top Share Bar -->
-    <div
-      class="no-animation scrape-details d-flex flex-wrap justify-content-between align-items-center my-3 gap-2"
-      *ngIf="parsedBlocks?.length"
-    >
+    <div class="no-animation scrape-details d-flex flex-wrap justify-content-between align-items-center my-3 gap-2"
+      *ngIf="parsedBlocks.length">
 
-      <a
-        class="text-color-black text-break text-center"
-        [href]="parsedBlocks[0]?.url"
-        target="_blank"
-      >
+      <a class="text-color-black text-break text-center" [href]="parsedBlocks[0]?.url" target="_blank">
         {{ parsedBlocks[0]?.url }}
       </a>
-
-      <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
+      <h3 class="title mb-0">Total Pages ({{parsedBlocks.length}})</h3>
+      <!-- <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
         <img src="assets/image/upload.png" class="fav-icon">
         Share
-      </button>
+      </button> -->
 
     </div>
 
 
     <!-- Header Section -->
     <div
-      class="no-animation header-actions d-flex flex-wrap justify-content-between align-items-center mt-4 mb-5 gap-3"
-    >
+      class="no-animation header-actions d-flex flex-wrap justify-content-between align-items-center mt-4 mb-5 gap-3">
 
-      <span>
-        <h5 class="fs-17 text-break dark-grey">
+      <span class="md-title">
+        <h5 class="fs-17 text-break">
           {{ parsedBlocks[0]?.title }}
         </h5>
 
-        <a
-          class="text-color-grey fs-13 text-break"
-          [href]="parsedBlocks[0]?.url"
-          target="_blank"
-        >
+        <!-- <a class="text-color-grey fs-13 text-break" [href]="parsedBlocks[0]?.url" target="_blank">
           {{ parsedBlocks[0]?.url }}
-        </a>
+        </a> -->
       </span>
 
 
       <div class="d-flex flex-wrap gap-2">
 
-        <button *ngIf="token"
-          type="button"
-          class="btn dark-btn fs-13 p-2 py-1"
-          data-bs-toggle="modal"
-          data-bs-target="#exampleModal"
-        >
+        <!-- <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1 md-title" data-bs-toggle="modal"
+          data-bs-target="#exampleModal">
           <img src="/assets/image/danger.png" class="fav-icon">
           Report issue
-        </button>
+        </button> -->
 
-        <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
+        <!-- <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1 md-title">
           <img src="/assets/image/download.png" class="fav-icon">
           JSON
-        </button>
+        </button> -->
 
-        <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
+        <button type="button" (click)="downloadDynamic()" class="btn dark-btn fs-13 p-2 py-1 md-title">
           <img src="/assets/image/download.png" class="fav-icon">
-          Markdown
+          Download All
         </button>
 
       </div>
@@ -72,43 +57,58 @@
 
 
     <!-- Tabs -->
-    <ul
-      class="no-animation nav nav-pills mb-3 mt-4 scroll-tabs"
-      id="pills-tab"
-      role="tablist"
-    >
+    <ul class="d-flex justify-content-start no-animation nav nav-pills mb-3 mt-4 scroll-tabs p-1" id="pills-tab"
+      role="tablist">
 
-      <li class="nav-item">
-        <button
-          class="nav-link active"
-          data-bs-toggle="pill"
-          data-bs-target="#pills-markdown"
-        >
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_ss">
+        <button class="nav-link" [class.active]="activeTab === 'pills-screenshot'"
+          (click)="setActiveTab('pills-screenshot')">
+          Screenshot
+        </button>
+      </li>
+
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_md">
+        <button class="nav-link" [class.active]="activeTab === 'pills-markdown'"
+          (click)="setActiveTab('pills-markdown')">
           Markdown
         </button>
       </li>
 
-      <li class="nav-item">
-        <button disabled class="nav-link">Summary</button>
+      <li class="nav-item" *ngIf="formsvalue?.enable_summary">
+        <button class="nav-link" [class.active]="activeTab === 'pills-summary'" (click)="setActiveTab('pills-summary')">
+          Summary
+        </button>
       </li>
 
-      <li class="nav-item">
-        <button disabled class="nav-link">Links</button>
+      <li class="nav-item" *ngIf="formsvalue?.enable_links">
+        <button class="nav-link" [class.active]="activeTab === 'pills-links'" (click)="setActiveTab('pills-links')">
+          Links
+        </button>
       </li>
 
-      <li class="nav-item">
-        <button disabled class="nav-link">HTML</button>
+      <li class="nav-item" *ngIf="formsvalue?.enable_html">
+        <button class="nav-link" [class.active]="activeTab === 'pills-html'" (click)="setActiveTab('pills-html')">
+          HTML
+        </button>
       </li>
 
-      <li class="nav-item">
-        <button disabled class="nav-link">Screenshot</button>
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_seo">
+        <button class="nav-link" [class.active]="activeTab === 'pills-seo'" (click)="setActiveTab('pills-seo')">
+          SEO
+        </button>
       </li>
 
-      <li class="nav-item">
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_json">
+        <button class="nav-link" [class.active]="activeTab === 'pills-json'" (click)="setActiveTab('pills-json')">
+          JSON
+        </button>
+      </li>
+
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_brand">
         <button disabled class="nav-link">Branding</button>
       </li>
 
-      <li class="nav-item">
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_image">
         <button disabled class="nav-link">Images</button>
       </li>
 
@@ -116,70 +116,270 @@
 
 
     <!-- Tab Content -->
-    <div
-      class="tab-content mx-auto no-animation"
-      [ngStyle]="{ overflow: token ? 'auto' : 'hidden' }"
-    >
+    <div class="tab-content mx-auto no-animation" [ngStyle]="{ overflow: token ? 'auto' : 'hidden' }">
 
-      <div
-        class="tab-pane fade show active p-2"
-        id="pills-markdown"
-        *ngFor="let block of parsedBlocks; let i = index"
-      >
-
-        <div class="report-container">
-
+      <div class="tab-pane fade p-2" id="pills-screenshot" [class.show]="activeTab === 'pills-screenshot'"
+        [class.active]="activeTab === 'pills-screenshot'">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
           <div class="d-flex justify-content-between flex-wrap gap-2">
-
             <h3 class="title">
-              {{ i + 1 }}. {{ block?.title }}
+              {{ i + 1 }}. {{ block?.title }} Screenshot
             </h3>
-
-            <button
-              *ngIf="token"
-              class="btn-bg-primary-light txt-red"
-              (click)="download(block.raw, i)"
-            >
-              Download .md
+            <button *ngIf="token && block.screenshot" class="btn-bg-primary-light txt-red ms-5"
+              (click)="download(block.screenshot, i, 'png')">
+              Download PNG
             </button>
-
           </div>
-
-
-          <pre class="content">
-{{ block?.raw }}
-          </pre>
-
+          <div class="screenshot-wrapper text-center mt-3" *ngIf="block.screenshot">
+            <img [src]="block.screenshot" class="img-fluid rounded border shadow-sm" [alt]="block.title">
+          </div>
+          <div *ngIf="!block.screenshot" class="text-muted p-4 text-center">
+            No screenshot available for this page.
+          </div>
         </div>
-
       </div>
 
+      <div class="tab-pane fade p-2" id="pills-markdown" [class.show]="activeTab === 'pills-markdown'"
+        [class.active]="activeTab === 'pills-markdown'">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <div class="d-flex justify-content-between flex-wrap gap-2">
+            <h3 class="title md-title">
+              {{ i + 1 }}. {{ block?.title }}
+            </h3>
+            <button *ngIf="token" class="btn-bg-primary-light txt-red" (click)="download(block.raw, i)">
+              Download .md
+            </button>
+          </div>
+          <pre class="content">{{ block?.raw }}</pre>
+        </div>
+      </div>
+
+      <div class="tab-pane fade p-2" id="pills-summary" [class.show]="activeTab === 'pills-summary'"
+        [class.active]="activeTab === 'pills-summary'">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <h3 class="title">
+            {{ i + 1 }}. {{ block?.title }} Summary
+          </h3>
+          <div class="content text-wrap mt-3" *ngIf="block.summary">{{ block.summary }}</div>
+          <div *ngIf="!block.summary" class="text-muted p-4 text-center">
+            No summary available for this page.
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade p-2" id="pills-links" [class.show]="activeTab === 'pills-links'"
+        [class.active]="activeTab === 'pills-links'">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <div class="d-flex justify-content-between flex-wrap gap-2">
+            <h3 class="title">
+              {{ i + 1 }}. {{ block?.title }} Links
+            </h3>
+            <button *ngIf="token && block.links" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+              (click)="download(block.links, i, 'md')">
+              Download Links
+            </button>
+          </div>
+          <div class="code-editor-viewer mt-3" *ngIf="block.links">
+            <div class="editor-header">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+              <span class="file-name">extracted_links.txt</span>
+            </div>
+            <pre class="editor-body text-start">{{ block.links }}</pre>
+          </div>
+          <div *ngIf="!block.links" class="text-muted p-4 text-center">
+            No links extracted for this page.
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade p-2" id="pills-html" [class.show]="activeTab === 'pills-html'"
+        [class.active]="activeTab === 'pills-html'">
+        <div class="d-flex justify-content-end">
+          <button *ngIf="token && parsedBlocks.length > 0" class="btn-bg-primary-light txt-red"
+            (click)="downloadAllHtml()">
+            Download HTML
+          </button>
+        </div>
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <div class="d-flex justify-content-between flex-wrap gap-2">
+            <h3 class="title">
+              {{ i + 1 }}. {{ block?.title }} HTML
+            </h3>
+            <button *ngIf="token && block.rawHtml" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+              (click)="download(block.rawHtml, i, 'html')">
+              Download Individual HTML
+            </button>
+          </div>
+          <div class="code-editor-viewer" *ngIf="block.rawHtml">
+            <div class="editor-header">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+              <span class="file-name">index.html</span>
+            </div>
+            <pre class="editor-body text-start">{{block.rawHtml}}</pre>
+          </div>
+          <div *ngIf="!block.rawHtml" class="text-muted p-4 text-center">
+            No raw HTML available for this page.
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade p-2" id="pills-json" [class.show]="activeTab === 'pills-json'"
+        [class.active]="activeTab === 'pills-json'">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <h3 class="title">
+            {{ i + 1 }}. {{ block?.title }} JSON
+          </h3>
+          <pre class="text-start">{{ block.seo.json }}</pre>
+          <div class="content mt-3" *ngIf="block.seo?.json">
+            <button *ngIf="token" class="btn-bg-primary-light txt-red fs-12 p-1 px-2 mt-2"
+              (click)="download(block.seo.json, i, 'json')">
+              Download JSON
+            </button>
+          </div>
+          <div *ngIf="!block.seo?.json" class="text-muted p-4 text-center">
+            No JSON data available for this page.
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade p-2" id="pills-seo" [class.show]="activeTab === 'pills-seo'"
+        [class.active]="activeTab === 'pills-seo'">
+        <div class="seo-header-container d-flex align-items-center justify-content-between mb-4 px-2">
+          <!-- Left: Title -->
+          <div class="seo-header-left flex-grow-1">
+            <h3 class="title mb-0">Consolidated SEO Report</h3>
+          </div>
+
+          <!-- Center: Sub-tabs -->
+          <div class="seo-header-center flex-grow-1 d-flex justify-content-center">
+            <div class="seo-sub-tabs d-flex gap-1 bg-light p-1 rounded">
+              <button class="btn btn-sm"
+                [class.btn-danger]="$any(activeSeoTab) === 'xlsx' || $any(activeSeoTab) === 'seo_xlsx'"
+                [class.btn-light]="$any(activeSeoTab) !== 'xlsx' && $any(activeSeoTab) !== 'seo_xlsx'"
+                (click)="setSeoTab('xlsx')">Excel</button>
+              <button class="btn btn-sm"
+                [class.btn-danger]="$any(activeSeoTab) === 'md' || $any(activeSeoTab) === 'seo_md'"
+                [class.btn-light]="$any(activeSeoTab) !== 'md' && $any(activeSeoTab) !== 'seo_md'"
+                (click)="setSeoTab('md')">Markdown</button>
+              <button class="btn btn-sm"
+                [class.btn-danger]="$any(activeSeoTab) === 'json' || $any(activeSeoTab) === 'seo_json'"
+                [class.btn-light]="$any(activeSeoTab) !== 'json' && $any(activeSeoTab) !== 'seo_json'"
+                (click)="setSeoTab('json')">JSON</button>
+            </div>
+          </div>
+
+          <!-- Right: Download buttons -->
+          <div class="seo-header-right flex-grow-1 d-flex justify-content-end gap-2">
+            <button *ngIf="token && activeSeoTab === 'xlsx' && consolidatedXlsxTable.length > 1"
+              class="btn-bg-primary-light txt-red" (click)="downloadConsolidatedXlsx()">
+              Download SEO Excel
+            </button>
+            <button *ngIf="token && (activeSeoTab === 'md' || activeSeoTab === 'seo_md')"
+              class="btn-bg-primary-light txt-red" (click)="downloadAllSeoMd()">
+              Download SEO MD
+            </button>
+            <button *ngIf="token && (activeSeoTab === 'json' || activeSeoTab === 'seo_json')"
+              class="btn-bg-primary-light txt-red" (click)="downloadAllSeoJson()">
+              Download SEO JSON
+            </button>
+          </div>
+        </div>
+
+        <!-- Excel View -->
+        <div *ngIf="activeSeoTab === 'xlsx'">
+          <div class="xlsx-grid-wrapper report-container mb-4"
+            *ngIf="consolidatedXlsxTable && consolidatedXlsxTable.length > 1">
+            <div class="table-responsive bg-white rounded border shadow-sm p-2">
+              <table class="table table-hover table-bordered mb-0 fs-13">
+                <thead class="bg-light">
+                  <tr>
+                    <th class="text-nowrap" *ngFor="let header of consolidatedXlsxTable[0]">
+                      {{ header }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let row of consolidatedXlsxTable | slice:1">
+                    <td *ngFor="let cell of $any(row)" class="text-truncate" style="max-width: 250px;">
+                      {{ cell || '-' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div *ngIf="!consolidatedXlsxTable || consolidatedXlsxTable.length <= 1"
+            class="text-muted p-3 text-center fs-13">
+            No SEO Excel data available.
+          </div>
+        </div>
+
+        <!-- Markdown and JSON View -->
+        <ng-container *ngIf="activeSeoTab !== 'xlsx'">
+          <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+            <div class="mb-3 text-start">
+              <strong class="text-color fs-14 text-start">#{{ i + 1 }} {{ block?.url }}</strong>
+            </div>
+
+            <!-- Markdown View -->
+            <div *ngIf="activeSeoTab === 'md'">
+              <div class="seo-content" *ngIf="block.seo?.md">
+                <!-- <div class="d-flex justify-content-start mb-2">
+                  <button *ngIf="token" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+                    (click)="download(block.seo.md, i, 'md')">
+                    Download SEO MD
+                  </button>
+                </div> -->
+                <pre>{{block.seo.md}}</pre>
+              </div>
+
+              <div class="seo-content content" *ngIf="!block.seo?.md && block.seo?.raw_md">
+                <pre>{{block.seo.raw_md}}</pre>
+              </div>
+
+              <div *ngIf="!block.seo?.raw_md" class="text-muted p-2 fs-13"> No SEO markdown available. </div>
+            </div>
+
+            <!-- JSON View -->
+            <div *ngIf="activeSeoTab === 'json'">
+              <div class="code-editor-viewer" *ngIf="block.seo?.json">
+                <div class="editor-header">
+                  <span class="dot red"></span>
+                  <span class="dot yellow"></span>
+                  <span class="dot green"></span>
+                </div>
+                <pre class="editor-body text-start">{{block.seo.json}}</pre>
+              </div>
+              <div class="mt-2" *ngIf="block.seo?.json">
+                <!-- <button *ngIf="token" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+                  (click)="download(block.seo.json, i, 'json')">
+                  Download JSON
+                </button> -->
+              </div>
+              <div *ngIf="!block.seo?.json" class="text-muted p-2 fs-13"> No SEO JSON available. </div>
+            </div>
+          </div>
+        </ng-container>
+
+      </div>
     </div>
 
+  </div>
 
-    <!-- Login Message -->
-    <div *ngIf="!token" class="gcnot-login text-center mx-auto p-3">
 
-      <h5 class="fs-15">
-        Create an account to view full markdown
-      </h5>
+  <!-- Login Message -->
+  <div *ngIf="!token" class="gcnot-login text-center mx-auto p-3">
 
-      <p class="fs-13 mb-1">
-        Make a free account to access complete output
-      </p>
-
-      <p class="fs-13 mb-2">
-        No credit card required
-      </p>
-
-      <button
-      (click)="isLogin()"
-        class="btn btn-danger fs-13 p-2"
-      >
-        Signup (500 free credits)
-      </button>
-
-    </div>
+    <h5 class="fs-15">
+      Create an account to view full page
+    </h5>
+    <button (click)="isLogin()" class="btn btn-danger fs-13 p-2">
+      Signup
+    </button>
 
   </div>
 
@@ -190,9 +390,9 @@
 
 <div class="modal fade" id="exampleModal">
 
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered p-3">
 
-    <div class="modal-content">
+    <div class="modal-content text-start">
 
       <div class="modal-header p-2">
 
@@ -200,10 +400,7 @@
           Report / Scrape issue
         </p>
 
-        <button
-          type="button"
-          class="btn-close"
-          data-bs-dismiss="modal">
+        <button type="button" class="btn-close" data-bs-dismiss="modal">
         </button>
 
       </div>
@@ -248,11 +445,7 @@
                 Formatting issues
               </label>
 
-              <input
-                type="text"
-                class="form-control"
-                placeholder="Other"
-              >
+              <input type="text" class="form-control" placeholder="Other">
 
             </div>
 
@@ -263,10 +456,7 @@
 
             <label class="fs-13">Explanation</label>
 
-            <textarea
-              class="form-control"
-              rows="3"
-              placeholder="Provide details">
+            <textarea class="form-control" rows="3" placeholder="Provide details">
             </textarea>
 
           </div>

@@ -55,6 +55,9 @@ export class SigninComponent {
 
   ngOnInit(): void {
     this.firstLogin = this.localService.getfirstLogin();
+    if (this.firstLogin) {
+      this.activeTab = 'login';
+    }
 
     this.loginForm.get('email')?.valueChanges.subscribe(email => {
       if (email && email.includes('@')) {
@@ -102,27 +105,30 @@ export class SigninComponent {
   }
 
   loginSubmit() {
+    debugger
     if (this.loginForm.invalid) {
       return
     }
-    this.apiService.post(URLS.signin, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
-      if (res.success === true) {
+    this.apiService.post(URLS.signin, this.loginForm.value, { type: 'LO' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
+      if (res.status === "success") {
+        this.toastr.success('Signin Sucessfully')
         this.authService.login(res);
-        console.log('loginformvalues', this.loginForm.value)
-      };
+      } else {
+        this.toastr.error('Failed')
+      }
     })
   }
 
   signUpSubmit() {
+    debugger
     if (this.loginForm.invalid) {
       return
     }
     this.apiService.post(URLS.signup, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
-      if (res.success === true) {
+      if (res.status === "success") {
+        this.toastr.success(res.message);
         this.openOtpModal();
-      } else {
-        this.toastr.error('error', res.detail)
-      };
+      }
     })
   }
 
@@ -135,16 +141,26 @@ export class SigninComponent {
   }
 
   validateOtp(otp: string) {
+    debugger
     const payload = {
       email: this.loginForm.value.email,
       otp: otp
     };
 
-    this.apiService.post(URLS.verifyOtp, payload, { type: 'LO' }, 'TRUE').pipe(takeUntil(this.unSubscribe$)).subscribe((res: any) => {
-      if (res) {
-        this.childOTP.clearOtp();
-        this.activeTab = 'login';
-      } else {
+    this.apiService.post(URLS.verifyOtp, payload, { type: 'NT' }, 'TRUE').pipe(takeUntil(this.unSubscribe$)).subscribe({
+      next: (res: any) => {
+        if (res.status === "success") {
+          this.childOTP.clearOtp();
+          this.localService.setfirstLogin(true);
+          this.toastr.success(res.message);
+          // Important: Close modal before background login
+          ($('#OTPModel') as any).modal('hide');
+          this.loginSubmit(); // Trigger background login
+        } else {
+          this.childOTP.isOTPInvalid = true;
+        }
+      },
+      error: (err: any) => {
         this.childOTP.isOTPInvalid = true;
       }
     });

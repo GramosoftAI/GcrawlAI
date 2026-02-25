@@ -1,48 +1,56 @@
 import { Injectable } from '@angular/core';
 import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 import { timer, Observable, Subject } from 'rxjs';
-import { retryWhen, delayWhen, tap, takeUntil } from 'rxjs/operators';
-import { LoaderService } from './loader-service';
+import { retry, takeUntil } from 'rxjs/operators';
+import { environment } from 'src/environement/environemet';
+import { LocalStorageService } from './localstorage-service';
 
 @Injectable({ providedIn: 'root' })
 export class QuoteSocketService {
-  private socket$!: WebSocketSubject<any>
+  private socket$!: WebSocketSubject<any>;
   private stop$ = new Subject<void>();
-  private currentId: string | null = null;
 
-  constructor(private loaderService: LoaderService) { }
+  constructor(private localService: LocalStorageService) { }
 
   connect(crawlId: string): Observable<any> {
-    this.loaderService.show();
-    this.currentId = crawlId;
-    if (!this.socket$ || this.socket$.closed) {
-      this.createSocket(crawlId);
-    }
-    return this.socket$.pipe(takeUntil(this.stop$),
-      // Auto reconnect
-      retryWhen(err =>
-        err.pipe(
-          tap(() => console.log('Socket Reconnecting...')),
-          delayWhen(() => timer(2000))
-        )
-      )
+    // Always close any existing socket before creating a new one
+    this.close();
+    // Reset stop$ so takeUntil works fresh each time
+    this.stop$ = new Subject<void>();
+    this.createSocket(crawlId);
+    return this.socket$.pipe(
+      takeUntil(this.stop$),
+      retry({
+        count: 5, // max 5 reconnect attempts on failure
+        delay: (err, attempt) => {
+          console.warn(`Socket reconnecting (attempt ${attempt})...`, err);
+          return timer(3000);
+        }
+      })
     );
   }
 
-
   private createSocket(crawlId: string) {
-    this.loaderService.show();
+    const token = this.localService.getAccessToken();
+    const baseUrl = environment.wsUrl || 'wss://gcrawl.gramopro.ai';
+    // Trying without trailing slash before query param
+    const url = `${baseUrl}/ws/crawl/${crawlId}`;
+
+    console.log('Attempting WebSocket connection to:', `${baseUrl}/ws/crawl/${crawlId}`);
+
+
+
     this.socket$ = webSocket({
-      url: `wss://gcrawl.gramopro.ai/ws/crawl/${crawlId}`,
+      url: url,
       openObserver: {
         next: () => {
-          console.log('WebSocket Connected');
-          this.startPing(); // keep alive
+          console.log('WebSocket Connected:', crawlId);
+          this.startPing();
         }
       },
       closeObserver: {
         next: () => {
-          console.log('WebSocket Closed');
+          console.log('WebSocket Closed:', crawlId);
         }
       }
     });
@@ -56,16 +64,15 @@ export class QuoteSocketService {
     });
   }
 
-
   send(data: any) {
     if (this.socket$ && !this.socket$.closed) {
       this.socket$.next(data);
     }
   }
 
-
   close() {
     this.stop$.next();
+    this.stop$.complete();
     if (this.socket$) {
       this.socket$.complete();
       this.socket$ = null as any;

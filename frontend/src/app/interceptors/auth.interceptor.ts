@@ -8,6 +8,7 @@ import { LoaderService } from "../services/loader-service";
 import { ToastrService } from "ngx-toastr";
 import { MatDialog } from "@angular/material/dialog";
 import { AlertComponent, AlertDialog } from "../modules/shared/component/alert/alert.component";
+import { environment } from "../../environement/environemet";
 
 @Injectable()
 
@@ -23,7 +24,7 @@ export class AuthInterceptor implements HttpInterceptor {
                 });
             }
         }
-        else {
+        else if (req.url.startsWith(environment.apiUrl)) {
             const token = this.localService.getAccessToken();
             if (token) {
                 const type = req.headers.get('Type');
@@ -90,10 +91,13 @@ export class AuthInterceptor implements HttpInterceptor {
                                         break;
 
                                     case 'LO':
-                                        this.toastr.success('Login Successfully......');
+                                        this.toastr.success(event.body.message || 'Login Successfully......');
                                         break;
 
                                     default:
+                                        if (event.body.message && req.headers.get('Type') !== 'NT') {
+                                            this.toastr.success(event.body.message);
+                                        }
                                         break;
                                 }
                             }
@@ -120,6 +124,13 @@ export class AuthInterceptor implements HttpInterceptor {
             })
             , catchError((err: any) => {
                 this.loaderService.hide();
+                if (err.error && err.error.message) {
+                    this.toastr.error(err.error.message);
+                } else if (err.message) {
+                    this.toastr.error(err.message);
+                } else {
+                    this.toastr.error('An unexpected error occurred');
+                }
                 return throwError(err);
             })
         );

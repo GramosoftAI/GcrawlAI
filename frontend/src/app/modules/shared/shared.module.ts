@@ -15,6 +15,7 @@ import { ErrorPageComponent } from './component/error-page/error-page.component'
 import { LoaderComponent } from './component/loader/loader.component';
 import { ToastrModule } from 'ngx-toastr';
 import { AnimatebgComponent } from './component/animatebg/animatebg.component';
+import {MatTooltipModule} from '@angular/material/tooltip';
 
 @NgModule({
   declarations: [
@@ -33,6 +34,7 @@ import { AnimatebgComponent } from './component/animatebg/animatebg.component';
     CommonModule,
     SharedRoutingModule,
     MatDialogModule,
+    MatTooltipModule,
     NgOtpInputModule,
     MatIconModule,
     MatInputModule,
@@ -52,7 +54,8 @@ import { AnimatebgComponent } from './component/animatebg/animatebg.component';
     ReactiveFormsModule,
     FormsModule,
     MatIconModule,
-    MatInputModule
+    MatInputModule,
+    MatTooltipModule
   ]
 })
 export class SharedModule { }

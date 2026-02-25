@@ -1,6 +1,9 @@
-import { Component, computed } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { Component, computed, Inject, PLATFORM_ID } from '@angular/core';
 import { Router } from '@angular/router';
+import { ApiService } from 'src/app/services/api.service';
 import { AuthService } from 'src/app/services/auth.service';
+import { GithubService } from 'src/app/services/github.service';
 import { LocalStorageService } from 'src/app/services/localstorage-service';
 import { ThemeService } from 'src/app/services/theme.service';
 
@@ -11,17 +14,33 @@ import { ThemeService } from 'src/app/services/theme.service';
 })
 export class HeaderComponent {
   userDetails: any;
+  stars: number = 0;
   token: any;
   isDarkTheme = computed(() => this.themeService.currentTheme() === 'dark');
 
-  constructor(private authService: AuthService, private localService: LocalStorageService, private router: Router, public themeService: ThemeService) { }
+  constructor(@Inject(PLATFORM_ID) private platformId: Object, private authService: AuthService, private github: GithubService, private localService: LocalStorageService, private router: Router, public themeService: ThemeService) { }
 
-  ngOnInit() {
-    this.token = this.localService.getAccessToken()
-    this.userDetails = this.localService.getUserDetails();
-    console.log('userDetails', this.userDetails)
-    console.log('token', this.token)
+  ngOnInit(): void {
+    if (isPlatformBrowser(this.platformId)) {
+      this.token = this.localService.getAccessToken();
+      this.userDetails = this.localService.getUserDetails();
+      this.loadGithubStars();
+    }
+
   }
+
+  private loadGithubStars(): void {
+    this.github.getStars().subscribe({
+      next: (res) => {
+        this.stars = res?.stargazers_count ?? 0;
+      },
+      error: (err) => {
+        console.error('GitHub API Error:', err);
+        this.stars = 0;
+      }
+    });
+  }
+
 
   Onclick() {
     if (!this.token) {
@@ -30,9 +49,7 @@ export class HeaderComponent {
   }
 
   logout() {
-  this.authService.logout();
-  this.token = false;
-  this.router.navigate(['/login']);
-}
+    this.authService.logout();
+  }
 
 }

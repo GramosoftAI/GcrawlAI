@@ -12,40 +12,105 @@ $my-app-theme: mat.define-light-theme((color: (primary: $my-app-primary,
 @include mat.all-component-themes($my-app-theme);
 @import 'ngx-toastr/toastr';
 
+:root {
+    --font-family: 'Inter', system-ui, sans-serif;
+    --primary: #21D496;
+    --primary-hover: #1cb882;
+    --primary-gradient: linear-gradient(135deg, #21D496 0%, #02a157 100%);
+    --danger: #ff595e;
+    --transition: all 0.2s ease;
+    --bg-color: #ffffff;
+    --grid-color: rgba(0, 0, 0, 0.05);
+    --text-main: #000000;
+    --text-muted: #666666;
+}
+
 * {
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
-:root {
-    --background-color: #ffffff;
-    --text-color: rgba(6, 0, 0, 0.929);
-    --text-color-secondary: rgb(81 78 78 / 93%);
-    --grid-line-color: #eee;
-    --card-bg-color: #ffffff;
+body.dark-theme {
+    --bg-color: #0a0a0a;
+    --grid-color: rgba(255, 255, 255, 0.05);
+    --text-main: #ffffff;
+    --text-muted: #888888;
+    --card-bg: rgba(25, 25, 25, 0.6);
+    --card-border: rgba(255, 255, 255, 0.1);
+    --tab-bg: rgba(255, 255, 255, 0.05);
+    --tab-hover: rgba(255, 255, 255, 0.1);
+    --tab-active-bg: #1a1a1a;
+    --input-bg: transparent;
+
+    /* Override Bootstrap variables */
+    --bs-body-bg: #0a0a0a;
+    --bs-body-color: #ffffff;
+    --bs-body-color-rgb: 255, 255, 255;
+    --bs-body-bg-rgb: 10, 10, 10;
+    --bs-secondary-color: #888888;
+    --bs-border-color: rgba(255, 255, 255, 0.1);
+    --bs-card-bg: rgba(25, 25, 25, 0.6);
 }
 
-.dark-theme {
-    --background-color: #121212;
-    --text-color: #e0e0e0;
-    --text-color-secondary: #b0b0b0;
-    --grid-line-color: #333;
-    --card-bg-color: #1e1e1e;
-    --bg-transparent: transparent;
+body.light-theme {
+    --bg-color: #f8f9fa;
+    --grid-color: rgba(0, 0, 0, 0.05);
+    --text-main: #111111;
+    --text-muted: #666666;
+    --card-bg: rgba(255, 255, 255, 0.85);
+    --card-border: rgba(0, 0, 0, 0.1);
+    --tab-bg: rgba(0, 0, 0, 0.04);
+    --tab-hover: rgba(0, 0, 0, 0.08);
+    --tab-active-bg: #ffffff;
+    --input-bg: transparent;
+
+    /* Override Bootstrap variables */
+    --bs-body-bg: #f8f9fa;
+    --bs-body-color: #111111;
+    --bs-body-color-rgb: 17, 17, 17;
+    --bs-body-bg-rgb: 248, 249, 250;
+    --bs-secondary-color: #666666;
+    --bs-border-color: rgba(0, 0, 0, 0.1);
+    --bs-card-bg: rgba(255, 255, 255, 0.85);
 }
 
 body {
-    margin: 0;
+    font-family: var(--font-family);
+    background-color: var(--bg-color) !important; /* Force override Bootstrap */
+    color: var(--text-main) !important;
     min-height: 100vh;
-    background-color: var(--background-color);
-    color: var(--text-color);
-    background-image:
-        linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
-        linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px);
-    background-size: 300px 120px;
-    background-position: center;
-    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     transition: background-color 0.3s, color 0.3s;
+
+    background-image:
+        linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-position: center top;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+ul {
+    list-style: none;
+}
+
+button,
+input {
+    font-family: inherit;
+    border: none;
+    outline: none;
+    background: none;
+}
+
+button {
+    cursor: pointer;
 }
 
 .fs-11 {
@@ -142,4 +207,10 @@ body {
     transform: translateY(0) scale(1);
     visibility: visible;
     pointer-events: auto;
+}
+
+.mat-mdc-tooltip {
+  border-radius: 13px !important;
+  padding: 8px 10px;
+  font-size: 12px;
 }

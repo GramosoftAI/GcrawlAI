@@ -24,7 +24,7 @@ export class AnimatebgComponent implements AfterViewInit {
   private height = 0;
 
   private mouse = { x: -9999, y: -9999 };
-  private squareSize = 80;
+  private squareSize = 40;
   private grid: GridCell[] = [];
 
   private isBrowser = false;

@@ -1,6 +1,9 @@
 .main-section {
-  max-width: 1100px;
   width: 100%;
+}
+
+.md-title {
+  color: var(--text-color);
 }
 
 .nav-pills .nav-link.active {
@@ -8,6 +11,7 @@
   background: var(--card-bg-color) !important;
   border-radius: 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid;
 }
 
 .nav-pills .nav-item {
@@ -22,6 +26,7 @@
 .scroll-tabs {
   overflow-x: auto;
   flex-wrap: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   background-color: var(--grid-line-color) !important;
 }
 
@@ -33,8 +38,10 @@
   border: 1px solid #eee;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   padding: 10px;
-  max-height: 500px;
+  max-height: 470px;
   overflow-y: auto;
+  width: 878px;
+  background: var(--card-bg);
 }
 
 .report-container {
@@ -45,10 +52,11 @@
 
 .title {
   font-size: 17px;
-  color: darkgrey;
+  text-align: start;
 }
 
 .content {
+  text-align: start;
   background: var(--grid-line-color);
   padding: 12px;
   border-radius: 6px;
@@ -83,7 +91,6 @@
 }
 
 @media (max-width: 768px) {
-
   .header-actions {
     flex-direction: column;
     align-items: flex-start;
@@ -96,12 +103,9 @@
   .tab-content {
     max-height: 400px;
   }
-
 }
 
-
 @media (max-width: 480px) {
-
   .scrape-details {
     flex-direction: column;
     text-align: center;
@@ -122,6 +126,288 @@
 
 .dark-btn {
   background: transparent !important;
-  color: darkgray !important;
   border: 1px solid darkgrey !important;
+}
+
+.seo-sub-tabs {
+  background: var(--grid-line-color) !important;
+  border: 1px solid var(--card-border);
+  width: fit-content;
+
+  .btn {
+    border-radius: 4px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    padding: 4px 12px;
+    font-size: 11px;
+
+    &:hover:not(.btn-danger) {
+      background: var(--tab-hover);
+    }
+  }
+}
+
+.seo-header-container {
+  min-height: 50px;
+
+  .seo-header-left,
+  .seo-header-right {
+    flex: 1 1 0;
+  }
+
+  .seo-header-center {
+    flex: 1 1 0;
+  }
+}
+
+.seo-content {
+  background: var(--grid-line-color);
+  padding: 15px;
+  border-radius: 8px;
+  text-align: left;
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--text-color);
+    font-weight: 600;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 5px;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+  }
+
+  p,
+  li {
+    font-size: 14px;
+    color: var(--text-color-secondary);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+
+  ul,
+  ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+
+    li {
+      margin-bottom: 5px;
+    }
+  }
+
+  code {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+}
+
+/* SEO Metrics Grid */
+.seo-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.metric-node {
+  background: var(--card-bg);
+  border: 1px solid var(--grid-line-color);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: var(--bs-danger);
+  }
+}
+
+/* SEO Data Table Restored */
+.seo-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #dee2e6;
+  font-size: 13px;
+  background-color: #fff;
+
+  thead {
+    background-color: #1a335e;
+
+    /* Dark blue from image reference */
+    th {
+      padding: 12px 8px;
+      font-weight: 700;
+      color: #ffffff;
+      text-align: center;
+      border: 1px solid #dee2e6;
+      vertical-align: middle;
+      white-space: normal;
+      min-width: 80px;
+    }
+  }
+
+  tbody {
+    tr {
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+      }
+
+      th[scope="row"] {
+        background-color: #fff;
+        font-weight: 400;
+        text-align: center;
+        width: 30px;
+        color: #6c757d;
+        border: 1px solid #dee2e6;
+      }
+
+      td {
+        padding: 12px 8px;
+        color: #333;
+        border: 1px solid #dee2e6;
+        text-align: center;
+        vertical-align: middle;
+        word-break: break-word;
+        line-height: 1.4;
+
+        /* URL column often needs left-alignment for readability */
+        &:nth-child(2) {
+          text-align: left;
+          color: #1a335e;
+          font-weight: 500;
+          text-decoration: none;
+
+          a {
+            color: inherit;
+            text-decoration: underline;
+          }
+        }
+      }
+    }
+  }
+}
+
+.seo-navigation-header {
+  top: 0;
+  z-index: 10;
+  background-color: var(--bs-light);
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+
+  .seo-sub-tabs {
+    .btn {
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: all 0.2s ease;
+
+      &:hover {
+        opacity: 0.9;
+      }
+    }
+  }
+}
+
+/* Consolidated Grid Styles */
+.seo-metrics-flex-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.seo-metric-card {
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #1a335e !important;
+    box-shadow: 0 4px 12px rgba(26, 51, 94, 0.08) !important;
+  }
+}
+
+.metric-node {
+  flex: 1 1 200px;
+  min-width: 150px;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  /* Key on top */
+  gap: 6px;
+  padding: 8px;
+  border-radius: 4px;
+  background: rgba(var(--bs-light-rgb), 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.metric-label {
+  font-size: 11px;
+  text-transform: capitalize;
+  letter-spacing: 0.03em;
+  color: #1a335e;
+  /* Dark blue branding */
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.metric-value {
+  font-size: 16px;
+  color: var(--text-color);
+  color: #1a335e;
+  /* Dark blue from image */
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.metric-value {
+  font-size: 15px;
+  color: var(--text-color);
+  font-weight: 600;
+  word-break: break-all;
+  line-height: 1.2;
+}
+
+.html-content-wrapper {
+  pre {
+    background: var(--grid-line-color);
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    text-align: left;
+  }
+}
+
+table {
+  color: var(--text-color) !important;
+}
+
+table thead tr th {
+  color: var(--text-color) !important;
+  text-align: start;
+}
+
+table tbody tr td {
+  color: var(--text-color) !important;
+  text-align: start;
 }

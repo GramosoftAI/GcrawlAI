@@ -1,0 +1,95 @@
+:host ::ng-deep {
+    .modal-content {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-radius: 20px;
+        color: var(--text-main);
+    }
+
+    .modal-header {
+        border-bottom: 1px solid var(--card-border);
+
+        .btn-close {
+            /* Handled via body class in global styles or local override */
+        }
+    }
+
+    .card {
+        background: transparent;
+        border: none;
+        color: var(--text-main);
+    }
+
+    p {
+        color: var(--text-muted);
+    }
+
+    .btn-theme-primary {
+        background: var(--primary-gradient);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        height: 40px;
+        padding: 0 24px;
+        transition: var(--transition);
+        font-weight: 600;
+
+        &:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(33, 212, 150, 0.3);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    }
+
+    .btn-theme-secondary {
+        background: var(--tab-bg);
+        color: var(--text-main);
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        height: 40px;
+        padding: 0 24px;
+        transition: var(--transition);
+
+        &:hover:not(:disabled) {
+            background: var(--tab-hover);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    }
+
+    /* OTP Input Customization */
+    .otp-input {
+        width: 45px !important;
+        height: 45px !important;
+        border-radius: 8px !important;
+        border: 1px solid var(--card-border) !important;
+        background: var(--tab-bg) !important;
+        color: var(--text-main) !important;
+        font-size: 18px !important;
+        font-weight: 600 !important;
+        margin: 0 5px !important;
+        transition: var(--transition);
+
+        &:focus {
+            border-color: var(--primary) !important;
+            background: var(--tab-active-bg) !important;
+            box-shadow: 0 0 0 2px rgba(33, 212, 150, 0.2) !important;
+        }
+    }
+}
+
+/* Specific theme overrides */
+:host-context(body.dark-theme) ::ng-deep {
+    .btn-close {
+        filter: invert(1) grayscale(100%) brightness(200%);
+    }
+}

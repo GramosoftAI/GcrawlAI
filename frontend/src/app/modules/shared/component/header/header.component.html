@@ -1,14 +1,14 @@
 <section class="my-3">
     <div class="container">
         <div class="d-flex justify-content-between w-100">
-            <div class="logo">
+            <div class="logo no-animation">
                 <img [src]="isDarkTheme() ? '/assets/image/GcrawlWhiteLogo.svg' : '/assets/image/Logo.svg'"
                     class="me-3 logo" alt="Logo">
             </div>
 
-            <div class="d-flex">
+            <div class="header-actions no-animation">
                 <!-- If NOT Logged In -->
-                <button *ngIf="!token" (click)="Onclick()" type="button" class="btn btn-danger me-3 fs-13 p-2 py-1">
+                <button *ngIf="!token" (click)="Onclick()" type="button" class="btn-danger-soft">
                     Signup
                 </button>
 
@@ -16,17 +16,16 @@
                 <!-- If Logged In -->
                 <div *ngIf="token" class="dropdown me-3">
 
-                    <button class="btn btn-danger dropdown-toggle fs-13 p-2 py-2" type="button"
-                        data-bs-toggle="dropdown" aria-expanded="false">
+                    <button class="btn-outline" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                         {{ userDetails?.user?.name }}
                     </button>
 
                     <ul class="dropdown-menu">
 
                         <li>
-                            <a class="dropdown-item" (click)="logout()">
+                            <span class="dropdown-item" (click)="logout()">
                                 Logout
-                            </a>
+                            </span>
                         </li>
 
                     </ul>
@@ -34,13 +33,15 @@
                 </div>
 
 
-                <button (click)="themeService.toggleTheme()" type="button" class="btn btn-light fs-13 px-3 py-1 me-2">
-                    <img class="fav-icon"
+                <button (click)="themeService.toggleTheme()" type="button" class="btn-outline">
+                    <img class="fav-icons"
                         [src]="isDarkTheme() ? '/assets/image/dark-mode.png' : '/assets/image/light-mode.png'" alt="">
                 </button>
                 <a href="https://github.com/GramosoftAI/GcrawlAI" target="_blank" rel="noopener noreferrer"
-                    class="btn btn-light fs-13 p-2">
-                    <img class="fav-icon" src="/assets/image/github.png" alt=""> 11.1k
+                    class="btn btn-light fs-13">
+                    <img class="fav-icon" src="/assets/image/github.png" alt="GitHub" />
+
+                    {{ stars }}
                 </a>
 
             </div>

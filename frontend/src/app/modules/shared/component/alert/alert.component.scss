@@ -1,17 +1,98 @@
+:host {
+    display: block;
+    background: var(--card-bg);
+    color: var(--text-main);
+    border-radius: 20px;
+}
+
+:host ::ng-deep {
+    .mat-mdc-dialog-container .mdc-dialog__content {
+        color: var(--text-main);
+        background: transparent;
+    }
+
+    .mat-mdc-dialog-title {
+        color: var(--text-main);
+        font-weight: 700;
+        font-size: 20px;
+    }
+}
+
+.hi {
+    p {
+        color: var(--text-muted);
+        font-size: 15px;
+    }
+}
+
 .password-cred {
-    border: 1px dashed var(--tertiary-color);
+    border: 1px dashed var(--card-border);
     border-radius: 8px;
     padding: 10px;
     position: relative;
-    background-color: #ddd;
+    background-color: var(--tab-bg);
+    color: var(--text-main);
+
+    span {
+        color: var(--text-main);
+    }
 }
 
 .btn-copy {
     position: absolute;
     top: 0;
     right: 0;
+    color: var(--primary);
 }
 
 .logo {
-    width: 75px;
+    width: 60px;
+    margin-bottom: 10px;
+    transition: var(--transition);
+}
+
+.btn-group {
+    padding-bottom: 20px;
+}
+
+.btn-theme-primary {
+    background: var(--primary-gradient);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    height: 40px;
+    padding: 0 40px;
+    transition: var(--transition);
+    font-weight: 600;
+
+    &:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(33, 212, 150, 0.3);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+}
+
+.btn-theme-secondary {
+    background: var(--tab-bg);
+    color: var(--text-main);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    height: 40px;
+    padding: 0 40px;
+    transition: var(--transition);
+    font-weight: 500;
+
+    &:hover:not(:disabled) {
+        background: var(--tab-hover);
+    }
+}
+
+/* Specific theme overrides */
+:host-context(body.dark-theme) {
+    .logo {
+        filter: invert(1) brightness(2);
+    }
 }

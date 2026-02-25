@@ -32,17 +32,21 @@ export class LocalStorageService {
     }
   }
 
-  private setItem(key: string, value: any): void {
+  private setItem(key: string, value: any, useSession: boolean = false): void {
     try {
       const encryptedData = this.encrypt(value);
-      sessionStorage.setItem(key, encryptedData);
+      if (useSession) {
+        sessionStorage.setItem(key, encryptedData);
+      } else {
+        localStorage.setItem(key, encryptedData);
+      }
     } catch (e) {
     }
   }
 
-  private getItem(key: string): any {
+  private getItem(key: string, useSession: boolean = false): any {
     try {
-      const encryptedData = sessionStorage.getItem(key);
+      const encryptedData = useSession ? sessionStorage.getItem(key) : localStorage.getItem(key);
       if (encryptedData) {
         const decryptedData = this.decrypt(encryptedData);
         return decryptedData;
@@ -52,13 +56,25 @@ export class LocalStorageService {
     return null;
   }
 
-    public setformDetails(data: any): void {
-    this.setItem('formdetails', data)
+  public setformDetails(data: any): void {
+    this.setItem('formdetails', data, true)
   }
 
-    public getformDetails(): string | null {
-    const firstLogin = this.getItem('formdetails');
-    return firstLogin || null;
+  public getformDetails(): any | null {
+    const data = this.getItem('formdetails', true);
+    return data || null;
+  }
+
+  public setStorage(key: string, data: any): void {
+    this.setItem(key, data, true);
+  }
+
+  public getStorage(key: string): any | null {
+    return this.getItem(key, true);
+  }
+
+  public removeStorage(key: string): void {
+    sessionStorage.removeItem(key);
   }
 
   public setfirstLogin(data: boolean): void {
@@ -71,11 +87,11 @@ export class LocalStorageService {
   }
 
   public setCrawlID(data: string): void {
-    this.setItem('crawlID', data)
+    this.setItem('crawlID', data, true)
   }
 
   public getCrawlID(): string | null {
-    const crawlId = this.getItem('crawlID');
+    const crawlId = this.getItem('crawlID', true);
     return crawlId || null;
   }
 

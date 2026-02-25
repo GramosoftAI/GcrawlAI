@@ -6,5 +6,6 @@ export const URLS = Object({
     verifyOtp:`${environment.apiUrl}/auth/signup/verify-otp`,
     signin: `${environment.apiUrl}/auth/signin`,
     config: `${environment.apiUrl}/crawler`,
-    markdown_Details: `${environment.apiUrl}/crawl/markdown`
+    markdown_Details: `${environment.apiUrl}/crawl/get/content`,
+    user_history: `${environment.apiUrl}/crawler/history`
 });
