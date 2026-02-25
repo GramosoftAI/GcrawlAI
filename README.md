@@ -41,14 +41,23 @@ Most web crawlers dump raw HTML on your lap. GcrawlAI gives your LLM exactly wha
 Here's what you can build with it:
 
 🔍 RAG Pipelines — Feed your retrieval-augmented generation system with clean, structured web content instead of tag soup.
+
 🤖 AI Search Tools — Index the web semantically. GcrawlAI extracts what matters, so your search understands context, not just keywords.
+
 📄 Document Intelligence Systems — Turn web-based reports, filings, and articles into structured data your models can actually reason over.
+
 💰 Price Monitoring Engines — Track competitor pricing across e-commerce platforms in real time, without a single broken XPath selector.
+
 📊 Competitor Intelligence Dashboards — Continuously extract product updates, hiring signals, and announcements from competitor websites automatically.
+
 🌐 Market Research Aggregators — Collect and synthesize data from hundreds of sources into clean, analysis-ready datasets.
+
 🎯 Lead Generation Pipelines — Scrape company directories, job boards, and industry listings to build targeted, enriched prospect lists.
+
 📰 News & Regulatory Trackers — Monitor policy changes, regulatory updates, and industry news without the noise of irrelevant content.
+
 🛍️ Product Catalog Enrichers — Pull product descriptions, specs, and images from supplier sites and normalize them into your schema automatically.
+
 No brittle CSS selectors. No HTML parsing headaches. No maintenance nightmares when a site redesigns overnight.
 
 GcrawlAI handles the messy web so you don't have to.
