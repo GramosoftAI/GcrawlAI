@@ -67,9 +67,20 @@ class CrawlReportWriter:
             md += f"- **Title:** {seo.get('title')}\n"
             md += f"- **Meta Description:** {seo.get('meta_description')}\n"
             
+            md += f"- **Keywords:** {seo.get('keywords')}\n"
+            
             h1s = seo.get('h1', [])
-            if isinstance(h1s, list):
-                md += f"- **H1:** {', '.join(h1s)}\n"
+            if isinstance(h1s, list) and h1s:
+                md += f"- **H1 Content:** {', '.join(h1s)}\n"
+            
+            h2s = seo.get('h2', [])
+            if isinstance(h2s, list) and h2s:
+                md += f"- **H2 Content:** {', '.join(h2s)}\n"
+            
+            image_alts = seo.get('image_alts', [])
+            if isinstance(image_alts, list) and image_alts:
+                # limit the number of alts displayed if too many, or just join them
+                md += f"- **Image Alts:** {', '.join(image_alts[:10])}{'...' if len(image_alts) > 10 else ''}\n"
             
             md += f"- **Images Missing ALT:** {seo.get('images_missing_alt')}\n"
             md += f"- **Internal Links:** {seo.get('internal_links')}\n"
@@ -96,10 +107,14 @@ class CrawlReportWriter:
             "Title Length",
             "Meta Description",
             "Meta Description Length",
+            "Keywords",
             "H1 Count",
+            "H1 Content",
             "H2 Count",
+            "H2 Content",
             "Images Total",
             "Images Missing ALT",
+            "Image Alts",
             "Internal Links",
             "External Links",
             "OG Title",
@@ -118,10 +133,14 @@ class CrawlReportWriter:
                 seo.get("title_length"),
                 seo.get("meta_description"),
                 seo.get("meta_description_length"),
+                seo.get("keywords"),
                 len(seo.get("h1", [])),
+                ", ".join(seo.get("h1", [])),
                 len(seo.get("h2", [])),
+                ", ".join(seo.get("h2", [])),
                 seo.get("images_total"),
                 seo.get("images_missing_alt"),
+                ", ".join(seo.get("image_alts", [])),
                 seo.get("internal_links"),
                 seo.get("external_links"),
                 seo.get("og_title"),
@@ -156,15 +175,20 @@ class CrawlReportWriter:
         md += f"**URL:** {seo_data.get('url')}\n"
         md += f"**Title Length:** {seo_data.get('title_length')}\n"
         md += f"**Meta Description:** {seo_data.get('meta_description')}\n"
-        md += f"**Meta Desc Length:** {seo_data.get('meta_description_length')}\n\n"
+        md += f"**Meta Desc Length:** {seo_data.get('meta_description_length')}\n"
+        md += f"**Keywords:** {seo_data.get('keywords')}\n\n"
         
         md += "## Headers\n"
-        md += f"- **H1 ({len(seo_data.get('h1', []))}):** {', '.join(seo_data.get('h1', []))}\n"
-        md += f"- **H2 ({len(seo_data.get('h2', []))}):** {len(seo_data.get('h2', []))} found\n\n"
+        h1s = seo_data.get('h1', [])
+        md += f"- **H1 ({len(h1s)}):** {', '.join(h1s)}\n"
+        h2s = seo_data.get('h2', [])
+        md += f"- **H2 ({len(h2s)}):** {', '.join(h2s)}\n\n"
         
         md += "## Images\n"
         md += f"- Total: {seo_data.get('images_total')}\n"
-        md += f"- Missing ALT: {seo_data.get('images_missing_alt')}\n\n"
+        md += f"- Missing ALT: {seo_data.get('images_missing_alt')}\n"
+        alts = seo_data.get('image_alts', [])
+        md += f"- Image Alts: {', '.join(alts[:10])}{'...' if len(alts) > 10 else ''}\n\n"
         
         md += "## Links\n"
         md += f"- Internal: {seo_data.get('internal_links')}\n"
@@ -198,10 +222,14 @@ class CrawlReportWriter:
             ("Title Length", seo_data.get("title_length")),
             ("Meta Description", seo_data.get("meta_description")),
             ("Meta Description Length", seo_data.get("meta_description_length")),
+            ("Keywords", seo_data.get("keywords")),
             ("H1 Count", len(seo_data.get("h1", []))),
+            ("H1 Content", ", ".join(seo_data.get("h1", []))),
             ("H2 Count", len(seo_data.get("h2", []))),
+            ("H2 Content", ", ".join(seo_data.get("h2", []))),
             ("Images Total", seo_data.get("images_total")),
             ("Images Missing ALT", seo_data.get("images_missing_alt")),
+            ("Image Alts", ", ".join(seo_data.get("image_alts", []))),
             ("Internal Links", seo_data.get("internal_links")),
             ("External Links", seo_data.get("external_links")),
             ("OG Title", seo_data.get("og_title")),

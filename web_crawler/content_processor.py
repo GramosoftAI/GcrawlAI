@@ -57,6 +57,7 @@ class ContentProcessor:
             "title_length": len(soup.title.string.strip()) if soup.title else 0,
             "meta_description": get_meta(name="description"),
             "meta_description_length": len(get_meta(name="description") or ""),
+            "keywords": get_meta(name="keywords"),
             "canonical": (
                 soup.find("link", rel="canonical").get("href")
                 if soup.find("link", rel="canonical")
@@ -66,6 +67,7 @@ class ContentProcessor:
             "h2": [h.get_text(strip=True) for h in soup.find_all("h2")],
             "images_total": len(images),
             "images_missing_alt": images_missing_alt,
+            "image_alts": [img.get("alt").strip() for img in images if img.get("alt") and img.get("alt").strip()],
             "internal_links": internal_links,
             "external_links": external_links,
             "og_title": get_meta(prop="og:title"),

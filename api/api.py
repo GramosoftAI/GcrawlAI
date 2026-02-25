@@ -223,9 +223,19 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
     links  → celery multiprocess crawl
     """
     try:
-        # Removed requests.get() pre-validation entirely because overly-aggressive 
-        # anti-bot systems (like Batik Air) return ConnectionError/Timeout before 
-        # our stealth Chromium even has a chance to execute.
+        import socket
+        from urllib.parse import urlparse
+        
+        parsed_url = urlparse(str(payload.url))
+        hostname = parsed_url.hostname
+        if hostname:
+            try:
+                socket.gethostbyname(hostname)
+            except socket.gaierror:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f'DNS resolution failed for hostname "{hostname}". This means the domain name could not be translated to an IP address. Possible causes: (1) The domain name is misspelled (check for typos), (2) The domain does not exist or has expired, (3) The DNS servers are temporarily unavailable, or (4) The domain was recently registered and DNS has not propagated yet. Please verify the URL is correct and the website exists.'
+                )
 
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
