@@ -24,7 +24,8 @@ class CrawlConfig:
 
     # Optional proxy URL for both browsers (required for Google search bypass)
     # Example: "http://user:pass@proxy-host:8080"  or  "http://scraperapi:API_KEY@proxy.scraperapi.com:8001"
-    proxy: Optional[str] = None
+    # proxy: Optional[str] = None
+    proxy: Optional[str] = "socks5://127.0.0.1:9050"
 
     def __post_init__(self):
         self.rebuild_paths()
