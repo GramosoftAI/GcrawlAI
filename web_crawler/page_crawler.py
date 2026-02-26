@@ -214,7 +214,7 @@ class PageCrawler:
                 try:
                     response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
                     
-                    if not response or response.status != 200:
+                    if not response or not (200 <= response.status < 300):
                         raise Exception(f"HTTP {response.status if response else 'None'}")   
                     # Validate content
                     text_content = page.evaluate("document.body.innerText")
@@ -291,7 +291,7 @@ class PageCrawler:
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     page.wait_for_timeout(4000)
                     
-                    if not response or response.status != 200:
+                    if not response or not (200 <= response.status < 300):
                         return None
                     
                     if not self.browser_utils.wait_for_ready(page):
