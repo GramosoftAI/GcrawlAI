@@ -245,7 +245,7 @@ class EmailService:
                     
                     <p>Enter this code in the verification page to activate your account.</p>
                     
-                    <p>If you didn't request this verification, please ignore this email or contact support if you have concerns.</p>
+                    <p>If you didn't request this verification, please ignore this email.</p>
                     
                     <div class="warning">
                         🔒 Security Notice: Never share this OTP with anyone. Our team will never ask for your OTP.
@@ -475,7 +475,7 @@ class EmailService:
         
         This link will remain valid for 24 hours.
         
-        If you didn't request a password reset, please ignore this email or contact support if you have concerns.
+        If you didn't request a password reset, please ignore this email.
         
         For your security, this link can only be used once.
         
@@ -594,16 +594,6 @@ class EmailService:
                         <p><strong>✓ Your account has been successfully created!</strong></p>
                         <p>You can now access all features and start using the platform.</p>
                     </div>
-                    
-                    <p>Here's what you can do next:</p>
-                    <ul>
-                        <li>Complete your profile</li>
-                        <li>Explore the dashboard</li>
-                        <li>Start using our services</li>
-                    </ul>
-                    
-                    <p>If you have any questions or need assistance, our support team is always here to help.</p>
-                    
                     <p>Thank you for choosing us!</p>
                     
                     <p>Best regards,<br>
