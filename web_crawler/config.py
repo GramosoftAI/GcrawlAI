@@ -22,6 +22,10 @@ class CrawlConfig:
     output_dir: str = "crawl_output-api"
     camoufox_path: Optional[str] = r"C:\Users\ganes\AppData\Local\camoufox\camoufox\Cache\camoufox.exe"
 
+    # Optional proxy URL for both browsers (required for Google search bypass)
+    # Example: "http://user:pass@proxy-host:8080"  or  "http://scraperapi:API_KEY@proxy.scraperapi.com:8001"
+    proxy: Optional[str] = None
+
     def __post_init__(self):
         self.rebuild_paths()
 
