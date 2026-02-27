@@ -192,6 +192,22 @@ class PageCrawler:
                     '--disable-gpu'
                 ]
                 
+                # Add proxy arguments if configured
+                if self.config.proxy:
+                    proxy_url = self.config.proxy
+                    if "@" in proxy_url:
+                        # Extract credentials from proxy URL
+                        # Format: http://user:pass@host:port
+                        protocol_host_port = proxy_url.split("@")[-1]
+                        browser_args.extend([
+                            f'--proxy-server={protocol_host_port}'
+                        ])
+                    else:
+                        # Format: http://host:port
+                        browser_args.extend([
+                            f'--proxy-server={proxy_url}'
+                        ])
+                
                 browser = p.chromium.launch(
                     headless=self.config.headless,
                     args=browser_args
@@ -215,9 +231,19 @@ class PageCrawler:
                 
                 # Add proxy configuration if provided
                 if self.config.proxy:
-                    context_options["proxy"] = {
-                        "server": self.config.proxy
+                    # Parse proxy URL to extract components
+                    from urllib.parse import urlparse
+                    parsed_proxy = urlparse(self.config.proxy)
+                    
+                    proxy_config = {
+                        "server": f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port or 8080}"
                     }
+                    
+                    if parsed_proxy.username and parsed_proxy.password:
+                        proxy_config["username"] = parsed_proxy.username
+                        proxy_config["password"] = parsed_proxy.password
+                    
+                    context_options["proxy"] = proxy_config
                 
                 context = browser.new_context(**context_options)
                 
@@ -234,6 +260,20 @@ class PageCrawler:
                 # Fix 2: Skip resource-blocking on protected domains (Google uses resources to fingerprint)
                 if not self.browser_utils.is_protected_domain(url):
                     page.route("**/*", self.browser_utils.block_resources)
+                
+                # Set proxy authentication if needed
+                if self.config.proxy and "@" in self.config.proxy:
+                    from urllib.parse import urlparse
+                    parsed_proxy = urlparse(self.config.proxy)
+                    if parsed_proxy.username and parsed_proxy.password:
+                        def handle_route(route):
+                            # For proxy auth, we might need to handle authentication
+                            try:
+                                route.continue_()
+                            except Exception:
+                                pass
+                        
+                        page.route("**/*", handle_route)
                 
                 try:
                     response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
@@ -306,14 +346,42 @@ class PageCrawler:
         
         try:
             with sync_playwright() as p:
+                # Add proxy arguments for Firefox/Camoufox
+                firefox_user_prefs = {}
+                if self.config.proxy:
+                    from urllib.parse import urlparse
+                    parsed_proxy = urlparse(self.config.proxy)
+                    firefox_user_prefs = {
+                        "network.proxy.type": 1,  # Manual proxy config
+                        "network.proxy.http": parsed_proxy.hostname,
+                        "network.proxy.http_port": parsed_proxy.port or 8080,
+                        "network.proxy.ssl": parsed_proxy.hostname,
+                        "network.proxy.ssl_port": parsed_proxy.port or 8080,
+                        "network.proxy.ftp": parsed_proxy.hostname,
+                        "network.proxy.ftp_port": parsed_proxy.port or 8080,
+                        "network.proxy.socks": parsed_proxy.hostname,
+                        "network.proxy.socks_port": parsed_proxy.port or 8080,
+                        "network.proxy.share_proxy_settings": True,
+                        "network.proxy.no_proxies_on": ""
+                    }
+                    
+                    # Handle proxy authentication
+                    if parsed_proxy.username and parsed_proxy.password:
+                        firefox_user_prefs.update({
+                            "network.proxy.username": parsed_proxy.username,
+                            "network.proxy.password": parsed_proxy.password
+                        })
+                
                 if platform.system() == "Windows":
                     browser = p.firefox.launch(
                         executable_path=self.config.camoufox_path,
-                        headless=self.config.headless
+                        headless=self.config.headless,
+                        firefox_user_prefs=firefox_user_prefs
                     )
                 else:
                     browser = p.firefox.launch(
-                        headless=self.config.headless
+                        headless=self.config.headless,
+                        firefox_user_prefs=firefox_user_prefs
                     )
                 
                 try:
@@ -330,9 +398,19 @@ class PageCrawler:
                     
                     # Add proxy configuration if provided
                     if self.config.proxy:
-                        context_options["proxy"] = {
-                            "server": self.config.proxy
+                        # Parse proxy URL to extract components
+                        from urllib.parse import urlparse
+                        parsed_proxy = urlparse(self.config.proxy)
+                        
+                        proxy_config = {
+                            "server": f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port or 8080}"
                         }
+                        
+                        if parsed_proxy.username and parsed_proxy.password:
+                            proxy_config["username"] = parsed_proxy.username
+                            proxy_config["password"] = parsed_proxy.password
+                        
+                        context_options["proxy"] = proxy_config
                     
                     context = browser.new_context(**context_options)
                     
