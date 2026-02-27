@@ -191,7 +191,9 @@ class PageCrawler:
                         '--disable-web-security',
                         '--disable-features=IsolateOrigins,site-per-process',
                         '--disable-dev-shm-usage',
-                        '--disable-gpu'
+                        '--disable-gpu',
+                        '--disable-extensions',
+                        '--disable-background-networking'
                     ]
                 )
                 

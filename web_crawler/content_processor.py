@@ -51,10 +51,13 @@ class ContentProcessor:
         images = soup.find_all("img")
         images_missing_alt = len([img for img in images if not img.get("alt")])
 
+        # Use get_text() instead of .string — .string returns None when <title> has child elements
+        title_text = soup.title.get_text(strip=True) if soup.title else None
+
         return {
             "url": page_url,
-            "title": soup.title.string.strip() if soup.title else None,
-            "title_length": len(soup.title.string.strip()) if soup.title else 0,
+            "title": title_text,
+            "title_length": len(title_text) if title_text else 0,
             "meta_description": get_meta(name="description"),
             "meta_description_length": len(get_meta(name="description") or ""),
             "keywords": get_meta(name="keywords"),

@@ -10,6 +10,8 @@ from typing import List, Literal, Optional
 from datetime import datetime
 from pathlib import Path
 import psycopg2
+from psycopg2 import pool as psycopg2_pool
+from contextlib import contextmanager
 import pytz
 import logging
 import traceback
@@ -139,17 +141,52 @@ async def validation_exception_handler(request, exc):
 
 # ================= STARTUP =================
 
+# ================= DB CONNECTION POOL =================
+
+_db_pool = None
+
+def _init_db_pool():
+    """Initialize the database connection pool (call once at startup)"""
+    global _db_pool
+    db_config = get_db_config()
+    # ThreadedConnectionPool is thread-safe (FastAPI serves sync endpoints in a thread pool)
+    _db_pool = psycopg2_pool.ThreadedConnectionPool(
+        minconn=2,
+        maxconn=20,
+        **db_config
+    )
+    logger.info(f"✓ DB connection pool created (ThreadedConnectionPool, min=2, max=20)")
+
+@contextmanager
+def get_pooled_connection():
+    """Context manager that borrows a connection from the pool and returns it when done."""
+    conn = None
+    try:
+        conn = _db_pool.getconn()
+        yield conn
+    except Exception:
+        # Rollback on error so the connection isn't returned in a broken transaction state
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
+    finally:
+        if conn is not None:
+            _db_pool.putconn(conn)
+
+# Legacy wrapper for backwards compatibility
+def get_db_connection():
+    """Get a connection from the pool. Caller MUST return it via pool.putconn()."""
+    return _db_pool.getconn()
+
 @app.on_event("startup")
 async def startup_event():
     global auth_manager
-    auth_manager = AuthManager("config.yaml")
+    _init_db_pool()
+    auth_manager = AuthManager("config.yaml", db_pool=_db_pool)
     logger.info("✓ AuthManager initialized")
-
-# ================= DB =================
-
-def get_db_connection():
-    db_config = get_db_config()
-    return psycopg2.connect(**db_config)
 
 # ================= MODELS =================
 
@@ -313,32 +350,29 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             task_id = task.id
 
         # ---------- DB INSERT ----------
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            INSERT INTO crawl_jobs
-            (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown, user_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                crawl_id,
-                str(payload.url),
-                payload.crawl_mode,
-                created_at,
-                task_id,
-                payload.enable_seo,
-                payload.enable_html,
-                payload.enable_ss,
-                payload.enable_md,
-                payload.user_id
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO crawl_jobs
+                (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    crawl_id,
+                    str(payload.url),
+                    payload.crawl_mode,
+                    created_at,
+                    task_id,
+                    payload.enable_seo,
+                    payload.enable_html,
+                    payload.enable_ss,
+                    payload.enable_md,
+                    payload.user_id
+                )
             )
-        )
-
-        conn.commit()
-        cur.close()
-        conn.close()
+            conn.commit()
+            cur.close()
 
         return {
             "status_code": 200,
@@ -383,30 +417,29 @@ def get_user_crawls(user_id: int):
     """
     try:
         from psycopg2.extras import RealDictCursor
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cur.execute(
-            """
-            SELECT 
-                user_id, crawl_id, url, crawl_mode, 
-                seo, html, 
-                screenshot, markdown, 
-                links_file_path
-            FROM crawl_jobs
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-            """,
-            (user_id,)
-        )
-        rows = cur.fetchall()
-        
-        crawls = []
-        for row in rows:
-            crawls.append(UserCrawlJobResponse(**row))
+        with get_pooled_connection() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
             
-        cur.close()
-        conn.close()
+            cur.execute(
+                """
+                SELECT 
+                    user_id, crawl_id, url, crawl_mode, 
+                    seo, html, 
+                    screenshot, markdown, 
+                    links_file_path
+                FROM crawl_jobs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                """,
+                (user_id,)
+            )
+            rows = cur.fetchall()
+            
+            crawls = []
+            for row in rows:
+                crawls.append(UserCrawlJobResponse(**row))
+                
+            cur.close()
         
         return UserCrawlsResponse(
             status_code=200,
@@ -424,35 +457,34 @@ def get_crawl_paths(crawl_id: str):
     Returns all file paths for a specific crawl_id from the crawl_events table.
     """
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute(
-            """
-            SELECT url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx
-            FROM crawl_events
-            WHERE crawl_id = %s AND event_type = 'page_processed'
-            ORDER BY created_at ASC
-            """,
-            (crawl_id,)
-        )
-        rows = cur.fetchall()
-        
-        pages = []
-        for row in rows:
-            pages.append(PagePaths(
-                url=row[0],
-                title=row[1],
-                markdown_file=row[2],
-                html_file=row[3],
-                screenshot=row[4],
-                seo_json=row[5],
-                seo_md=row[6],
-                seo_xlsx=row[7]
-            ))
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
             
-        cur.close()
-        conn.close()
+            cur.execute(
+                """
+                SELECT url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx
+                FROM crawl_events
+                WHERE crawl_id = %s AND event_type = 'page_processed'
+                ORDER BY created_at ASC
+                """,
+                (crawl_id,)
+            )
+            rows = cur.fetchall()
+            
+            pages = []
+            for row in rows:
+                pages.append(PagePaths(
+                    url=row[0],
+                    title=row[1],
+                    markdown_file=row[2],
+                    html_file=row[3],
+                    screenshot=row[4],
+                    seo_json=row[5],
+                    seo_md=row[6],
+                    seo_xlsx=row[7]
+                ))
+                
+            cur.close()
         
         return CrawlPathsResponse(
             status_code=200,
