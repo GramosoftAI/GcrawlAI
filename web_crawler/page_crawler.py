@@ -164,7 +164,8 @@ class PageCrawler:
             "enable javascript on your web browser",
             "before you continue to google",
             "not a robot",
-            "recaptcha"
+            "recaptcha",
+            "blocked ip address"
         ]
         
         if len(text_content.strip()) < 1500 and any(marker in text_lower for marker in captcha_markers):
@@ -177,14 +178,11 @@ class PageCrawler:
             # Set cookies to mimic real user
             page.context.add_cookies([
                 {"name": "CONSENT", "value": "YES+cb.20210328-17-p0.en+FX+" , "domain": ".google.com", "path": "/"},
-                {"name": "1P_JAR", "value": f"{time.time()*1000}", "domain": ".google.com", "path": "/"}
+                {"name": "1P_JAR", "value": f"{int(time.time()*1000)}", "domain": ".google.com", "path": "/"}
             ])
             
             # Set geolocation to appear as a real user
             page.context.set_geolocation({"latitude": 37.7749, "longitude": -122.4194})  # San Francisco
-            
-            # Set timezone
-            page.emulate_media(timezone_id="America/Los_Angeles")
             
             # Add more realistic viewport
             page.set_viewport_size({"width": random.randint(1200, 1920), "height": random.randint(800, 1080)})
@@ -262,7 +260,11 @@ class PageCrawler:
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
-                    '--disable-ipc-flooding-protection'
+                    '--disable-ipc-flooding-protection',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--disable-plugins-discovery',
+                    '--disable-default-apps'
                 ]
                 
                 # Add proxy arguments if configured
@@ -403,7 +405,12 @@ class PageCrawler:
                                 if captcha_elements:
                                     logger.warning("Recaptcha detected, cannot solve automatically. Consider using a proxy.")
                                 
-                                raise Exception("Google CAPTCHA detected - unable to bypass. Consider using a proxy or reducing request frequency.")
+                                # For Google searches, if we have a proxy configured, we should indicate that
+                                # the proxy might help, otherwise suggest using one
+                                if self.config.proxy:
+                                    raise Exception("Google CAPTCHA detected - proxy may not be effective. Try a different proxy or reduce request frequency.")
+                                else:
+                                    raise Exception("Google CAPTCHA detected - unable to bypass. Using a high-quality rotating proxy is strongly recommended.")
                         else:
                             raise Exception("CAPTCHA detected")
                         
@@ -600,6 +607,12 @@ class PageCrawler:
                                     logger.warning(f"CAPTCHA still present after Camoufox attempt {attempt + 1}")
                             
                             logger.warning(f"Still getting CAPTCHA with Camoufox for {url}")
+                            # For Google searches, if we have a proxy configured, we should indicate that
+                            # the proxy might help, otherwise suggest using one
+                            if self.config.proxy:
+                                logger.warning("Proxy may not be effective. Try a different proxy or reduce request frequency.")
+                            else:
+                                logger.warning("Using a high-quality rotating proxy is strongly recommended.")
                             return None
                         else:
                             return None
