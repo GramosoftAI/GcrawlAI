@@ -46,7 +46,7 @@ class EmailService:
         self.smtp_username = smtp_config.get('username')
         self.smtp_password = smtp_config.get('password')
         self.from_email = smtp_config.get('from_email', self.smtp_username)
-        self.from_name = smtp_config.get('from_name', 'Authentication System')
+        self.from_name = smtp_config.get('from_name', 'GcrawlAI')
         self.use_tls = smtp_config.get('use_tls', True)
         self.reset_password_url = smtp_config.get('reset_password_url', 'http://localhost:3000/reset-password')
         
@@ -245,7 +245,7 @@ class EmailService:
                     
                     <p>Enter this code in the verification page to activate your account.</p>
                     
-                    <p>If you didn't request this verification, please ignore this email or contact support if you have concerns.</p>
+                    <p>If you didn't request this verification, please ignore this email.</p>
                     
                     <div class="warning">
                         🔒 Security Notice: Never share this OTP with anyone. Our team will never ask for your OTP.
@@ -253,7 +253,7 @@ class EmailService:
                 </div>
                 <div class="footer">
                     <p>This is an automated email. Please do not reply.</p>
-                    <p>&copy; {datetime.now().year} Authentication System. All rights reserved.</p>
+                    <p>&copy; {datetime.now().year} GcrawlAI. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -280,7 +280,7 @@ class EmailService:
         
         ---
         This is an automated email. Please do not reply.
-        © {datetime.now().year} Authentication System. All rights reserved.
+        © {datetime.now().year} GcrawlAI. All rights reserved.
         """
         
         subject = f"Your Verification Code: {otp}"
@@ -455,7 +455,7 @@ class EmailService:
                 </div>
                 <div class="footer">
                     <p>This is an automated email. Please do not reply.</p>
-                    <p>&copy; {datetime.now().year} Authentication System. All rights reserved.</p>
+                    <p>&copy; {datetime.now().year} GcrawlAI. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -475,16 +475,16 @@ class EmailService:
         
         This link will remain valid for 24 hours.
         
-        If you didn't request a password reset, please ignore this email or contact support if you have concerns.
+        If you didn't request a password reset, please ignore this email.
         
         For your security, this link can only be used once.
         
         ---
         This is an automated email. Please do not reply.
-        © {datetime.now().year} Authentication System. All rights reserved.
+        © {datetime.now().year} GcrawlAI. All rights reserved.
         """
         
-        subject = "Password Reset Request - Authentication System"
+        subject = "Password Reset Request - GcrawlAI"
         
         return self.send_email(to_email, subject, html_content, text_content)
     
@@ -594,24 +594,14 @@ class EmailService:
                         <p><strong>✓ Your account has been successfully created!</strong></p>
                         <p>You can now access all features and start using the platform.</p>
                     </div>
-                    
-                    <p>Here's what you can do next:</p>
-                    <ul>
-                        <li>Complete your profile</li>
-                        <li>Explore the dashboard</li>
-                        <li>Start using our services</li>
-                    </ul>
-                    
-                    <p>If you have any questions or need assistance, our support team is always here to help.</p>
-                    
                     <p>Thank you for choosing us!</p>
                     
                     <p>Best regards,<br>
-                    <strong class="highlight">The Authentication System Team</strong></p>
+                    <strong class="highlight">The GcrawlAI Team</strong></p>
                 </div>
                 <div class="footer">
                     <p>This is an automated email. Please do not reply.</p>
-                    <p>&copy; {datetime.now().year} Authentication System. All rights reserved.</p>
+                    <p>&copy; {datetime.now().year} GcrawlAI. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -639,13 +629,13 @@ class EmailService:
         Thank you for choosing us!
         
         Best regards,
-        The Authentication System Team
+        The GcrawlAI Team
         
         ---
         This is an automated email. Please do not reply.
-        © {datetime.now().year} Authentication System. All rights reserved.
+        © {datetime.now().year} GcrawlAI. All rights reserved.
         """
         
-        subject = "Welcome to Authentication System! 🎉"
+        subject = "Welcome to GcrawlAI! 🎉"
         
         return self.send_email(to_email, subject, html_content, text_content)

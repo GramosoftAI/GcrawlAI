@@ -14,6 +14,19 @@ class BrowserUtils:
     """Browser configuration and stealth utilities"""
     
     @staticmethod
+    def is_protected_domain(url: str) -> bool:
+        """
+        Returns True for domains known to use loaded resources (fonts, scripts, etc.)
+        as part of their bot-detection / fingerprinting pipeline.
+        Resource-blocking on these domains reveals the browser as a bot.
+        """
+        protected = [
+            "google.com", "googleapis.com", "gstatic.com",
+            "bing.com", "yahoo.com", "yandex.com",
+        ]
+        return any(d in url.lower() for d in protected)
+
+    @staticmethod
     def block_resources(route: Route) -> None:
         """Block unnecessary resources for faster loading"""
         try:

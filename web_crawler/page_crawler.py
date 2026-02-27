@@ -145,6 +145,25 @@ class PageCrawler:
         except Exception as e:
             logger.error(f"Error processing page {url}: {e}")
             return None
+
+    def is_captcha_page(self, text_content: str) -> bool:
+        """Check if the page is a Google/Cloudflare CAPTCHA page"""
+        if not text_content:
+            return False
+            
+        text_lower = text_content.lower()
+        captcha_markers = [
+            "our systems have detected unusual traffic from your computer network",
+            "please show you're not a robot",
+            "to continue, please type the characters below",
+            "about this page",
+            "i'm not a robot",
+            "pardon our interruption"
+        ]
+        
+        if len(text_content.strip()) < 1500 and any(marker in text_lower for marker in captcha_markers):
+            return True
+        return False
     
     def crawl_with_chromium(
         self,
@@ -171,53 +190,58 @@ class PageCrawler:
                         '--disable-blink-features=AutomationControlled',
                         '--disable-web-security',
                         '--disable-features=IsolateOrigins,site-per-process',
-                        '--disable-dev-shm-usage'
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu'
                     ]
                 )
                 
                 context = browser.new_context(
                     viewport={"width": 1920, "height": 1080},
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    locale='en-US',
+                    # Fix 1: Updated to current Chrome version (133, Feb 2026)
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
                     java_script_enabled=True,
                     ignore_https_errors=True,
                     bypass_csp=True,
                     extra_http_headers={
-                        "sec-ch-ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+                        "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
                         "sec-ch-ua-mobile": "?0",
                         "sec-ch-ua-platform": '"Windows"'
-                    }
+                    },
+                    # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
+                    **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
                 )
                 
-                # Apply stealth directly to context via stealth_sync instead of just page
+                # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
                 from playwright_stealth import Stealth
                 Stealth().apply_stealth_sync(context)
                 
                 page = context.new_page()
-                text_content = page.evaluate("document.body.innerText")
-                if len(text_content.strip()) > 200:
-                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
-                    return result
-                else:
-                    if self.config.use_stealth:
-                        self.browser_utils.apply_stealth(page)
-                    
-                    if self.config.use_custom_headers:
-                        self.browser_utils.set_custom_headers(page)
-                    
+                # Fix 3: stealth already applied at context level above — do NOT re-apply to page
+
+                if self.config.use_custom_headers:
+                    self.browser_utils.set_custom_headers(page)
+                
+                # Fix 2: Skip resource-blocking on protected domains (Google uses resources to fingerprint)
+                if not self.browser_utils.is_protected_domain(url):
                     page.route("**/*", self.browser_utils.block_resources)
-                    # Note: checking cloudflare on about:blank will do nothing, but let's keep it as before
-                    self.browser_utils.check_cloudflare(page, self.config)
-                    if not self.browser_utils.wait_for_ready(page):
-                        page.unroute("**/*")
-                        raise Exception("Page not ready")
                 
                 try:
                     response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
                     
-                    if not response or response.status != 200:
+                    if not response or not (200 <= response.status < 300):
                         raise Exception(f"HTTP {response.status if response else 'None'}")   
+                    
+                    # Note: check_cloudflare needs a loaded page to work correctly
+                    self.browser_utils.check_cloudflare(page, self.config)
+                    if not self.browser_utils.wait_for_ready(page):
+                        raise Exception("Page not ready")
+                        
                     # Validate content
                     text_content = page.evaluate("document.body.innerText")
+                    if self.is_captcha_page(text_content):
+                        raise Exception("CAPTCHA detected")
+                        
                     if len(text_content.strip()) < 200:
                         raise Exception(f"Content too short ({len(text_content.strip())} chars)")
                     
@@ -227,7 +251,8 @@ class PageCrawler:
                 finally:
                     # Clean up routes before closing browser to prevent async TargetClosedError/CancelledError tracebacks
                     try:
-                        page.unroute("**/*")
+                        if not self.browser_utils.is_protected_domain(url):
+                            page.unroute("**/*")
                     except Exception:
                         pass
                     # Small wait to let pending routes settle before closing context
@@ -277,31 +302,60 @@ class PageCrawler:
                         executable_path=self.config.camoufox_path,
                         headless=self.config.headless
                     )
-                elif platform.system() == "Linux":
+                else:
                     browser = p.firefox.launch(
                         headless=self.config.headless
                     )
                 
                 try:
-                    context = browser.new_context()
+                    context = browser.new_context(
+                        viewport={"width": 1920, "height": 1080},
+                        locale='en-US',
+                        # Fix 4: No user_agent override — let Camoufox (Firefox) present its native UA.
+                        # Overriding with Chrome UA on a Firefox binary creates a contradictory fingerprint.
+                        java_script_enabled=True,
+                        ignore_https_errors=True,
+                        bypass_csp=True,
+                        # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
+                        **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
+                    )
+                    
+                    # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
+                    from playwright_stealth import Stealth
+                    Stealth().apply_stealth_sync(context)
+                    
                     page = context.new_page()
+                    # Fix 3: stealth already applied at context level — do NOT re-apply to page
+
+                    if self.config.use_custom_headers:
+                        self.browser_utils.set_custom_headers(page)
+                    
+                    # Fix 2: Skip resource-blocking on protected domains (Google uses resources to fingerprint)
+                    if not self.browser_utils.is_protected_domain(url):
+                        page.route("**/*", self.browser_utils.block_resources)
                     
                     response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
                     
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     page.wait_for_timeout(4000)
                     
-                    if not response or response.status != 200:
+                    if not response or not (200 <= response.status < 300):
                         return None
                     
                     if not self.browser_utils.wait_for_ready(page):
+                        return None
+                        
+                    text_content = page.evaluate("document.body.innerText")
+                    if self.is_captcha_page(text_content):
+                        logger.warning(f"Camoufox also hit CAPTCHA for {url}")
                         return None
                     
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                     return result
                 finally:
                     try:
-                        page.unroute("**/*")
+                        if not self.browser_utils.is_protected_domain(url):
+                            page.unroute("**/*")
                     except Exception:
                         pass
                     try:
