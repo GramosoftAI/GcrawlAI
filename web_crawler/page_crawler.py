@@ -178,39 +178,48 @@ class PageCrawler:
         """Crawl page using Chromium with stealth"""
         try:
             with sync_playwright() as p:
+                browser_args = [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-infobars',
+                    '--ignore-certificate-errors',
+                    '--window-position=0,0',
+                    '--window-size=1920,1080',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ]
+                
                 browser = p.chromium.launch(
                     headless=self.config.headless,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-infobars',
-                        '--ignore-certificate-errors',
-                        '--window-position=0,0',
-                        '--window-size=1920,1080',
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-web-security',
-                        '--disable-features=IsolateOrigins,site-per-process',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu'
-                    ]
+                    args=browser_args
                 )
                 
-                context = browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
-                    locale='en-US',
+                # Prepare context options with proxy if configured
+                context_options = {
+                    "viewport": {"width": 1920, "height": 1080},
+                    "locale": 'en-US',
                     # Fix 1: Updated to current Chrome version (133, Feb 2026)
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-                    java_script_enabled=True,
-                    ignore_https_errors=True,
-                    bypass_csp=True,
-                    extra_http_headers={
+                    "user_agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+                    "java_script_enabled": True,
+                    "ignore_https_errors": True,
+                    "bypass_csp": True,
+                    "extra_http_headers": {
                         "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
                         "sec-ch-ua-mobile": "?0",
                         "sec-ch-ua-platform": '"Windows"'
-                    },
-                    # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
-                    **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
-                )
+                    }
+                }
+                
+                # Add proxy configuration if provided
+                if self.config.proxy:
+                    context_options["proxy"] = {
+                        "server": self.config.proxy
+                    }
+                
+                context = browser.new_context(**context_options)
                 
                 # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
                 from playwright_stealth import Stealth
@@ -308,17 +317,24 @@ class PageCrawler:
                     )
                 
                 try:
-                    context = browser.new_context(
-                        viewport={"width": 1920, "height": 1080},
-                        locale='en-US',
+                    # Prepare context options with proxy if configured
+                    context_options = {
+                        "viewport": {"width": 1920, "height": 1080},
+                        "locale": 'en-US',
                         # Fix 4: No user_agent override — let Camoufox (Firefox) present its native UA.
                         # Overriding with Chrome UA on a Firefox binary creates a contradictory fingerprint.
-                        java_script_enabled=True,
-                        ignore_https_errors=True,
-                        bypass_csp=True,
-                        # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
-                        **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
-                    )
+                        "java_script_enabled": True,
+                        "ignore_https_errors": True,
+                        "bypass_csp": True
+                    }
+                    
+                    # Add proxy configuration if provided
+                    if self.config.proxy:
+                        context_options["proxy"] = {
+                            "server": self.config.proxy
+                        }
+                    
+                    context = browser.new_context(**context_options)
                     
                     # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
                     from playwright_stealth import Stealth
