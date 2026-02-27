@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 @dataclass
 class CrawlConfig:
@@ -26,6 +26,9 @@ class CrawlConfig:
     # Format: "http://user:pass@proxy-host:8080" or "http://proxy-host:8080"
     # Set to None to disable proxy
     proxy: Optional[str] = None
+    
+    # Multiple proxies for rotation (if needed)
+    proxies: Optional[List[str]] = None
 
     def __post_init__(self):
         self.rebuild_paths()

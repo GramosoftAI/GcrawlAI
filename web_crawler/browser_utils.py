@@ -4,6 +4,7 @@ Browser utilities for stealth and resource management
 
 import time
 import logging
+import random
 from playwright.sync_api import Page, Route
 from web_crawler.config import CrawlConfig
 
@@ -42,7 +43,7 @@ class BrowserUtils:
             blocked_domains = [
                 "google-analytics", "gtag", "doubleclick",
                 "facebook.com/tr", "hotjar", "clarity",
-                "segment", "mixpanel"
+                "segment", "mixpanel", "googletagmanager"
             ]
             
             if any(domain in url for domain in blocked_domains):
@@ -105,7 +106,14 @@ class BrowserUtils:
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Referer': 'https://www.google.com/',
                 'Upgrade-Insecure-Requests': '1',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Sec-Ch-Ua': '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1'
             })
         except Exception as e:
             logger.warning(f"Failed to set custom headers: {e}")
