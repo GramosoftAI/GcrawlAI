@@ -52,6 +52,17 @@ class BrowserUtils:
                     pass
                 return
             
+            # Don't block essential resources for protected domains
+            protected_resources = [
+                "google.com", "gstatic.com", "googleapis.com"
+            ]
+            if any(domain in url for domain in protected_resources):
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+                return
+            
             try:
                 route.continue_()
             except Exception:
@@ -93,7 +104,8 @@ class BrowserUtils:
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Referer': 'https://www.google.com/',
-                'Upgrade-Insecure-Requests': '1'
+                'Upgrade-Insecure-Requests': '1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
             })
         except Exception as e:
             logger.warning(f"Failed to set custom headers: {e}")
@@ -102,11 +114,11 @@ class BrowserUtils:
     def wait_for_ready(page: Page) -> bool:
         """Wait for page to be ready"""
         try:
-            page.wait_for_load_state("networkidle", timeout=3000)
+            page.wait_for_load_state("networkidle", timeout=5000)
             return True
         except Exception:
             try:
-                page.wait_for_load_state("domcontentloaded", timeout=10_000)
+                page.wait_for_load_state("domcontentloaded", timeout=15000)
                 return True
             except Exception:
                 return False

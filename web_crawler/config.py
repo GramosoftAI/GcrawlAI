@@ -15,7 +15,7 @@ class CrawlConfig:
     nav_timeout: int = 60_000
 
     use_stealth: bool = True
-    simulate_human: bool = False
+    simulate_human: bool = True  # Enable human simulation by default
     use_custom_headers: bool = True
     bypass_cloudflare: bool = True
 

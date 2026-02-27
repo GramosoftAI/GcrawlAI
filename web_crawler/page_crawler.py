@@ -158,7 +158,8 @@ class PageCrawler:
             "to continue, please type the characters below",
             "about this page",
             "i'm not a robot",
-            "pardon our interruption"
+            "pardon our interruption",
+            "enable javascript on your web browser"
         ]
         
         if len(text_content.strip()) < 1500 and any(marker in text_lower for marker in captcha_markers):
@@ -189,7 +190,8 @@ class PageCrawler:
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process',
                     '--disable-dev-shm-usage',
-                    '--disable-gpu'
+                    '--disable-gpu',
+                    '--lang=en-US,en;q=0.9'
                 ]
                 
                 # Add proxy arguments if configured
@@ -217,15 +219,21 @@ class PageCrawler:
                 context_options = {
                     "viewport": {"width": 1920, "height": 1080},
                     "locale": 'en-US',
-                    # Fix 1: Updated to current Chrome version (133, Feb 2026)
+                    # Updated to current Chrome version (133, Feb 2026)
                     "user_agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
                     "java_script_enabled": True,
                     "ignore_https_errors": True,
                     "bypass_csp": True,
                     "extra_http_headers": {
-                        "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-                        "sec-ch-ua-mobile": "?0",
-                        "sec-ch-ua-platform": '"Windows"'
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "Upgrade-Insecure-Requests": "1",
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                        "Sec-Fetch-User": "?1",
+                        "Cache-Control": "max-age=0"
                     }
                 }
                 
@@ -247,41 +255,57 @@ class PageCrawler:
                 
                 context = browser.new_context(**context_options)
                 
-                # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
+                # Apply stealth at context level only
                 from playwright_stealth import Stealth
                 Stealth().apply_stealth_sync(context)
                 
                 page = context.new_page()
-                # Fix 3: stealth already applied at context level above — do NOT re-apply to page
 
                 if self.config.use_custom_headers:
                     self.browser_utils.set_custom_headers(page)
                 
-                # Fix 2: Skip resource-blocking on protected domains (Google uses resources to fingerprint)
+                # Skip resource-blocking on protected domains (Google uses resources to fingerprint)
                 if not self.browser_utils.is_protected_domain(url):
                     page.route("**/*", self.browser_utils.block_resources)
                 
-                # Set proxy authentication if needed
-                if self.config.proxy and "@" in self.config.proxy:
-                    from urllib.parse import urlparse
-                    parsed_proxy = urlparse(self.config.proxy)
-                    if parsed_proxy.username and parsed_proxy.password:
-                        def handle_route(route):
-                            # For proxy auth, we might need to handle authentication
-                            try:
-                                route.continue_()
-                            except Exception:
-                                pass
-                        
-                        page.route("**/*", handle_route)
-                
                 try:
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                    # Add random delays and human-like behavior for Google searches
+                    if "google.com" in url.lower():
+                        # Set viewport to mimic real user
+                        page.set_viewport_size({"width": 1920, "height": 1080})
+                        
+                        # Add some human-like delays
+                        import time
+                        import random
+                        
+                        # Navigate to page
+                        response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                        
+                        # Wait a bit like a human would
+                        time.sleep(random.uniform(1.5, 3.0))
+                        
+                        # Simulate mouse movement
+                        page.mouse.move(100, 100)
+                        time.sleep(0.1)
+                        page.mouse.move(200, 200)
+                        time.sleep(0.1)
+                        
+                        # Scroll slightly
+                        page.mouse.wheel(0, 100)
+                        time.sleep(0.5)
+                        
+                        # Wait for network idle
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=10000)
+                        except:
+                            pass
+                    else:
+                        response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
                     
                     if not response or not (200 <= response.status < 300):
                         raise Exception(f"HTTP {response.status if response else 'None'}")   
                     
-                    # Note: check_cloudflare needs a loaded page to work correctly
+                    # Check for Cloudflare
                     self.browser_utils.check_cloudflare(page, self.config)
                     if not self.browser_utils.wait_for_ready(page):
                         raise Exception("Page not ready")
@@ -289,7 +313,27 @@ class PageCrawler:
                     # Validate content
                     text_content = page.evaluate("document.body.innerText")
                     if self.is_captcha_page(text_content):
-                        raise Exception("CAPTCHA detected")
+                        # Try to handle Google CAPTCHA by waiting and simulating human behavior
+                        if "google.com" in url.lower():
+                            logger.info("Detected Google CAPTCHA, attempting to bypass with human-like behavior...")
+                            
+                            # Wait longer and simulate more human behavior
+                            import time
+                            import random
+                            
+                            # Wait for CAPTCHA to potentially resolve
+                            time.sleep(random.uniform(3.0, 5.0))
+                            
+                            # Try to reload the page
+                            page.reload(wait_until="domcontentloaded", timeout=30000)
+                            time.sleep(random.uniform(2.0, 4.0))
+                            
+                            # Check again
+                            text_content = page.evaluate("document.body.innerText")
+                            if self.is_captcha_page(text_content):
+                                raise Exception("Google CAPTCHA detected - unable to bypass. Consider using a proxy or reducing request frequency.")
+                        else:
+                            raise Exception("CAPTCHA detected")
                         
                     if len(text_content.strip()) < 200:
                         raise Exception(f"Content too short ({len(text_content.strip())} chars)")
@@ -362,7 +406,8 @@ class PageCrawler:
                         "network.proxy.socks": parsed_proxy.hostname,
                         "network.proxy.socks_port": parsed_proxy.port or 8080,
                         "network.proxy.share_proxy_settings": True,
-                        "network.proxy.no_proxies_on": ""
+                        "network.proxy.no_proxies_on": "",
+                        "intl.accept_languages": "en-US,en;q=0.9"
                     }
                     
                     # Handle proxy authentication
@@ -389,7 +434,7 @@ class PageCrawler:
                     context_options = {
                         "viewport": {"width": 1920, "height": 1080},
                         "locale": 'en-US',
-                        # Fix 4: No user_agent override — let Camoufox (Firefox) present its native UA.
+                        # No user_agent override — let Camoufox (Firefox) present its native UA.
                         # Overriding with Chrome UA on a Firefox binary creates a contradictory fingerprint.
                         "java_script_enabled": True,
                         "ignore_https_errors": True,
@@ -414,21 +459,45 @@ class PageCrawler:
                     
                     context = browser.new_context(**context_options)
                     
-                    # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
+                    # Apply stealth at context level only
                     from playwright_stealth import Stealth
                     Stealth().apply_stealth_sync(context)
                     
                     page = context.new_page()
-                    # Fix 3: stealth already applied at context level — do NOT re-apply to page
 
                     if self.config.use_custom_headers:
                         self.browser_utils.set_custom_headers(page)
                     
-                    # Fix 2: Skip resource-blocking on protected domains (Google uses resources to fingerprint)
+                    # Skip resource-blocking on protected domains (Google uses resources to fingerprint)
                     if not self.browser_utils.is_protected_domain(url):
                         page.route("**/*", self.browser_utils.block_resources)
                     
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                    # Add human-like behavior for Google searches
+                    if "google.com" in url.lower():
+                        import time
+                        import random
+                        
+                        response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                        
+                        # Wait like a human
+                        time.sleep(random.uniform(1.5, 3.0))
+                        
+                        # Simulate mouse movement
+                        page.mouse.move(100, 100)
+                        time.sleep(0.1)
+                        page.mouse.move(200, 200)
+                        time.sleep(0.1)
+                        
+                        # Scroll slightly
+                        page.mouse.wheel(0, 100)
+                        time.sleep(0.5)
+                        
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=10000)
+                        except:
+                            pass
+                    else:
+                        response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
                     
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     page.wait_for_timeout(4000)
@@ -442,7 +511,22 @@ class PageCrawler:
                     text_content = page.evaluate("document.body.innerText")
                     if self.is_captcha_page(text_content):
                         logger.warning(f"Camoufox also hit CAPTCHA for {url}")
-                        return None
+                        # For Google searches, try additional human-like behavior
+                        if "google.com" in url.lower():
+                            import time
+                            import random
+                            
+                            logger.info("Attempting to bypass Google CAPTCHA with Camoufox...")
+                            time.sleep(random.uniform(3.0, 5.0))
+                            page.reload(wait_until="domcontentloaded", timeout=30000)
+                            time.sleep(random.uniform(2.0, 4.0))
+                            
+                            text_content = page.evaluate("document.body.innerText")
+                            if self.is_captcha_page(text_content):
+                                logger.warning(f"Still getting CAPTCHA with Camoufox for {url}")
+                                return None
+                        else:
+                            return None
                     
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                     return result
