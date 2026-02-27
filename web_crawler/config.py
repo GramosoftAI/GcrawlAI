@@ -10,7 +10,7 @@ class CrawlConfig:
     max_workers: int = 8
     timezone: str = "Asia/Kolkata"
 
-    headless: bool = True
+    headless: bool = False
     page_timeout: int = 30_000
     nav_timeout: int = 60_000
 
