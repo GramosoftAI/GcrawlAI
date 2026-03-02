@@ -912,6 +912,11 @@ async def get_current_user_info(
 async def crawl_ws(websocket: WebSocket, crawl_id: str):
     await websocket.accept()
 
+    # Safe defaults — always defined even if the DB query below fails
+    crawl_mode = "all"
+    found_completion_event = False
+    replayed_event_types: set = set()  # track events already sent during replay phase
+
     # 1. Check DB for job info and historical events (replay progress)
     try:
         conn = get_db_connection()
@@ -935,7 +940,6 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
         )
         events = cur.fetchall()
         
-        found_completion_event = False
         for event in events:
             event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx = event
             
@@ -945,6 +949,8 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                 "title": title
             }
             
+            replayed_event_types.add(event_type)
+
             if event_type == "page_processed":
                 payload.update({
                     "markdown_file": markdown_file,
@@ -1013,6 +1019,17 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                 continue
 
             data = message["data"]
+
+            # Skip events we already sent during the DB replay phase to avoid duplicates
+            try:
+                msg_type = json.loads(data).get("type")
+                if msg_type and msg_type in replayed_event_types:
+                    logger.debug(f"Skipping already-replayed event type '{msg_type}' for crawl_id={crawl_id}")
+                    replayed_event_types.discard(msg_type)  # only skip the first occurrence
+                    continue
+            except Exception:
+                pass
+
             await websocket.send_text(data)
 
             # 🔥 PERSIST EVENT AND CLOSE IF COMPLETED
@@ -1040,38 +1057,54 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                         except Exception as e:
                             logger.error(f"Error updating completion timestamp: {e}")
 
-                    # Store event in crawl_events (respecting user request for 'all' mode)
-                    if event_type == "crawl_completed" and crawl_mode == "all":
-                        # User wants to avoid storing completion message for 'all' mode in crawl_events table
-                        logger.info(f"Skipping crawl_events storage for 'all' mode completion: {crawl_id}")
-                    else:
-                        conn_ev = get_db_connection()
-                        cur_ev = conn_ev.cursor()
-                        
-                        # Note: ON CONFLICT handles duplicates for file paths as requested
+                    # Persist event to crawl_events for replay on reconnect
+                    conn_ev = get_db_connection()
+                    cur_ev = conn_ev.cursor()
+                    try:
                         cur_ev.execute(
                             """
                             INSERT INTO crawl_events 
                             (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                            ON CONFLICT (crawl_id, markdown_file) DO NOTHING
                             """,
                             (
-                                crawl_id, 
-                                event_type, 
-                                payload.get("url"), 
+                                crawl_id,
+                                event_type,
+                                payload.get("url"),
                                 payload.get("title"),
                                 payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                payload.get("html_file"), 
+                                payload.get("html_file"),
                                 payload.get("screenshot"),
-                                payload.get("seo_json"), 
-                                payload.get("seo_md"), 
+                                payload.get("seo_json"),
+                                payload.get("seo_md"),
                                 payload.get("seo_xlsx")
                             )
                         )
                         conn_ev.commit()
-                        cur_ev.close()
-                        conn_ev.close()
+                    except Exception:
+                        # Row exists — update file paths
+                        conn_ev.rollback()
+                        cur_ev.execute(
+                            """
+                            UPDATE crawl_events SET
+                                markdown_file = %s, html_file = %s, screenshot = %s,
+                                seo_json = %s, seo_md = %s, seo_xlsx = %s
+                            WHERE crawl_id = %s AND url = %s
+                            """,
+                            (
+                                payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
+                                payload.get("html_file"),
+                                payload.get("screenshot"),
+                                payload.get("seo_json"),
+                                payload.get("seo_md"),
+                                payload.get("seo_xlsx"),
+                                crawl_id,
+                                payload.get("url"),
+                            )
+                        )
+                        conn_ev.commit()
+                    cur_ev.close()
+                    conn_ev.close()
 
                 if event_type == "crawl_completed":
                     logger.info(f"🔌 Closing WebSocket for crawl_id={crawl_id}")
@@ -1092,3 +1125,126 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
         except Exception:
             pass 
         logger.info(f"✅ WebSocket closed for crawl_id={crawl_id}")
+
+
+# ================= REPORT ISSUE =================
+
+from api.email_service import EmailService
+from psycopg2.extras import execute_values
+
+
+class ReportIssueRequest(BaseModel):
+    url_affected: str
+    issue_related_to: List[str]
+    explanation: str
+
+    @field_validator("url_affected")
+    @classmethod
+    def url_must_not_be_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("url_affected must not be empty")
+        return v
+
+    @field_validator("issue_related_to")
+    @classmethod
+    def issues_must_not_be_empty(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("issue_related_to must contain at least one item")
+        return [item.strip() for item in v if item.strip()]
+
+    @field_validator("explanation")
+    @classmethod
+    def explanation_must_not_be_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("explanation must not be empty")
+        return v
+
+
+class ReportIssueResponse(BaseModel):
+    status_code: int = 201
+    status: str = "success"
+    message: str
+    report_id: Optional[int] = None
+    email_sent: bool = False
+
+
+@app.post("/report-issue", response_model=ReportIssueResponse, status_code=201, tags=["Report Issue"])
+def report_issue(payload: ReportIssueRequest):
+    """
+    Submit an issue report.
+
+    Stores the report in the `reported_issues` PostgreSQL table and
+    sends an HTML notification email to the admin via the existing SMTP service.
+
+    **Request body:**
+    ```json
+    {
+        "url_affected": "https://example.com/page",
+        "issue_related_to": ["Broken links", "Slow response"],
+        "explanation": "The page times out after 30 seconds."
+    }
+    ```
+    """
+    try:
+        # 1. Persist to DB
+        report_id = None
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO reported_issues (url_affected, issue_related_to, explanation)
+                VALUES (%s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    payload.url_affected,
+                    payload.issue_related_to,   # psycopg2 maps Python list → TEXT[]
+                    payload.explanation,
+                )
+            )
+            row = cur.fetchone()
+            report_id = row[0] if row else None
+            conn.commit()
+            cur.close()
+
+        logger.info(f"✓ Issue report #{report_id} stored in DB")
+
+        # 2. Send admin email
+        config = load_config()
+        smtp_config = config.get("email", {})
+
+        # Admin email: prefer ADMIN_EMAIL env var, fall back to EMAIL_FROM
+        admin_email = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
+
+        email_sent = False
+        if admin_email:
+            try:
+                email_service = EmailService(smtp_config)
+                email_sent = email_service.send_report_issue_email(
+                    to_email=admin_email,
+                    url_affected=payload.url_affected,
+                    issue_related_to=payload.issue_related_to,
+                    explanation=payload.explanation,
+                    report_id=report_id,
+                )
+            except Exception as email_err:
+                logger.warning(f"⚠ Could not send admin email for report #{report_id}: {email_err}")
+        else:
+            logger.warning("⚠ ADMIN_EMAIL not configured; skipping admin notification email.")
+
+        return ReportIssueResponse(
+            status_code=201,
+            status="success",
+            message="Issue reported successfully. Thank you for your feedback!",
+            report_id=report_id,
+            email_sent=email_sent,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating issue report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to submit issue report: {str(e)}")
+

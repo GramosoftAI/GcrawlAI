@@ -85,6 +85,7 @@ class WebCrawler:
                 enable_seo=enable_seo,
                 client_id=client_id,
                 websocket_manager=websocket_manager,
+                crawl_mode=crawl_mode,
             )
 
             elapsed = perf_counter() - start_perf
@@ -146,6 +147,7 @@ class WebCrawler:
                     enable_seo,
                     client_id,
                     websocket_manager,
+                    crawl_mode=crawl_mode,
                 )
 
                 if not result:

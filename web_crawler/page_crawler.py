@@ -6,6 +6,9 @@ import logging
 import asyncio
 import sys
 import json
+import os
+import re
+import yaml
 from typing import Optional, Dict
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
@@ -26,6 +29,140 @@ from web_crawler.redis_events import publish_event
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_db_conn():
+    """
+    Open and return a short-lived, standalone psycopg2 connection.
+    Reads config.yaml the same way _record_failed_page does.
+    Raises on failure — callers should catch.
+    """
+    import psycopg2
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    config_path = Path(__file__).resolve().parent.parent / "config.yaml"
+
+    def _substitute(data):
+        if isinstance(data, dict):
+            return {k: _substitute(v) for k, v in data.items()}
+        if isinstance(data, str):
+            def _rep(m):
+                return os.getenv(m.group(1), m.group(2) or "")
+            return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', _rep, data)
+        return data
+
+    with open(config_path, "r") as f:
+        cfg = _substitute(yaml.safe_load(f))
+
+    db = cfg.get("postgres", {})
+    return psycopg2.connect(
+        host=db.get("host", "localhost"),
+        port=db.get("port", 5432),
+        database=db.get("database", "crawlerdb"),
+        user=db.get("user", "postgres"),
+        password=db.get("password", ""),
+    )
+
+
+def _record_failed_page(
+    url: str,
+    crawl_id: Optional[str],
+    crawl_mode: str,
+    page_number: int,
+) -> None:
+    """
+    Insert a row into failed_crawl_pages when all browsers fail for a URL.
+    Uses a short-lived, standalone psycopg2 connection so it is safe to call
+    from background threads that do not share the main API connection pool.
+    Silently logs and ignores any DB error to avoid masking the original failure.
+    """
+    try:
+        conn = _get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO failed_crawl_pages (crawl_id, url, crawl_mode, page_number)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (crawl_id, url, crawl_mode, page_number),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(f"✓ Failure recorded in DB for: {url} (crawl_id={crawl_id})")
+    except Exception as db_err:
+        logger.warning(f"⚠ Could not record failed page in DB for {url}: {db_err}")
+
+
+def _persist_crawl_event(
+    crawl_id: Optional[str],
+    url: str,
+    title: Optional[str],
+    markdown_file: Optional[str],
+    html_file: Optional[str],
+    screenshot: Optional[str],
+    seo_json: Optional[str],
+    seo_md: Optional[str],
+    seo_xlsx: Optional[str],
+) -> None:
+    """
+    Persist a page_processed event directly into crawl_events.
+
+    This is the source-of-truth write path for crawl events — it runs inside
+    the crawler worker itself (not via the WebSocket handler) so events are
+    always stored even when the frontend WebSocket connects after the crawl
+    finishes (e.g. Celery all-mode crawls).
+
+    Uses a short-lived standalone connection safe for background threads.
+    Errors are logged and silently ignored so crawl output is never affected.
+    """
+    if not crawl_id:
+        return
+    try:
+        conn = _get_db_conn()
+        cur = conn.cursor()
+        try:
+            # Try INSERT first
+            cur.execute(
+                """
+                INSERT INTO crawl_events
+                    (crawl_id, event_type, url, title,
+                     markdown_file, html_file, screenshot,
+                     seo_json, seo_md, seo_xlsx)
+                VALUES (%s, 'page_processed', %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (crawl_id, url, title,
+                 markdown_file, html_file, screenshot,
+                 seo_json, seo_md, seo_xlsx),
+            )
+            conn.commit()
+        except Exception:
+            # Row already exists — UPDATE the file paths instead
+            conn.rollback()
+            cur.execute(
+                """
+                UPDATE crawl_events SET
+                    title         = %s,
+                    markdown_file = %s,
+                    html_file     = %s,
+                    screenshot    = %s,
+                    seo_json      = %s,
+                    seo_md        = %s,
+                    seo_xlsx      = %s
+                WHERE crawl_id = %s AND url = %s
+                """,
+                (title, markdown_file, html_file, screenshot,
+                 seo_json, seo_md, seo_xlsx,
+                 crawl_id, url),
+            )
+            conn.commit()
+        cur.close()
+        conn.close()
+        logger.info(f"✓ crawl_events persisted for: {url} (crawl_id={crawl_id})")
+    except Exception as db_err:
+        logger.warning(f"⚠ Could not persist crawl event for {url}: {db_err}")
+
 
 
 class PageCrawler:
@@ -125,6 +262,19 @@ class PageCrawler:
                         "seo_md": seo_md_path,
                         "seo_xlsx": seo_xlsx_path,
                     }
+                )
+                # Also persist directly to DB so /crawler/paths/ works even
+                # when the WebSocket is not connected (e.g. Celery all-mode).
+                _persist_crawl_event(
+                    crawl_id=client_id,
+                    url=url,
+                    title=seo.get("title"),
+                    markdown_file=str(md_path) if md_path else None,
+                    html_file=html_path,
+                    screenshot=screenshot_path,
+                    seo_json=seo_json_path,
+                    seo_md=seo_md_path,
+                    seo_xlsx=seo_xlsx_path,
                 )
 
             
@@ -393,7 +543,8 @@ class PageCrawler:
         enable_ss: bool,
         enable_seo: bool,
         client_id: Optional[str],
-        websocket_manager
+        websocket_manager,
+        crawl_mode: str = "all",
     ) -> Optional[Dict]:
         """Crawl a single page with fallback browsers"""
         logger.info(f"Crawling [{count}]: {url}")
@@ -420,6 +571,13 @@ class PageCrawler:
             logger.info(f"Camoufox success: {url}")
         else:
             logger.error(f"All browsers failed for: {url}")
+            # Record the failure in the DB so operators can review it
+            _record_failed_page(
+                url=url,
+                crawl_id=client_id,
+                crawl_mode=crawl_mode,
+                page_number=count,
+            )
         
         return result
 
