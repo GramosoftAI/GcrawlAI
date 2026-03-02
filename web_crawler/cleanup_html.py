@@ -73,8 +73,10 @@ def cleanup_html(html_content: str, base_url: str) -> str:
 
     script_content = extract_from_script_tags(soup)
 
-    for tag in soup.find_all("style"):
-        tag.extract()
+    # Strip tags that inflate HTML size and are irrelevant for markdown conversion
+    for tag_name in ("style", "script", "noscript", "iframe", "svg", "form"):
+        for tag in soup.find_all(tag_name):
+            tag.extract()
 
     link_urls = [
         urljoin(base_url, link["href"]) for link in soup.find_all("a", href=True)

@@ -244,89 +244,41 @@ class PageCrawler:
         """Crawl page using Chromium with stealth"""
         try:
             with sync_playwright() as p:
-                browser_args = [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-infobars',
-                    '--ignore-certificate-errors',
-                    '--window-position=0,0',
-                    '--window-size=1920,1080',
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--lang=en-US,en;q=0.9',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-extensions',
-                    '--disable-plugins',
-                    '--disable-plugins-discovery',
-                    '--disable-default-apps'
-                ]
-                
-                # Add proxy arguments if configured
-                if self.config.proxy:
-                    proxy_url = self.config.proxy
-                    if "@" in proxy_url:
-                        # Extract credentials from proxy URL
-                        # Format: http://user:pass@host:port
-                        protocol_host_port = proxy_url.split("@")[-1]
-                        browser_args.extend([
-                            f'--proxy-server={protocol_host_port}'
-                        ])
-                    else:
-                        # Format: http://host:port
-                        browser_args.extend([
-                            f'--proxy-server={proxy_url}'
-                        ])
-                
                 browser = p.chromium.launch(
                     headless=self.config.headless,
-                    args=browser_args
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-infobars',
+                        '--ignore-certificate-errors',
+                        '--window-position=0,0',
+                        '--window-size=1920,1080',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-web-security',
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--disable-extensions',
+                        '--disable-background-networking'
+                    ]
                 )
                 
-                # Prepare context options with proxy if configured
-                context_options = {
-                    "viewport": {"width": random.randint(1200, 1920), "height": random.randint(800, 1080)},
-                    "locale": 'en-US',
-                    # Updated to current Chrome version (133, Feb 2026)
-                    "user_agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-                    "java_script_enabled": True,
-                    "ignore_https_errors": True,
-                    "bypass_csp": True,
-                    "extra_http_headers": {
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                        "Accept-Language": "en-US,en;q=0.9",
-                        "Accept-Encoding": "gzip, deflate, br",
-                        "Upgrade-Insecure-Requests": "1",
-                        "Sec-Fetch-Dest": "document",
-                        "Sec-Fetch-Mode": "navigate",
-                        "Sec-Fetch-Site": "none",
-                        "Sec-Fetch-User": "?1",
-                        "Cache-Control": "max-age=0"
-                    }
-                }
-                
-                # Add proxy configuration if provided
-                if self.config.proxy:
-                    # Parse proxy URL to extract components
-                    from urllib.parse import urlparse
-                    parsed_proxy = urlparse(self.config.proxy)
-                    
-                    proxy_config = {
-                        "server": f"{parsed_proxy.scheme}://{parsed_proxy.hostname}:{parsed_proxy.port or 8080}"
-                    }
-                    
-                    if parsed_proxy.username and parsed_proxy.password:
-                        proxy_config["username"] = parsed_proxy.username
-                        proxy_config["password"] = parsed_proxy.password
-                    
-                    context_options["proxy"] = proxy_config
-                
-                context = browser.new_context(**context_options)
+                context = browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    locale='en-US',
+                    # Fix 1: Updated to current Chrome version (133, Feb 2026)
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+                    java_script_enabled=True,
+                    ignore_https_errors=True,
+                    bypass_csp=True,
+                    extra_http_headers={
+                        "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": '"Windows"'
+                    },
+                    # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
+                    **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
+                )
                 
                 # Apply stealth at context level only
                 from playwright_stealth import Stealth
