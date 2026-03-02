@@ -964,12 +964,11 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                 found_completion_event = True
                 
                 try:
-                    conn_job = get_db_connection()
-                    cur_job = conn_job.cursor()
-                    cur_job.execute("SELECT links_file_path, summary_file_path FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
-                    job_paths = cur_job.fetchone()
-                    cur_job.close()
-                    conn_job.close()
+                    with get_pooled_connection() as conn_job:
+                        cur_job = conn_job.cursor()
+                        cur_job.execute("SELECT links_file_path, summary_file_path FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+                        job_paths = cur_job.fetchone()
+                        cur_job.close()
                     
                     if job_paths:
                         payload["links_file_path"] = job_paths[0]
@@ -1045,66 +1044,66 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                             links_file_path = payload.get("links_file_path") or summary_data.get("links_file_path")
                             summary_file_path = payload.get("summary_file_path") or summary_data.get("summary_file_path")
 
-                            conn_job = get_db_connection()
-                            cur_job = conn_job.cursor()
-                            cur_job.execute(
-                                "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
-                                (datetime.now(), links_file_path, summary_file_path, crawl_id)
-                            )
-                            conn_job.commit()
-                            cur_job.close()
-                            conn_job.close()
+                            with get_pooled_connection() as conn_job:
+                                cur_job = conn_job.cursor()
+                                cur_job.execute(
+                                    "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
+                                    (datetime.now(), links_file_path, summary_file_path, crawl_id)
+                                )
+                                conn_job.commit()
+                                cur_job.close()
                         except Exception as e:
                             logger.error(f"Error updating completion timestamp: {e}")
 
                     # Persist event to crawl_events for replay on reconnect
-                    conn_ev = get_db_connection()
-                    cur_ev = conn_ev.cursor()
                     try:
-                        cur_ev.execute(
-                            """
-                            INSERT INTO crawl_events 
-                            (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                            """,
-                            (
-                                crawl_id,
-                                event_type,
-                                payload.get("url"),
-                                payload.get("title"),
-                                payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                payload.get("html_file"),
-                                payload.get("screenshot"),
-                                payload.get("seo_json"),
-                                payload.get("seo_md"),
-                                payload.get("seo_xlsx")
-                            )
-                        )
-                        conn_ev.commit()
-                    except Exception:
-                        # Row exists — update file paths
-                        conn_ev.rollback()
-                        cur_ev.execute(
-                            """
-                            UPDATE crawl_events SET
-                                markdown_file = %s, html_file = %s, screenshot = %s,
-                                seo_json = %s, seo_md = %s, seo_xlsx = %s
-                            WHERE crawl_id = %s AND url = %s
-                            """,
-                            (
-                                payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                payload.get("html_file"),
-                                payload.get("screenshot"),
-                                payload.get("seo_json"),
-                                payload.get("seo_md"),
-                                payload.get("seo_xlsx"),
-                                crawl_id,
-                                payload.get("url"),
-                            )
-                        )
-                        conn_ev.commit()
-                    cur_ev.close()
-                    conn_ev.close()
+                        with get_pooled_connection() as conn_ev:
+                            cur_ev = conn_ev.cursor()
+                            try:
+                                cur_ev.execute(
+                                    """
+                                    INSERT INTO crawl_events 
+                                    (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                                    """,
+                                    (
+                                        crawl_id,
+                                        event_type,
+                                        payload.get("url"),
+                                        payload.get("title"),
+                                        payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
+                                        payload.get("html_file"),
+                                        payload.get("screenshot"),
+                                        payload.get("seo_json"),
+                                        payload.get("seo_md"),
+                                        payload.get("seo_xlsx")
+                                    )
+                                )
+                                conn_ev.commit()
+                            except Exception:
+                                conn_ev.rollback()
+                                cur_ev.execute(
+                                    """
+                                    UPDATE crawl_events SET
+                                        markdown_file = %s, html_file = %s, screenshot = %s,
+                                        seo_json = %s, seo_md = %s, seo_xlsx = %s
+                                    WHERE crawl_id = %s AND url = %s
+                                    """,
+                                    (
+                                        payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
+                                        payload.get("html_file"),
+                                        payload.get("screenshot"),
+                                        payload.get("seo_json"),
+                                        payload.get("seo_md"),
+                                        payload.get("seo_xlsx"),
+                                        crawl_id,
+                                        payload.get("url"),
+                                    )
+                                )
+                                conn_ev.commit()
+                            cur_ev.close()
+                    except Exception as ev_err:
+                        logger.error(f"Error persisting event to crawl_events: {ev_err}")
 
                 if event_type == "crawl_completed":
                     logger.info(f"🔌 Closing WebSocket for crawl_id={crawl_id}")
@@ -1137,6 +1136,7 @@ class ReportIssueRequest(BaseModel):
     url_affected: str
     issue_related_to: List[str]
     explanation: str
+    email: Optional[str] = None
 
     @field_validator("url_affected")
     @classmethod
@@ -1160,6 +1160,16 @@ class ReportIssueRequest(BaseModel):
         if not v:
             raise ValueError("explanation must not be empty")
         return v
+
+    @field_validator("email")
+    @classmethod
+    def email_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if v and "@" not in v:
+            raise ValueError("email must be a valid email address")
+        return v or None
 
 
 class ReportIssueResponse(BaseModel):
@@ -1194,14 +1204,15 @@ def report_issue(payload: ReportIssueRequest):
             cur = conn.cursor()
             cur.execute(
                 """
-                INSERT INTO reported_issues (url_affected, issue_related_to, explanation)
-                VALUES (%s, %s, %s)
+                INSERT INTO reported_issues (url_affected, issue_related_to, explanation, email)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
                     payload.url_affected,
-                    payload.issue_related_to,   # psycopg2 maps Python list → TEXT[]
+                    payload.issue_related_to,
                     payload.explanation,
+                    payload.email,
                 )
             )
             row = cur.fetchone()

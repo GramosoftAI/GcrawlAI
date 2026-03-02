@@ -362,8 +362,21 @@ class DatabaseSetup:
             url_affected TEXT NOT NULL,
             issue_related_to TEXT[] NOT NULL,
             explanation TEXT NOT NULL,
+            email TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Migrate existing tables: add email column if it doesn't exist
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'reported_issues' AND column_name = 'email'
+            ) THEN
+                ALTER TABLE reported_issues ADD COLUMN email TEXT;
+            END IF;
+        END;
+        $$;
 
         CREATE INDEX IF NOT EXISTS idx_reported_issues_created_at ON reported_issues(created_at);
         """
