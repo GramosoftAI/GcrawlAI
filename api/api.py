@@ -918,10 +918,10 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
     replayed_event_types: set = set()  # track events already sent during replay phase
 
     # 1. Check DB for job info and historical events (replay progress)
+    conn = None
     try:
         conn = get_db_connection()
-        try:
-            cur = conn.cursor()
+        cur = conn.cursor()
         
         # Get crawl mode and completion status
         cur.execute("SELECT crawl_mode, updated_at FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
@@ -998,9 +998,7 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
             found_completion_event = True
 
         cur.close()
-        finally:
-            _db_pool.putconn(conn)
-            
+        
         # If completed, we can close immediately
         if found_completion_event:
             logger.info(f"📜 Replayed finished crawl for {crawl_id}. Closing.")
@@ -1009,6 +1007,12 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
 
     except Exception as e:
         logger.error(f"Error replaying historical events: {e}")
+    finally:
+        if conn:
+            try:
+                _db_pool.putconn(conn)
+            except Exception:
+                pass
 
     # 2. Otherwise subscribe for live updates
     pubsub = redis_client_async.pubsub()
