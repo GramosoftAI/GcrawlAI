@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 from api.email_service import EmailService
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

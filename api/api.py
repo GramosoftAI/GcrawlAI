@@ -35,7 +35,7 @@ import yaml
 from pathlib import Path
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 _CONFIG = None
 

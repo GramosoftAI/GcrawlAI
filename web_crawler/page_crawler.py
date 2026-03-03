@@ -39,7 +39,7 @@ def _get_db_conn():
     """
     import psycopg2
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(override=True)
 
     config_path = Path(__file__).resolve().parent.parent / "config.yaml"
 
