@@ -425,7 +425,7 @@ class AuthManager:
             
             conn.commit()
             cursor.close()
-            conn.close()
+            self._return_db_connection(conn)
             
             # Send OTP email if email service is configured
             if self.email_service:
@@ -724,7 +724,7 @@ class AuthManager:
             user = cursor.fetchone()
             
             cursor.close()
-            conn.close()
+            self._return_db_connection(conn)
             
             if not user:
                 logger.warning(f"[FAILED] Password reset requested for non-existent user: {email}")

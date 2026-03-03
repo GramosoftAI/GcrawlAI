@@ -920,7 +920,8 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
     # 1. Check DB for job info and historical events (replay progress)
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
+        try:
+            cur = conn.cursor()
         
         # Get crawl mode and completion status
         cur.execute("SELECT crawl_mode, updated_at FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
@@ -997,8 +998,9 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
             found_completion_event = True
 
         cur.close()
-        conn.close()
-        
+        finally:
+            _db_pool.putconn(conn)
+            
         # If completed, we can close immediately
         if found_completion_event:
             logger.info(f"📜 Replayed finished crawl for {crawl_id}. Closing.")
