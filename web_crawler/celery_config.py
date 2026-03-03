@@ -32,13 +32,19 @@ celery_app.conf.update(
     
     # Result backend settings
     result_expires=3600,  # Results expire after 1 hour
+    result_extended=True,  # Include start time and runtime metadata in results
     result_backend_transport_options={
         'master_name': 'mymaster'
     },
     
     # Worker settings
-    worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (prevent memory leaks)
+    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks (prevent memory leaks)
     worker_disable_rate_limits=True,
+    
+    # Resilience — auto-retry broker connection on startup
+    broker_connection_retry_on_startup=True,
+    # Cancel long-running tasks if broker connection is lost
+    worker_cancel_long_running_tasks_on_connection_loss=True,
     
     # Task routing (optional - for multiple queues)
     task_routes={

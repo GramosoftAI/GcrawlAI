@@ -233,14 +233,16 @@ class JWTManager:
 class AuthManager:
     """Manages user authentication, registration, and password reset operations"""
     
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.yaml", db_pool=None):
         """
         Initialize authentication manager
         
         Args:
             config_path: Path to configuration file
+            db_pool: Optional psycopg2 SimpleConnectionPool to reuse connections
         """
         self.config = self._load_config(config_path)
+        self._db_pool = db_pool
         
         # Load database configuration
         self.db_config = self.config.get('postgres', {})
@@ -342,12 +344,15 @@ class AuthManager:
     
     def _get_db_connection(self):
         """
-        Create and return a database connection
+        Get a database connection from the pool (if available) or create a new one.
         
         Returns:
             psycopg2 connection object
         """
         try:
+            if self._db_pool:
+                return self._db_pool.getconn()
+            
             conn = psycopg2.connect(
                 host=self.db_config.get('host'),
                 port=self.db_config.get('port'),
@@ -360,6 +365,16 @@ class AuthManager:
         except psycopg2.Error as e:
             logger.error(f"Database connection error: {e}", exc_info=True)
             raise ValueError(f"Database connection failed: {str(e)}")
+    
+    def _return_db_connection(self, conn):
+        """Return a connection to the pool, or close it if no pool is available."""
+        try:
+            if self._db_pool:
+                self._db_pool.putconn(conn)
+            else:
+                conn.close()
+        except Exception:
+            pass
     
     def generate_signup_otp(self, name: str, email: str, password: str) -> Tuple[bool, str, Optional[str]]:
         """
@@ -381,7 +396,7 @@ class AuthManager:
             cursor.execute("SELECT user_id FROM users WHERE email = %s", (email.lower(),))
             if cursor.fetchone():
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] OTP generation failed: User already exists for {email}")
                 return False, "User already exists with this email", None, 409
             
@@ -463,7 +478,7 @@ class AuthManager:
             
             if not otp_record:
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] OTP verification failed: No OTP found for {email}")
                 return {
                     'success': False,
@@ -474,7 +489,7 @@ class AuthManager:
             # Check if OTP has expired
             if datetime.now() > otp_record['expires_at']:
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] OTP expired for {email}")
                 return {
                     'success': False,
@@ -485,7 +500,7 @@ class AuthManager:
             # Check if max attempts exceeded
             if otp_record['attempts'] >= 3:
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] OTP verification failed: Max attempts exceeded for {email}")
                 return {
                     'success': False,
@@ -501,7 +516,7 @@ class AuthManager:
                 """, (email.lower(),))
                 conn.commit()
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] OTP verification failed: Invalid OTP for {email}")
                 return {
                     'success': False,
@@ -611,7 +626,7 @@ class AuthManager:
             
             if not user:
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] Sign-in failed: User not found for {email}")
                 return {
                     'success': False,
@@ -624,7 +639,7 @@ class AuthManager:
                 password, user['password_hash'], user['password_salt']
             ):
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] Sign-in failed: Invalid password for {email}")
                 return {
                     'success': False,
@@ -634,7 +649,7 @@ class AuthManager:
             
             if not user['is_active']:
                 cursor.close()
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] Sign-in failed: Account is not active for {email}")
                 return {
                     'success': False,
@@ -799,7 +814,7 @@ class AuthManager:
             """, (hashed_password, salt, datetime.now(), email.lower()))
             
             if cursor.rowcount == 0:
-                conn.close()
+                self._return_db_connection(conn)
                 logger.warning(f"[FAILED] User not found for password reset: {email}")
                 return False, "User not found", 404
             

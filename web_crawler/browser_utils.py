@@ -27,22 +27,85 @@ class BrowserUtils:
         return any(d in url.lower() for d in protected)
 
     @staticmethod
+    def make_resource_blocker(block_images: bool = False, block_css: bool = False):
+        """
+        Factory that returns a route handler with configurable blocking.
+        
+        Args:
+            block_images: Block image resource types (safe when screenshots are disabled)
+            block_css: Block CSS stylesheets (safe when screenshots are disabled)
+        """
+        def _block_resources(route: Route) -> None:
+            try:
+                resource_type = route.request.resource_type
+                url = route.request.url.lower()
+                
+                # Always block fonts and media
+                if resource_type in ("font", "media"):
+                    route.abort()
+                    return
+                
+                # Conditionally block images
+                if block_images and resource_type == "image":
+                    route.abort()
+                    return
+                
+                # Conditionally block CSS
+                if block_css and resource_type == "stylesheet":
+                    route.abort()
+                    return
+                
+                # Block analytics, tracking, and ad networks
+                blocked_domains = [
+                    "google-analytics", "gtag", "doubleclick",
+                    "facebook.com/tr", "hotjar", "clarity",
+                    "segment", "mixpanel",
+                    "optimizely", "intercom", "crisp.chat",
+                    "drift.com", "tawk.to", "zendesk",
+                    "hubspot", "pardot", "marketo",
+                    "outbrain", "taboola", "adroll",
+                    "quantserve", "scorecardresearch", "comscore",
+                    "newrelic", "datadoghq", "sentry.io",
+                ]
+                
+                if any(domain in url for domain in blocked_domains):
+                    try: 
+                        route.abort()
+                    except Exception:
+                        pass
+                    return
+                
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+            except Exception:
+                # Ignore errors such as TargetClosedError or CancelledError
+                pass
+        
+        return _block_resources
+
+    @staticmethod
     def block_resources(route: Route) -> None:
-        """Block unnecessary resources for faster loading"""
+        """Legacy static method — blocks fonts, media, and trackers only."""
         try:
             resource_type = route.request.resource_type
             url = route.request.url.lower()
             
-            # Block fonts and media
             if resource_type in ("font", "media"):
                 route.abort()
                 return
             
-            # Block analytics and tracking
             blocked_domains = [
                 "google-analytics", "gtag", "doubleclick",
                 "facebook.com/tr", "hotjar", "clarity",
-                "segment", "mixpanel"
+                "segment", "mixpanel",
+                "optimizely", "intercom", "crisp.chat",
+                "drift.com", "tawk.to", "zendesk",
+                "hubspot", "pardot", "marketo",
+                "outbrain", "taboola", "adroll",
+                "quantserve", "scorecardresearch", "comscore",
+                "newrelic", "datadoghq", "sentry.io",
             ]
             
             if any(domain in url for domain in blocked_domains):
@@ -56,8 +119,7 @@ class BrowserUtils:
                 route.continue_()
             except Exception:
                 pass
-        except Exception as e:
-            # Ignore errors such as TargetClosedError or CancelledError
+        except Exception:
             pass
 
     @staticmethod

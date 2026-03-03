@@ -269,10 +269,26 @@ class DatabaseSetup:
                 FOREIGN KEY (crawl_id)
                 REFERENCES crawl_jobs (crawl_id)
                 ON DELETE CASCADE,
-            CONSTRAINT unique_crawl_file 
-                UNIQUE (crawl_id, markdown_file)
+            CONSTRAINT unique_crawl_url
+                UNIQUE (crawl_id, url)
         );
-        
+
+        -- Migrate existing tables: drop old constraint if it exists, add new one
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'unique_crawl_file'
+                  AND table_name = 'crawl_events'
+            ) THEN
+                ALTER TABLE crawl_events DROP CONSTRAINT unique_crawl_file;
+                ALTER TABLE crawl_events ADD CONSTRAINT unique_crawl_url UNIQUE (crawl_id, url);
+            END IF;
+        EXCEPTION WHEN others THEN
+            NULL;  -- Ignore if already migrated
+        END;
+        $$;
+
         CREATE INDEX IF NOT EXISTS idx_crawl_events_crawl_id ON crawl_events(crawl_id);
         """
 
@@ -294,6 +310,94 @@ class DatabaseSetup:
             return False
 
     
+    def create_failed_crawl_pages_table(self) -> bool:
+        """
+        Create failed_crawl_pages table if it doesn't exist.
+        Records individual page URLs where ALL browser strategies failed.
+        """
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS failed_crawl_pages (
+            id SERIAL PRIMARY KEY,
+            crawl_id VARCHAR(64),
+            url TEXT NOT NULL,
+            crawl_mode VARCHAR(20),
+            page_number INTEGER,
+            failed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_failed_crawl_job
+                FOREIGN KEY (crawl_id)
+                REFERENCES crawl_jobs (crawl_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_failed_crawl_pages_crawl_id ON failed_crawl_pages(crawl_id);
+        CREATE INDEX IF NOT EXISTS idx_failed_crawl_pages_failed_at ON failed_crawl_pages(failed_at);
+        """
+
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            logger.info("✓ failed_crawl_pages table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create failed_crawl_pages table: {e}", exc_info=True)
+            return False
+
+    def create_reported_issues_table(self) -> bool:
+        """
+        Create reported_issues table if it doesn't exist.
+        Stores user-submitted issue reports with affected URL,
+        issue categories, and a free-text explanation.
+        """
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS reported_issues (
+            id SERIAL PRIMARY KEY,
+            url_affected TEXT NOT NULL,
+            issue_related_to TEXT[] NOT NULL,
+            explanation TEXT NOT NULL,
+            email TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Migrate existing tables: add email column if it doesn't exist
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'reported_issues' AND column_name = 'email'
+            ) THEN
+                ALTER TABLE reported_issues ADD COLUMN email TEXT;
+            END IF;
+        END;
+        $$;
+
+        CREATE INDEX IF NOT EXISTS idx_reported_issues_created_at ON reported_issues(created_at);
+        """
+
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            logger.info("✓ reported_issues table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create reported_issues table: {e}", exc_info=True)
+            return False
+
     def setup_all_tables(self) -> bool:
         logger.info("Starting database setup...")
 
@@ -301,8 +405,11 @@ class DatabaseSetup:
         otps_created = self.create_signup_otps_table()
         crawl_jobs_created = self.create_crawl_jobs_table()
         crawl_events_created = self.create_crawl_events_table()
+        failed_pages_created = self.create_failed_crawl_pages_table()
+        reported_issues_created = self.create_reported_issues_table()
 
-        if all([users_created, otps_created, crawl_jobs_created, crawl_events_created]):
+        if all([users_created, otps_created, crawl_jobs_created, crawl_events_created,
+                failed_pages_created, reported_issues_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:

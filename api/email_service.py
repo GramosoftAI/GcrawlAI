@@ -639,3 +639,185 @@ class EmailService:
         subject = "Welcome to GcrawlAI! 🎉"
         
         return self.send_email(to_email, subject, html_content, text_content)
+
+    def send_report_issue_email(
+        self,
+        to_email: str,
+        url_affected: str,
+        issue_related_to: list,
+        explanation: str,
+        report_id: int = None,
+    ) -> bool:
+        """
+        Send a report-issue notification email to the admin.
+
+        Args:
+            to_email: Admin email address
+            url_affected: The URL that has the issue
+            issue_related_to: List of issue category strings
+            explanation: Free-text explanation of the issue
+            report_id: Optional DB row id for reference
+
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        if not self.is_configured:
+            logger.warning(f"⚠ Email not sent to {to_email}. SMTP not configured.")
+            logger.info(f"📧 Issue report would have been sent to admin: {to_email}")
+            return False
+
+        issues_html = "".join(
+            f"<li style='margin:4px 0;'>{issue}</li>" for issue in issue_related_to
+        )
+        issues_text = ", ".join(issue_related_to)
+        report_ref = f"#{report_id}" if report_id else "N/A"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #f4f4f4;
+                }}
+                .container {{
+                    max-width: 620px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #ffffff;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+                    color: white;
+                    padding: 30px 20px;
+                    text-align: center;
+                    border-radius: 10px 10px 0 0;
+                }}
+                .header h1 {{
+                    margin: 0;
+                    font-size: 26px;
+                    font-weight: 700;
+                }}
+                .badge {{
+                    display: inline-block;
+                    background: rgba(255,255,255,0.2);
+                    border-radius: 20px;
+                    padding: 4px 14px;
+                    font-size: 13px;
+                    margin-top: 8px;
+                    letter-spacing: 0.5px;
+                }}
+                .content {{
+                    background-color: #f9f9f9;
+                    padding: 36px 30px;
+                    border-radius: 0 0 10px 10px;
+                }}
+                .field-label {{
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: #888;
+                    margin-bottom: 4px;
+                }}
+                .field-value {{
+                    background: #fff;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    margin-bottom: 20px;
+                    font-size: 15px;
+                    word-break: break-all;
+                }}
+                .field-value.url {{
+                    color: #667eea;
+                    font-weight: 600;
+                }}
+                .field-value ul {{
+                    margin: 0;
+                    padding-left: 20px;
+                }}
+                .explanation-box {{
+                    background: #fff;
+                    border-left: 4px solid #f5576c;
+                    border-radius: 0 6px 6px 0;
+                    padding: 14px 16px;
+                    margin-bottom: 20px;
+                    font-size: 15px;
+                    white-space: pre-wrap;
+                }}
+                .meta {{
+                    font-size: 12px;
+                    color: #aaa;
+                    margin-top: 4px;
+                }}
+                .footer {{
+                    text-align: center;
+                    margin-top: 30px;
+                    padding-top: 16px;
+                    border-top: 1px solid #ddd;
+                    color: #999;
+                    font-size: 12px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🚨 New Issue Report</h1>
+                    <div class="badge">Report {report_ref}</div>
+                </div>
+                <div class="content">
+                    <p style="margin-top:0;">A new issue has been submitted. Please review the details below.</p>
+
+                    <div class="field-label">URL Affected</div>
+                    <div class="field-value url">{url_affected}</div>
+
+                    <div class="field-label">Issue Related To</div>
+                    <div class="field-value">
+                        <ul>{issues_html}</ul>
+                    </div>
+
+                    <div class="field-label">Explanation</div>
+                    <div class="explanation-box">{explanation}</div>
+
+                    <div class="meta">Submitted on {datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}</div>
+                </div>
+                <div class="footer">
+                    <p>This is an automated notification from GcrawlAI.</p>
+                    <p>&copy; {datetime.now().year} GcrawlAI. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+New Issue Report {report_ref}
+{'=' * 40}
+
+URL Affected:
+{url_affected}
+
+Issue Related To:
+{issues_text}
+
+Explanation:
+{explanation}
+
+Submitted: {datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
+
+---
+GcrawlAI automated notification.
+        """
+
+        subject = f"🚨 Issue Report {report_ref}: {url_affected[:60]}"
+
+        return self.send_email(to_email, subject, html_content, text_content)

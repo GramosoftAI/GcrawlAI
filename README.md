@@ -1,23 +1,17 @@
 <h3 align="center">
   <a name="readme-top"></a>
   <img
-    src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/Crawl%20Logo.svg"
+    src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/Crawl%20Logo.svg"
     height="200"
   >
 </h3>
 
 <div align="center">
   <a href="#">
-    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/license.svg" alt="License">
-  </a>
-  <a href="#">
-    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/downloads.svg" alt="Downloads">
-  </a>
-  <a href="#">
-    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/contributors.svg" alt="GitHub Contributors">
+    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/mit-license.svg" alt="License">
   </a>
   <a href="https://gcrawl.gramopro.ai/">
-    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/visits.svg" alt="Visit gcrawl.ai">
+    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/visits.svg" alt="Visit gcrawl.ai">
   </a>
 </div>
 
@@ -27,7 +21,7 @@
       <img src="https://camo.githubusercontent.com/8c6c7b3530573136a2550b2858664b1e2f38d3926e8b844a051f4ec182c99fac/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f466f6c6c6f772532306f6e253230582d3030303030303f7374796c653d666f722d7468652d6261646765266c6f676f3d78266c6f676f436f6c6f723d7768697465" alt="Follow on X" />
     </a>
     <a href="https://www.linkedin.com/showcase/gcrawlai/">
-      <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/dev/feature/img/linked_in.svg" alt="Follow on LinkedIn" />
+      <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/linked_in.svg" alt="Follow on LinkedIn" />
     </a>
   </p>
 </div>
