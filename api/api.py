@@ -238,6 +238,7 @@ class UserCrawlJobResponse(BaseModel):
     screenshot: bool
     markdown: bool
     links_file_path: Optional[str] = None
+    created_at: datetime
 
 class UserCrawlsResponse(BaseModel):
     status_code: int = 200
@@ -426,7 +427,8 @@ def get_user_crawls(user_id: int):
                     user_id, crawl_id, url, crawl_mode, 
                     seo, html, 
                     screenshot, markdown, 
-                    links_file_path
+                    links_file_path, 
+                    created_at
                 FROM crawl_jobs
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -519,6 +521,11 @@ def get_markdown(file_path: str):
 
     try:
         md_path = Path(file_path).resolve()
+        filename = md_path.name
+        filename_parts = filename.split(".")
+        formatted_title = filename_parts[0].replace("_", " ").title()
+
+        clean_title = formatted_title[2:]  # strip first 2 characters
 
         if not md_path.exists() or not md_path.is_file():
             raise HTTPException(status_code=404, detail="File not found")
@@ -537,29 +544,29 @@ def get_markdown(file_path: str):
 
         if suffix == ".md":
             content = md_path.read_text(encoding="utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "markdown": content})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "markdown": content})
 
         elif suffix == ".json":
             # Return parsed JSON
             content = json.loads(md_path.read_text(encoding="utf-8"))
-            return JSONResponse(content={"status_code": 200, "status": "success", "json": content})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "json": content})
 
         elif suffix == ".xlsx":
             # Return base64 encoded Excel
             import base64
             encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "xlsx": encoded})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "xlsx": encoded})
 
         elif suffix == ".png":
             # Return base64 encoded Image
             import base64
             encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "image": encoded})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "image": encoded})
 
         else:
             # Default/Fallback to text
             content = md_path.read_text(encoding="utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "content": content})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "content": content})
 
     except HTTPException:
         raise

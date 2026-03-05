@@ -26,6 +26,7 @@ from web_crawler.content_processor import ContentProcessor
 from web_crawler.websocket_manager import WebSocketManager
 from web_crawler.utils import normalize_url
 from web_crawler.redis_events import publish_event
+from web_crawler.proxy_manager import ProxyManager
 
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,7 @@ class PageCrawler:
         self.file_manager = file_manager
         self.browser_utils = BrowserUtils()
         self.content_processor = ContentProcessor()
+        self.proxy_manager = ProxyManager(config.proxy)
     
     def process_page(
         self,
@@ -360,8 +362,8 @@ class PageCrawler:
                         "sec-ch-ua-mobile": "?0",
                         "sec-ch-ua-platform": '"Windows"'
                     },
-                    # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
-                    **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
+                    # Proxy rotation: Get a proxy from Manager
+                    **(dict(proxy={"server": self.proxy_manager.get_proxy()}) if self.proxy_manager.has_proxies() else {})
                 )
                 
                 # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
@@ -468,8 +470,8 @@ class PageCrawler:
                         java_script_enabled=True,
                         ignore_https_errors=True,
                         bypass_csp=True,
-                        # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
-                        **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
+                        # Proxy rotation: Get a proxy from Manager
+                        **(dict(proxy={"server": self.proxy_manager.get_proxy()}) if self.proxy_manager.has_proxies() else {})
                     )
                     
                     # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
