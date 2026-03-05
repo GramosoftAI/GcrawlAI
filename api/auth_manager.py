@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 from api.email_service import EmailService
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -425,7 +425,7 @@ class AuthManager:
             
             conn.commit()
             cursor.close()
-            conn.close()
+            self._return_db_connection(conn)
             
             # Send OTP email if email service is configured
             if self.email_service:
@@ -724,7 +724,7 @@ class AuthManager:
             user = cursor.fetchone()
             
             cursor.close()
-            conn.close()
+            self._return_db_connection(conn)
             
             if not user:
                 logger.warning(f"[FAILED] Password reset requested for non-existent user: {email}")

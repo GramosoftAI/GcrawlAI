@@ -35,7 +35,7 @@ import yaml
 from pathlib import Path
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 _CONFIG = None
 
@@ -919,6 +919,7 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
     await websocket.accept()
 
     # 1. Check DB for job info and historical events (replay progress)
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -998,7 +999,6 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
             found_completion_event = True
 
         cur.close()
-        conn.close()
         
         # If completed, we can close immediately
         if found_completion_event:
@@ -1008,6 +1008,12 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
 
     except Exception as e:
         logger.error(f"Error replaying historical events: {e}")
+    finally:
+        if conn:
+            try:
+                _db_pool.putconn(conn)
+            except Exception:
+                pass
 
     # 2. Otherwise subscribe for live updates
     pubsub = redis_client_async.pubsub()
