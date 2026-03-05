@@ -639,3 +639,299 @@ class EmailService:
         subject = "Welcome to GcrawlAI! 🎉"
         
         return self.send_email(to_email, subject, html_content, text_content)
+
+    def send_contact_email(
+        self,
+        to_email: str,
+        name: str,
+        email: str,
+        mobile: str,
+        company: str,
+        country: str | None,
+        message: str,
+    ) -> bool:
+        """
+        Send a professional contact-form notification email.
+
+        Args:
+            to_email : Recipient (internal team) email address — jeevae@gramosoft.in
+            name     : Sender's full name
+            email    : Sender's email address
+            mobile   : Sender's mobile number
+            company  : Sender's company name
+            country  : Sender's country (optional)
+            message  : Enquiry / project description
+
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        country_display = country if country else "Not specified"
+        submitted_at = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>New Contact Enquiry — GcrawlAI</title>
+            <style>
+                * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: #f0f2f5;
+                    color: #1a1a2e;
+                    padding: 30px 20px;
+                }}
+                .wrapper {{
+                    max-width: 640px;
+                    margin: 0 auto;
+                }}
+                /* ── Header ── */
+                .header {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 12px 12px 0 0;
+                    padding: 36px 32px;
+                    text-align: center;
+                }}
+                .header .logo-text {{
+                    font-size: 26px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    letter-spacing: 1px;
+                }}
+                .header .badge {{
+                    display: inline-block;
+                    margin-top: 10px;
+                    background: rgba(255,255,255,0.2);
+                    color: #fff;
+                    font-size: 13px;
+                    font-weight: 600;
+                    padding: 4px 14px;
+                    border-radius: 50px;
+                    letter-spacing: 0.5px;
+                }}
+                /* ── Alert banner ── */
+                .alert-banner {{
+                    background: #fff8e1;
+                    border-left: 5px solid #f59e0b;
+                    padding: 14px 20px;
+                    font-size: 14px;
+                    color: #7c5e00;
+                    font-weight: 600;
+                }}
+                /* ── Body card ── */
+                .card {{
+                    background: #ffffff;
+                    padding: 36px 32px;
+                    border-radius: 0 0 12px 12px;
+                    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+                }}
+                .card h2 {{
+                    font-size: 20px;
+                    color: #374151;
+                    margin-bottom: 6px;
+                }}
+                .card .subtitle {{
+                    font-size: 13px;
+                    color: #9ca3af;
+                    margin-bottom: 28px;
+                }}
+                /* ── Info grid ── */
+                .info-grid {{
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 16px;
+                    margin-bottom: 24px;
+                }}
+                .info-item {{
+                    background: #f8fafc;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    padding: 14px 18px;
+                }}
+                .info-item .label {{
+                    font-size: 10px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: #6b7280;
+                    margin-bottom: 5px;
+                }}
+                .info-item .value {{
+                    font-size: 15px;
+                    font-weight: 600;
+                    color: #111827;
+                    word-break: break-word;
+                }}
+                .info-item.full-width {{
+                    grid-column: 1 / -1;
+                }}
+                /* ── Message box ── */
+                .message-box {{
+                    background: #f3f4f6;
+                    border-left: 4px solid #667eea;
+                    border-radius: 0 8px 8px 0;
+                    padding: 20px 22px;
+                    margin-bottom: 28px;
+                }}
+                .message-box .label {{
+                    font-size: 10px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: #6b7280;
+                    margin-bottom: 10px;
+                }}
+                .message-box .text {{
+                    font-size: 15px;
+                    color: #374151;
+                    line-height: 1.7;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                }}
+                /* ── Reply CTA ── */
+                .cta-row {{
+                    text-align: center;
+                    margin-bottom: 24px;
+                }}
+                .cta-button {{
+                    display: inline-block;
+                    padding: 14px 36px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: #ffffff;
+                    text-decoration: none;
+                    border-radius: 50px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    letter-spacing: 0.3px;
+                    box-shadow: 0 4px 14px rgba(102, 126, 234, 0.45);
+                }}
+                /* ── Divider ── */
+                .divider {{
+                    border: none;
+                    border-top: 1px solid #e5e7eb;
+                    margin: 24px 0;
+                }}
+                /* ── Meta info ── */
+                .meta {{
+                    font-size: 12px;
+                    color: #9ca3af;
+                    text-align: center;
+                    line-height: 1.8;
+                }}
+                /* ── Footer ── */
+                .footer {{
+                    text-align: center;
+                    margin-top: 24px;
+                    font-size: 12px;
+                    color: #9ca3af;
+                    line-height: 1.8;
+                }}
+            </style>
+        </head>
+        <body>
+        <div class="wrapper">
+
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-text">🕷️ GcrawlAI</div>
+                <div class="badge">📬 New Contact Enquiry</div>
+            </div>
+
+            <!-- Alert Banner -->
+            <div class="alert-banner">
+                ⚡ A new project enquiry has just been submitted — please respond within 24 hours.
+            </div>
+
+            <!-- Card -->
+            <div class="card">
+                <h2>New Enquiry Details</h2>
+                <p class="subtitle">Submitted on {submitted_at} (IST)</p>
+
+                <!-- Info Grid -->
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="label">👤 Full Name</div>
+                        <div class="value">{name}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">📧 Email Address</div>
+                        <div class="value">{email}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">📱 Mobile Number</div>
+                        <div class="value">{mobile}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">🏢 Company</div>
+                        <div class="value">{company}</div>
+                    </div>
+                    <div class="info-item full-width">
+                        <div class="label">🌍 Country</div>
+                        <div class="value">{country_display}</div>
+                    </div>
+                </div>
+
+                <!-- Message -->
+                <div class="message-box">
+                    <div class="label">💬 Project Message</div>
+                    <div class="text">{message}</div>
+                </div>
+
+                <!-- Reply CTA -->
+                <div class="cta-row">
+                    <a href="mailto:{email}?subject=Re: Your GcrawlAI Enquiry"
+                       class="cta-button">
+                        ↩ Reply to {name}
+                    </a>
+                </div>
+
+                <hr class="divider">
+
+                <!-- Meta -->
+                <div class="meta">
+                    Submitted via GcrawlAI Contact Form &nbsp;|&nbsp; {submitted_at} (IST)<br>
+                    From IP: <em>Not captured</em>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                This is an automated internal notification. Do not reply to this email directly.<br>
+                &copy; {datetime.now().year} Gramosoft Private Limited. All rights reserved.
+            </div>
+
+        </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+NEW CONTACT ENQUIRY — GcrawlAI
+{'=' * 50}
+Submitted : {submitted_at} (IST)
+
+CONTACT DETAILS
+---------------
+Name    : {name}
+Email   : {email}
+Mobile  : {mobile}
+Company : {company}
+Country : {country_display}
+
+PROJECT MESSAGE
+---------------
+{message}
+
+{'=' * 50}
+Reply directly to: {email}
+{'=' * 50}
+This is an automated internal notification.
+© {datetime.now().year} Gramosoft Private Limited. All rights reserved.
+        """
+
+        subject = f"[GcrawlAI Enquiry] {name} from {company} — New Contact Form Submission"
+
+        logger.info(f"[ContactUs] Sending enquiry email to {to_email} for '{name}' <{email}>")
+        return self.send_email(to_email, subject, html_content, text_content)

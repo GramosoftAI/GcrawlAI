@@ -92,6 +92,7 @@ from api.auth_routes import (
     StandardResponse,
     CurrentUserResponse,
 )
+from api.contact_routes import router as contact_router
 
 # ================= LOGGING =================
 
@@ -110,11 +111,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Feature Routers ──────────────────────────────────────────────────────────
+app.include_router(contact_router)  # POST /contact — Contact Us form
+
+
 security = HTTPBearer()
 auth_manager: Optional[AuthManager] = None
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.encoders import jsonable_encoder
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
@@ -135,7 +141,7 @@ async def validation_exception_handler(request, exc):
             "status_code": 422,
             "status": "error",
             "message": "Validation Error",
-            "detail": exc.errors()
+            "detail": jsonable_encoder(exc.errors())
         },
     )
 
