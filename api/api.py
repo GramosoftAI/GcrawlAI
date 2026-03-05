@@ -1145,6 +1145,7 @@ class ReportIssueRequest(BaseModel):
     email: Optional[str] = None
 
     @field_validator("url_affected")
+    
     @classmethod
     def url_must_not_be_empty(cls, v: str) -> str:
         v = v.strip()
