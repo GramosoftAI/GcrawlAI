@@ -5,6 +5,7 @@ Main web crawler orchestration
 import json
 import logging
 import pytz
+import urllib.request
 from collections import deque
 from datetime import datetime
 from time import perf_counter
@@ -20,6 +21,38 @@ from web_crawler.seo_report import CrawlReportWriter
 from web_crawler.utils import normalize_url
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_canonical_url(url: str, timeout: int = 8) -> str:
+    """
+    Follow redirects to find the canonical URL of a page.
+    Uses a lightweight HEAD request so no content is downloaded.
+    Returns the original URL unchanged if resolution fails.
+    
+    Example: http://naukri.com → https://www.naukri.com/
+    """
+    try:
+        req = urllib.request.Request(
+            url,
+            method="HEAD",
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+            }
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            final_url = resp.url
+            if final_url and final_url != url:
+                parsed_orig = urlparse(url)
+                parsed_final = urlparse(final_url)
+                # Only use the resolved URL if the host changed (e.g. www added)
+                # Keep original path intent if paths diverge significantly
+                if parsed_orig.netloc != parsed_final.netloc:
+                    logger.info(f"🔀 URL canonicalized: {url} → {final_url}")
+                    return final_url
+    except Exception:
+        pass  # Network error, SSL issue, timeout — just use original
+    return url
 
 
 class WebCrawler:
@@ -76,8 +109,11 @@ class WebCrawler:
         if crawl_mode == "single" or crawl_mode == "links":
             logger.info("🔹 Single-page crawl mode")
 
+            # Auto-resolve canonical URL (follows redirects: naukri.com → www.naukri.com)
+            canonical_url = resolve_canonical_url(start_url)
+
             result = self.page_crawler.crawl_page(
-                start_url,
+                canonical_url,
                 count=1,
                 enable_md=enable_md,
                 enable_html=enable_html,

@@ -26,6 +26,7 @@ from web_crawler.content_processor import ContentProcessor
 from web_crawler.websocket_manager import WebSocketManager
 from web_crawler.utils import normalize_url
 from web_crawler.redis_events import publish_event
+from web_crawler.proxy_manager import ProxyManager
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ def _record_failed_page(
     from background threads that do not share the main API connection pool.
     Silently logs and ignores any DB error to avoid masking the original failure.
     """
+    conn = None
     try:
         conn = _get_db_conn()
         cur = conn.cursor()
@@ -89,10 +91,15 @@ def _record_failed_page(
         )
         conn.commit()
         cur.close()
-        conn.close()
         logger.info(f"✓ Failure recorded in DB for: {url} (crawl_id={crawl_id})")
     except Exception as db_err:
         logger.warning(f"⚠ Could not record failed page in DB for {url}: {db_err}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _persist_crawl_event(
@@ -119,6 +126,7 @@ def _persist_crawl_event(
     """
     if not crawl_id:
         return
+    conn = None
     try:
         conn = _get_db_conn()
         cur = conn.cursor()
@@ -158,12 +166,15 @@ def _persist_crawl_event(
             )
             conn.commit()
         cur.close()
-        conn.close()
         logger.info(f"✓ crawl_events persisted for: {url} (crawl_id={crawl_id})")
     except Exception as db_err:
         logger.warning(f"⚠ Could not persist crawl event for {url}: {db_err}")
-
-
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 class PageCrawler:
     """Handle individual page crawling"""
@@ -173,6 +184,7 @@ class PageCrawler:
         self.file_manager = file_manager
         self.browser_utils = BrowserUtils()
         self.content_processor = ContentProcessor()
+        self.proxy_manager = ProxyManager(config.proxy)
     
     def process_page(
         self,
@@ -360,8 +372,8 @@ class PageCrawler:
                         "sec-ch-ua-mobile": "?0",
                         "sec-ch-ua-platform": '"Windows"'
                     },
-                    # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
-                    **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
+                    # Proxy rotation: Get a proxy from Manager
+                    **(dict(proxy={"server": self.proxy_manager.get_proxy()}) if self.proxy_manager.has_proxies() else {})
                 )
                 
                 # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
@@ -385,7 +397,7 @@ class PageCrawler:
                         raise Exception(f"HTTP {response.status if response else 'None'}")   
                     
                     # Note: check_cloudflare needs a loaded page to work correctly
-                    self.browser_utils.check_cloudflare(page, self.config)
+                    # self.browser_utils.check_cloudflare(page, self.config)
                     if not self.browser_utils.wait_for_ready(page):
                         raise Exception("Page not ready")
                         
@@ -468,8 +480,8 @@ class PageCrawler:
                         java_script_enabled=True,
                         ignore_https_errors=True,
                         bypass_csp=True,
-                        # Proxy support: set config.proxy to route through a residential proxy (needed for Google)
-                        **(dict(proxy={"server": self.config.proxy}) if self.config.proxy else {})
+                        # Proxy rotation: Get a proxy from Manager
+                        **(dict(proxy={"server": self.proxy_manager.get_proxy()}) if self.proxy_manager.has_proxies() else {})
                     )
                     
                     # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)

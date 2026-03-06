@@ -15,6 +15,7 @@ No hardcoded secrets anywhere.
 """
 
 import logging
+from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import Optional, Dict, Any, Tuple
@@ -375,6 +376,61 @@ class AuthManager:
                 conn.close()
         except Exception:
             pass
+
+    @contextmanager
+    def _db_connection_context(self, max_retries: int = 3):
+        """
+        Context manager for database connections.
+        Detects and discards stale/broken connections (SSL closed, etc.)
+        and retries up to max_retries times before raising.
+        """
+        import psycopg2
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            conn = None
+            try:
+                conn = self._get_db_connection()
+
+                # Probe: if the underlying socket is dead, OperationalError is raised here
+                if self._db_pool:
+                    conn.poll()
+
+                yield conn
+                return  # success
+
+            except psycopg2.OperationalError as e:
+                last_error = e
+                if conn is not None:
+                    try:
+                        # Discard broken connection from the pool
+                        if self._db_pool:
+                            self._db_pool.putconn(conn, close=True)
+                        else:
+                            conn.close()
+                    except Exception:
+                        pass
+                    conn = None
+                logger.warning(
+                    f"Stale DB connection in AuthManager attempt {attempt}/{max_retries}: {e}. "
+                    + ("Retrying..." if attempt < max_retries else "No more retries.")
+                )
+
+            except Exception:
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    self._return_db_connection(conn)
+                    conn = None
+                raise
+
+            finally:
+                if conn is not None:
+                    self._return_db_connection(conn)
+
+        raise last_error
+
     
     def generate_signup_otp(self, name: str, email: str, password: str) -> Tuple[bool, str, Optional[str]]:
         """
@@ -389,43 +445,41 @@ class AuthManager:
             Tuple of (success, message, otp, status_code)
         """
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Check if user already exists
-            cursor.execute("SELECT user_id FROM users WHERE email = %s", (email.lower(),))
-            if cursor.fetchone():
+            with self._db_connection_context() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Check if user already exists
+                cursor.execute("SELECT user_id FROM users WHERE email = %s", (email.lower(),))
+                if cursor.fetchone():
+                    cursor.close()
+                    logger.warning(f"[FAILED] OTP generation failed: User already exists for {email}")
+                    return False, "User already exists with this email", None, 409
+                
+                # Hash password
+                hashed_password, salt = self.password_hasher.hash_password(password)
+                
+                # Generate 5-digit OTP
+                otp = ''.join([str(secrets.randbelow(10)) for _ in range(5)])
+                
+                # Calculate expiry (5 minutes from now)
+                expires_at = datetime.now() + timedelta(minutes=5)
+                
+                # Store OTP in signup_otps table
+                cursor.execute("""
+                    INSERT INTO signup_otps (email, otp, name, password_hash, password_salt, expires_at, attempts, is_verified)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (email) DO UPDATE SET
+                        otp = EXCLUDED.otp,
+                        name = EXCLUDED.name,
+                        password_hash = EXCLUDED.password_hash,
+                        password_salt = EXCLUDED.password_salt,
+                        expires_at = EXCLUDED.expires_at,
+                        attempts = 0,
+                        is_verified = false
+                """, (email.lower(), otp, name, hashed_password, salt, expires_at, 0, False))
+                
+                conn.commit()
                 cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] OTP generation failed: User already exists for {email}")
-                return False, "User already exists with this email", None, 409
-            
-            # Hash password
-            hashed_password, salt = self.password_hasher.hash_password(password)
-            
-            # Generate 5-digit OTP
-            otp = ''.join([str(secrets.randbelow(10)) for _ in range(5)])
-            
-            # Calculate expiry (5 minutes from now)
-            expires_at = datetime.now() + timedelta(minutes=5)
-            
-            # Store OTP in signup_otps table
-            cursor.execute("""
-                INSERT INTO signup_otps (email, otp, name, password_hash, password_salt, expires_at, attempts, is_verified)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (email) DO UPDATE SET
-                    otp = EXCLUDED.otp,
-                    name = EXCLUDED.name,
-                    password_hash = EXCLUDED.password_hash,
-                    password_salt = EXCLUDED.password_salt,
-                    expires_at = EXCLUDED.expires_at,
-                    attempts = 0,
-                    is_verified = false
-            """, (email.lower(), otp, name, hashed_password, salt, expires_at, 0, False))
-            
-            conn.commit()
-            cursor.close()
-            self._return_db_connection(conn)
             
             # Send OTP email if email service is configured
             if self.email_service:
@@ -465,92 +519,87 @@ class AuthManager:
             Dictionary with success, message, access_token, user, and expires_in
         """
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Get OTP record
-            cursor.execute("""
-                SELECT email, otp, name, password_hash, password_salt, expires_at, attempts, is_verified
-                FROM signup_otps WHERE email = %s
-            """, (email.lower(),))
-            
-            otp_record = cursor.fetchone()
-            
-            if not otp_record:
-                cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] OTP verification failed: No OTP found for {email}")
-                return {
-                    'success': False,
-                    'message': "No OTP found for this email",
-                    'status_code': 404
-                }
-            
-            # Check if OTP has expired
-            if datetime.now() > otp_record['expires_at']:
-                cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] OTP expired for {email}")
-                return {
-                    'success': False,
-                    'message': "OTP has expired",
-                    'status_code': 400
-                }
-            
-            # Check if max attempts exceeded
-            if otp_record['attempts'] >= 3:
-                cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] OTP verification failed: Max attempts exceeded for {email}")
-                return {
-                    'success': False,
-                    'message': "Maximum OTP verification attempts exceeded",
-                    'status_code': 429
-                }
-            
-            # Verify OTP
-            if otp_record['otp'] != otp:
-                # Increment attempts
+            with self._db_connection_context() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Get OTP record
                 cursor.execute("""
-                    UPDATE signup_otps SET attempts = attempts + 1 WHERE email = %s
+                    SELECT email, otp, name, password_hash, password_salt, expires_at, attempts, is_verified
+                    FROM signup_otps WHERE email = %s
                 """, (email.lower(),))
+                
+                otp_record = cursor.fetchone()
+                
+                if not otp_record:
+                    cursor.close()
+                    logger.warning(f"[FAILED] OTP verification failed: No OTP found for {email}")
+                    return {
+                        'success': False,
+                        'message': "No OTP found for this email",
+                        'status_code': 404
+                    }
+                
+                # Check if OTP has expired
+                if datetime.now() > otp_record['expires_at']:
+                    cursor.close()
+                    logger.warning(f"[FAILED] OTP expired for {email}")
+                    return {
+                        'success': False,
+                        'message': "OTP has expired",
+                        'status_code': 400
+                    }
+                
+                # Check if max attempts exceeded
+                if otp_record['attempts'] >= 3:
+                    cursor.close()
+                    logger.warning(f"[FAILED] OTP verification failed: Max attempts exceeded for {email}")
+                    return {
+                        'success': False,
+                        'message': "Maximum OTP verification attempts exceeded",
+                        'status_code': 429
+                    }
+                
+                # Verify OTP
+                if otp_record['otp'] != otp:
+                    # Increment attempts
+                    cursor.execute("""
+                        UPDATE signup_otps SET attempts = attempts + 1 WHERE email = %s
+                    """, (email.lower(),))
+                    conn.commit()
+                    cursor.close()
+                    logger.warning(f"[FAILED] OTP verification failed: Invalid OTP for {email}")
+                    return {
+                        'success': False,
+                        'message': "Invalid OTP",
+                        'status_code': 400
+                    }
+                
+                # Mark as verified
+                cursor.execute("""
+                    UPDATE signup_otps SET is_verified = true WHERE email = %s
+                """, (email.lower(),))
+                
+                # Create user account
+                cursor.execute("""
+                    INSERT INTO users (name, email, password_hash, password_salt, is_active, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING user_id, name, email, created_at, is_active
+                """, (
+                    otp_record['name'],
+                    email.lower(),
+                    otp_record['password_hash'],
+                    otp_record['password_salt'],
+                    True,
+                    datetime.now()
+                ))
+                
+                user_data = cursor.fetchone()
+                
+                # Delete OTP record
+                cursor.execute("DELETE FROM signup_otps WHERE email = %s", (email.lower(),))
+                
                 conn.commit()
                 cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] OTP verification failed: Invalid OTP for {email}")
-                return {
-                    'success': False,
-                    'message': "Invalid OTP",
-                    'status_code': 400
-                }
-            
-            # Mark as verified
-            cursor.execute("""
-                UPDATE signup_otps SET is_verified = true WHERE email = %s
-            """, (email.lower(),))
-            
-            # Create user account
-            cursor.execute("""
-                INSERT INTO users (name, email, password_hash, password_salt, is_active, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING user_id, name, email, created_at, is_active
-            """, (
-                otp_record['name'],
-                email.lower(),
-                otp_record['password_hash'],
-                otp_record['password_salt'],
-                True,
-                datetime.now()
-            ))
-            
-            user_data = cursor.fetchone()
-            
-            # Delete OTP record
-            cursor.execute("DELETE FROM signup_otps WHERE email = %s", (email.lower(),))
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
             
             # Create access token
             token_data = {
@@ -613,58 +662,54 @@ class AuthManager:
             Dictionary with success, message, access_token, user, and expires_in
         """
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Get user from database
-            cursor.execute("""
-                SELECT user_id, name, email, password_hash, password_salt, is_active, created_at
-                FROM users WHERE email = %s
-            """, (email.lower(),))
-            
-            user = cursor.fetchone()
-            
-            if not user:
+            with self._db_connection_context() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Get user from database
+                cursor.execute("""
+                    SELECT user_id, name, email, password_hash, password_salt, is_active, created_at
+                    FROM users WHERE email = %s
+                """, (email.lower(),))
+                
+                user = cursor.fetchone()
+                
+                if not user:
+                    cursor.close()
+                    logger.warning(f"[FAILED] Sign-in failed: User not found for {email}")
+                    return {
+                        'success': False,
+                        'message': "Invalid email or password",
+                        'status_code': 401
+                    }
+                
+                # Verify password
+                if not self.password_hasher.verify_password(
+                    password, user['password_hash'], user['password_salt']
+                ):
+                    cursor.close()
+                    logger.warning(f"[FAILED] Sign-in failed: Invalid password for {email}")
+                    return {
+                        'success': False,
+                        'message': "Invalid email or password",
+                        'status_code': 401
+                    }
+                
+                if not user['is_active']:
+                    cursor.close()
+                    logger.warning(f"[FAILED] Sign-in failed: Account is not active for {email}")
+                    return {
+                        'success': False,
+                        'message': "Account is not active",
+                        'status_code': 403
+                    }
+                
+                # Update last login
+                cursor.execute("""
+                    UPDATE users SET last_login = %s WHERE user_id = %s
+                """, (datetime.now(), user['user_id']))
+                
+                conn.commit()
                 cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] Sign-in failed: User not found for {email}")
-                return {
-                    'success': False,
-                    'message': "Invalid email or password",
-                    'status_code': 401
-                }
-            
-            # Verify password
-            if not self.password_hasher.verify_password(
-                password, user['password_hash'], user['password_salt']
-            ):
-                cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] Sign-in failed: Invalid password for {email}")
-                return {
-                    'success': False,
-                    'message': "Invalid email or password",
-                    'status_code': 401
-                }
-            
-            if not user['is_active']:
-                cursor.close()
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] Sign-in failed: Account is not active for {email}")
-                return {
-                    'success': False,
-                    'message': "Account is not active",
-                    'status_code': 403
-                }
-            
-            # Update last login
-            cursor.execute("""
-                UPDATE users SET last_login = %s WHERE user_id = %s
-            """, (datetime.now(), user['user_id']))
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
             
             # Create access token
             token_data = {
@@ -716,15 +761,14 @@ class AuthManager:
             Tuple of (success, message, encrypted_token, status_code)
         """
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Check if user exists
-            cursor.execute("SELECT user_id, email, name FROM users WHERE email = %s", (email.lower(),))
-            user = cursor.fetchone()
-            
-            cursor.close()
-            self._return_db_connection(conn)
+            with self._db_connection_context() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Check if user exists
+                cursor.execute("SELECT user_id, email, name FROM users WHERE email = %s", (email.lower(),))
+                user = cursor.fetchone()
+                
+                cursor.close()
             
             if not user:
                 logger.warning(f"[FAILED] Password reset requested for non-existent user: {email}")
@@ -800,27 +844,26 @@ class AuthManager:
             Tuple of (success, message, status_code)
         """
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Hash new password
-            hashed_password, salt = self.password_hasher.hash_password(new_password)
-            
-            # Update password
-            cursor.execute("""
-                UPDATE users
-                SET password_hash = %s, password_salt = %s, updated_at = %s
-                WHERE email = %s
-            """, (hashed_password, salt, datetime.now(), email.lower()))
-            
-            if cursor.rowcount == 0:
-                self._return_db_connection(conn)
-                logger.warning(f"[FAILED] User not found for password reset: {email}")
-                return False, "User not found", 404
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with self._db_connection_context() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Hash new password
+                hashed_password, salt = self.password_hasher.hash_password(new_password)
+                
+                # Update password
+                cursor.execute("""
+                    UPDATE users
+                    SET password_hash = %s, password_salt = %s, updated_at = %s
+                    WHERE email = %s
+                """, (hashed_password, salt, datetime.now(), email.lower()))
+                
+                if cursor.rowcount == 0:
+                    cursor.close()
+                    logger.warning(f"[FAILED] User not found for password reset: {email}")
+                    return False, "User not found", 404
+                
+                conn.commit()
+                cursor.close()
             
             logger.info(f"[SUCCESS] Password reset successfully for: {email}")
             return True, "Password reset successfully", 200
@@ -855,17 +898,16 @@ class AuthManager:
             Dictionary with user data or None if not found
         """
         try:
-            conn = self._get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cursor.execute("""
-                SELECT user_id, name, email, created_at, is_active
-                FROM users WHERE user_id = %s
-            """, (user_id,))
-            
-            user = cursor.fetchone()
-            cursor.close()
-            conn.close()
+            with self._db_connection_context() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                cursor.execute("""
+                    SELECT user_id, name, email, created_at, is_active
+                    FROM users WHERE user_id = %s
+                """, (user_id,))
+                
+                user = cursor.fetchone()
+                cursor.close()
             
             if not user:
                 return None

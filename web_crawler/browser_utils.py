@@ -152,6 +152,7 @@ class BrowserUtils:
         """Set custom HTTP headers"""
         try:
             page.set_extra_http_headers({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Referer': 'https://www.google.com/',
@@ -199,3 +200,55 @@ class BrowserUtils:
         except Exception as e:
             logger.warning(f"Cloudflare check failed: {e}")
             return False
+
+    @staticmethod
+    def inject_stealth_scripts(page: Page) -> None:
+        """
+        Inject additional JS-level anti-detection patches.
+        These complement playwright-stealth and cover edge cases:
+        - navigator.webdriver = undefined
+        - window.chrome runtime presence
+        - consistent navigator.plugins (non-empty)
+        """
+        try:
+            page.add_init_script("""
+                // Mask navigator.webdriver
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                    configurable: true
+                });
+
+                // Fake window.chrome (expected by many bot-detectors)
+                if (!window.chrome) {
+                    window.chrome = {
+                        runtime: {
+                            onConnect: null,
+                            onMessage: null
+                        }
+                    };
+                }
+
+                // Non-empty plugins list (headless Chrome has 0 plugins)
+                if (navigator.plugins.length === 0) {
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                        configurable: true
+                    });
+                }
+
+                // Non-empty languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                    configurable: true
+                });
+
+                // Prevent Notification.permission from revealing headless
+                if (window.Notification) {
+                    Object.defineProperty(Notification, 'permission', {
+                        get: () => 'default',
+                        configurable: true
+                    });
+                }
+            """)
+        except Exception as e:
+            logger.warning(f"Failed to inject stealth scripts: {e}")

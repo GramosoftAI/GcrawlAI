@@ -157,30 +157,69 @@ def _init_db_pool():
     db_config = get_db_config()
     # ThreadedConnectionPool is thread-safe (FastAPI serves sync endpoints in a thread pool)
     _db_pool = psycopg2_pool.ThreadedConnectionPool(
-        minconn=2,
-        maxconn=20,
+        minconn=5,
+        maxconn=50,
         **db_config
     )
-    logger.info(f"✓ DB connection pool created (ThreadedConnectionPool, min=2, max=20)")
+    logger.info(f"✓ DB connection pool created (ThreadedConnectionPool, min=5, max=50)")
 
 @contextmanager
-def get_pooled_connection():
-    """Context manager that borrows a connection from the pool and returns it when done."""
-    conn = None
-    try:
-        conn = _db_pool.getconn()
-        yield conn
-    except Exception:
-        # Rollback on error so the connection isn't returned in a broken transaction state
-        if conn is not None:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-        raise
-    finally:
-        if conn is not None:
-            _db_pool.putconn(conn)
+def get_pooled_connection(max_retries: int = 3):
+    """
+    Context manager that borrows a connection from the pool and returns it when done.
+    Automatically detects and discards stale/broken connections (e.g. SSL closed
+    unexpectedly, server gone away) and retries with a fresh connection.
+    """
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        conn = None
+        try:
+            conn = _db_pool.getconn()
+
+            # Probe the connection: poll() checks the socket without hitting the server.
+            # If the connection is broken psycopg2 raises OperationalError immediately.
+            conn.poll()
+
+            yield conn
+            return  # success — exit the retry loop
+
+        except psycopg2.OperationalError as e:
+            last_error = e
+            # SSL closed / server restarted / network hiccup — discard this connection
+            if conn is not None:
+                try:
+                    _db_pool.putconn(conn, close=True)  # removes it from the pool
+                except Exception:
+                    pass
+                conn = None
+            logger.warning(
+                f"Stale DB connection on attempt {attempt}/{max_retries}: {e}. "
+                + ("Retrying with fresh connection..." if attempt < max_retries else "No more retries.")
+            )
+
+        except Exception:
+            # Non-connection error — rollback and return connection to pool normally
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                try:
+                    _db_pool.putconn(conn)
+                except Exception:
+                    pass
+                conn = None
+            raise
+
+        finally:
+            # Safety net: return connection if it was yielded successfully
+            if conn is not None:
+                try:
+                    _db_pool.putconn(conn)
+                except Exception:
+                    pass
+
+    raise last_error
 
 # Legacy wrapper for backwards compatibility
 def get_db_connection():
@@ -244,6 +283,7 @@ class UserCrawlJobResponse(BaseModel):
     screenshot: bool
     markdown: bool
     links_file_path: Optional[str] = None
+    created_at: datetime
 
 class UserCrawlsResponse(BaseModel):
     status_code: int = 200
@@ -432,7 +472,8 @@ def get_user_crawls(user_id: int):
                     user_id, crawl_id, url, crawl_mode, 
                     seo, html, 
                     screenshot, markdown, 
-                    links_file_path
+                    links_file_path, 
+                    created_at
                 FROM crawl_jobs
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -525,6 +566,11 @@ def get_markdown(file_path: str):
 
     try:
         md_path = Path(file_path).resolve()
+        filename = md_path.name
+        filename_parts = filename.split(".")
+        formatted_title = filename_parts[0].replace("_", " ").title()
+
+        clean_title = formatted_title[2:]  # strip first 2 characters
 
         if not md_path.exists() or not md_path.is_file():
             raise HTTPException(status_code=404, detail="File not found")
@@ -543,29 +589,29 @@ def get_markdown(file_path: str):
 
         if suffix == ".md":
             content = md_path.read_text(encoding="utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "markdown": content})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "markdown": content})
 
         elif suffix == ".json":
             # Return parsed JSON
             content = json.loads(md_path.read_text(encoding="utf-8"))
-            return JSONResponse(content={"status_code": 200, "status": "success", "json": content})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "json": content})
 
         elif suffix == ".xlsx":
             # Return base64 encoded Excel
             import base64
             encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "xlsx": encoded})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "xlsx": encoded})
 
         elif suffix == ".png":
             # Return base64 encoded Image
             import base64
             encoded = base64.b64encode(md_path.read_bytes()).decode("utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "image": encoded})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "image": encoded})
 
         else:
             # Default/Fallback to text
             content = md_path.read_text(encoding="utf-8")
-            return JSONResponse(content={"status_code": 200, "status": "success", "content": content})
+            return JSONResponse(content={"status_code": 200, "status": "success", "title": clean_title, "content": content})
 
     except HTTPException:
         raise
@@ -919,7 +965,6 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
     await websocket.accept()
 
     # 1. Check DB for job info and historical events (replay progress)
-    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -946,11 +991,23 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
         for event in events:
             event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx = event
             
-            payload = {
-                "type": event_type,
-                "url": url,
-                "title": title
-            }
+            # Get crawl mode and completion status
+            cur.execute("SELECT crawl_mode, updated_at FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+            job_row = cur.fetchone()
+            crawl_mode = job_row[0] if job_row else "all"
+            is_finished_db = job_row[1] is not None if job_row and job_row[1] else False
+    
+            # Fetch all stored events for this crawl
+            cur.execute(
+                """
+                SELECT event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx 
+                FROM crawl_events 
+                WHERE crawl_id = %s 
+                ORDER BY created_at ASC
+                """,
+                (crawl_id,)
+            )
+            events = cur.fetchall()
             
             if event_type == "page_processed":
                 payload.update({
@@ -982,38 +1039,58 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                     "summary": {
                         "start_url": url,
                         "markdown_file": markdown_file,
-                        "status": "completed",
-                        "links_file_path": payload.get("links_file_path"),
-                        "summary_file_path": payload.get("summary_file_path")
-                    }
-                })
+                        "html_file": html_file,
+                        "screenshot": screenshot,
+                        "seo_json": seo_json,
+                        "seo_md": seo_md,
+                        "seo_xlsx": seo_xlsx
+                    })
+                elif event_type == "crawl_completed":
+                    found_completion_event = True
+                    
+                    try:
+                        with get_pooled_connection() as conn_job:
+                            cur_job = conn_job.cursor()
+                            cur_job.execute("SELECT links_file_path, summary_file_path FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+                            job_paths = cur_job.fetchone()
+                            cur_job.close()
+                        
+                        if job_paths:
+                            payload["links_file_path"] = job_paths[0]
+                            payload["summary_file_path"] = job_paths[1]
+                    except Exception as e:
+                        logger.error(f"Error fetching paths for replay: {e}")
+    
+                    payload.update({
+                        "summary": {
+                            "start_url": url,
+                            "markdown_file": markdown_file,
+                            "status": "completed",
+                            "links_file_path": payload.get("links_file_path"),
+                            "summary_file_path": payload.get("summary_file_path")
+                        }
+                    })
+                
+                await websocket.send_json(payload)
             
-            await websocket.send_json(payload)
-        
-        # If DB says it's finished but we didn't have a stored event (e.g. 'all' mode), send generic completion
-        if is_finished_db and not found_completion_event:
-            await websocket.send_json({
-                "type": "crawl_completed",
-                "summary": {"status": "completed", "note": "Replayed from background status"}
-            })
-            found_completion_event = True
-
-        cur.close()
-        
-        # If completed, we can close immediately
-        if found_completion_event:
-            logger.info(f"📜 Replayed finished crawl for {crawl_id}. Closing.")
-            await websocket.close()
-            return
+            # If DB says it's finished but we didn't have a stored event (e.g. 'all' mode), send generic completion
+            if is_finished_db and not found_completion_event:
+                await websocket.send_json({
+                    "type": "crawl_completed",
+                    "summary": {"status": "completed", "note": "Replayed from background status"}
+                })
+                found_completion_event = True
+    
+            cur.close()
+            
+            # If completed, we can close immediately
+            if found_completion_event:
+                logger.info(f"📜 Replayed finished crawl for {crawl_id}. Closing.")
+                await websocket.close()
+                return
 
     except Exception as e:
         logger.error(f"Error replaying historical events: {e}")
-    finally:
-        if conn:
-            try:
-                _db_pool.putconn(conn)
-            except Exception:
-                pass
 
     # 2. Otherwise subscribe for live updates
     pubsub = redis_client_async.pubsub()
@@ -1097,8 +1174,8 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
         logger.info(f"WebSocket disconnected: {crawl_id}")
 
     finally:
-        pubsub.unsubscribe(f"crawl:{crawl_id}")
-        pubsub.close()
+        await pubsub.unsubscribe(f"crawl:{crawl_id}")
+        await pubsub.aclose()
         try:
             await websocket.close()
         except Exception:
