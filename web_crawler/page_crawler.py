@@ -78,6 +78,7 @@ def _record_failed_page(
     from background threads that do not share the main API connection pool.
     Silently logs and ignores any DB error to avoid masking the original failure.
     """
+    conn = None
     try:
         conn = _get_db_conn()
         cur = conn.cursor()
@@ -90,10 +91,15 @@ def _record_failed_page(
         )
         conn.commit()
         cur.close()
-        conn.close()
         logger.info(f"✓ Failure recorded in DB for: {url} (crawl_id={crawl_id})")
     except Exception as db_err:
         logger.warning(f"⚠ Could not record failed page in DB for {url}: {db_err}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _persist_crawl_event(
@@ -120,6 +126,7 @@ def _persist_crawl_event(
     """
     if not crawl_id:
         return
+    conn = None
     try:
         conn = _get_db_conn()
         cur = conn.cursor()
@@ -159,12 +166,15 @@ def _persist_crawl_event(
             )
             conn.commit()
         cur.close()
-        conn.close()
         logger.info(f"✓ crawl_events persisted for: {url} (crawl_id={crawl_id})")
     except Exception as db_err:
         logger.warning(f"⚠ Could not persist crawl event for {url}: {db_err}")
-
-
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 class PageCrawler:
     """Handle individual page crawling"""
@@ -387,7 +397,7 @@ class PageCrawler:
                         raise Exception(f"HTTP {response.status if response else 'None'}")   
                     
                     # Note: check_cloudflare needs a loaded page to work correctly
-                    self.browser_utils.check_cloudflare(page, self.config)
+                    # self.browser_utils.check_cloudflare(page, self.config)
                     if not self.browser_utils.wait_for_ready(page):
                         raise Exception("Page not ready")
                         

@@ -145,6 +145,7 @@ class DatabaseSetup:
         CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
         """
         
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -153,8 +154,6 @@ class DatabaseSetup:
             conn.commit()
             
             cursor.close()
-            conn.close()
-            
             logger.info("✓ Users table created successfully (or already exists)")
             return True
         
@@ -164,6 +163,9 @@ class DatabaseSetup:
         except Exception as e:
             logger.error(f"✗ Unexpected error creating users table: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
     
     def create_signup_otps_table(self) -> bool:
         """
@@ -189,6 +191,7 @@ class DatabaseSetup:
         CREATE INDEX IF NOT EXISTS idx_signup_otps_is_verified ON signup_otps(is_verified);
         """
         
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -197,8 +200,6 @@ class DatabaseSetup:
             conn.commit()
             
             cursor.close()
-            conn.close()
-            
             logger.info("✓ Signup OTPs table created successfully (or already exists)")
             return True
         
@@ -208,6 +209,9 @@ class DatabaseSetup:
         except Exception as e:
             logger.error(f"✗ Unexpected error creating signup_otps table: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
     
     def create_crawl_jobs_table(self) -> bool:
         create_table_query = """
@@ -233,6 +237,7 @@ class DatabaseSetup:
         );
         """
 
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -241,14 +246,15 @@ class DatabaseSetup:
             conn.commit()
 
             cursor.close()
-            conn.close()
-
             logger.info("✓ crawl_jobs table created successfully (or already exists)")
             return True
 
         except Exception as e:
             logger.error(f"✗ Failed to create crawl_jobs table: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def create_crawl_events_table(self) -> bool:
         create_table_query = """
@@ -292,6 +298,7 @@ class DatabaseSetup:
         CREATE INDEX IF NOT EXISTS idx_crawl_events_crawl_id ON crawl_events(crawl_id);
         """
 
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -300,14 +307,15 @@ class DatabaseSetup:
             conn.commit()
 
             cursor.close()
-            conn.close()
-
             logger.info("✓ crawl_events table created successfully (or already exists)")
             return True
 
         except Exception as e:
             logger.error(f"✗ Failed to create crawl_events table: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
 
     
     def create_failed_crawl_pages_table(self) -> bool:
@@ -333,6 +341,7 @@ class DatabaseSetup:
         CREATE INDEX IF NOT EXISTS idx_failed_crawl_pages_failed_at ON failed_crawl_pages(failed_at);
         """
 
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -341,14 +350,15 @@ class DatabaseSetup:
             conn.commit()
 
             cursor.close()
-            conn.close()
-
             logger.info("✓ failed_crawl_pages table created successfully (or already exists)")
             return True
 
         except Exception as e:
             logger.error(f"✗ Failed to create failed_crawl_pages table: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def create_reported_issues_table(self) -> bool:
         """
@@ -381,6 +391,7 @@ class DatabaseSetup:
         CREATE INDEX IF NOT EXISTS idx_reported_issues_created_at ON reported_issues(created_at);
         """
 
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -389,14 +400,15 @@ class DatabaseSetup:
             conn.commit()
 
             cursor.close()
-            conn.close()
-
             logger.info("✓ reported_issues table created successfully (or already exists)")
             return True
 
         except Exception as e:
             logger.error(f"✗ Failed to create reported_issues table: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def setup_all_tables(self) -> bool:
         logger.info("Starting database setup...")
@@ -430,6 +442,7 @@ class DatabaseSetup:
         AND table_name IN ('users', 'signup_otps');
         """
         
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -438,7 +451,6 @@ class DatabaseSetup:
             tables = cursor.fetchall()
             
             cursor.close()
-            conn.close()
             
             table_names = [table[0] for table in tables]
             
@@ -460,6 +472,9 @@ class DatabaseSetup:
         except Exception as e:
             logger.error(f"✗ Unexpected error verifying tables: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
     
     def drop_all_tables(self) -> bool:
         """
@@ -473,6 +488,7 @@ class DatabaseSetup:
         DROP TABLE IF EXISTS users CASCADE;
         """
         
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -481,7 +497,6 @@ class DatabaseSetup:
             conn.commit()
             
             cursor.close()
-            conn.close()
             
             logger.warning("⚠ All authentication tables dropped")
             return True
@@ -492,6 +507,9 @@ class DatabaseSetup:
         except Exception as e:
             logger.error(f"✗ Unexpected error dropping tables: {e}", exc_info=True)
             return False
+        finally:
+            if conn:
+                conn.close()
 
 
 def main():

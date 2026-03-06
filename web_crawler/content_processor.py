@@ -5,8 +5,10 @@ Content processing and extraction utilities
 from typing import List, Dict
 from bs4 import BeautifulSoup
 import html2text
+from urllib.parse import urlparse, urljoin
 from web_crawler.utils import absolutize_url
 from web_crawler.cleanup_html import cleanup_html
+
 
 
 class ContentProcessor:
@@ -14,18 +16,55 @@ class ContentProcessor:
     
     @staticmethod
     def extract_links(soup: BeautifulSoup, base_url: str) -> List[str]:
-        """Extract all valid links from page"""
-        links = set()
+        """
+        Extract valid internal links from the page.
+        Only returns URLs that belong to the same domain (host) as base_url.
+        External links (social media, other sites, subdomains) are excluded.
+        """
+        base_parsed = urlparse(base_url)
+        base_host = base_parsed.netloc.lower()  # e.g. "gramosoft.tech"
+
+        seen_paths = set()
+        links = []
+
         for anchor in soup.find_all("a", href=True):
             href = anchor["href"].strip()
-            if href.startswith("#"):
+
+            # Skip fragment-only, mailto:, tel:, javascript:, etc.
+            if not href or href.startswith(("#", "mailto:", "tel:", "javascript:", "data:")):
                 continue
-            
+
+            # Resolve to absolute URL
             url = absolutize_url(href, base_url)
-            if url.startswith("http"):
-                links.add(url)
-        
-        return list(links)
+            if not url or not url.startswith("http"):
+                continue
+
+            parsed = urlparse(url)
+            link_host = parsed.netloc.lower()
+
+            # Only keep links from the EXACT same host (no subdomains)
+            if link_host != base_host:
+                continue
+
+            # Normalize: strip query string and fragment, normalize trailing slash
+            path = parsed.path
+            if path != "/" and path.endswith("/"):
+                path = path.rstrip("/")  # /about/ → /about
+
+            # Rebuild clean URL: scheme + host + path only
+            clean_url = f"{parsed.scheme}://{parsed.netloc}{path}"
+            if path == "":
+                clean_url = f"{parsed.scheme}://{parsed.netloc}/"
+
+            # Deduplicate by normalized path
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+
+            links.append(clean_url)
+
+        return sorted(links)
+
     
     @staticmethod
     def extract_seo(soup: BeautifulSoup, page_url: str) -> Dict:
