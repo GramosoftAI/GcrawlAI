@@ -92,6 +92,7 @@ from api.auth_routes import (
     StandardResponse,
     CurrentUserResponse,
 )
+from api.contact_routes import router as contact_router
 
 # ================= LOGGING =================
 
@@ -110,11 +111,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Feature Routers ──────────────────────────────────────────────────────────
+app.include_router(contact_router)  # POST /contact — Contact Us form
+
+
 security = HTTPBearer()
 auth_manager: Optional[AuthManager] = None
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.encoders import jsonable_encoder
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
@@ -135,7 +141,7 @@ async def validation_exception_handler(request, exc):
             "status_code": 422,
             "status": "error",
             "message": "Validation Error",
-            "detail": exc.errors()
+            "detail": jsonable_encoder(exc.errors())
         },
     )
 
@@ -958,15 +964,32 @@ async def get_current_user_info(
 async def crawl_ws(websocket: WebSocket, crawl_id: str):
     await websocket.accept()
 
-    # Safe defaults — always defined even if the DB query below fails
-    crawl_mode = "all"
-    found_completion_event = False
-    replayed_event_types: set = set()  # track events already sent during replay phase
-
     # 1. Check DB for job info and historical events (replay progress)
     try:
-        with get_pooled_connection() as conn:
-            cur = conn.cursor()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get crawl mode and completion status
+        cur.execute("SELECT crawl_mode, updated_at FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+        job_row = cur.fetchone()
+        crawl_mode = job_row[0] if job_row else "all"
+        is_finished_db = job_row[1] is not None if job_row and job_row[1] else False
+
+        # Fetch all stored events for this crawl
+        cur.execute(
+            """
+            SELECT event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx 
+            FROM crawl_events 
+            WHERE crawl_id = %s 
+            ORDER BY created_at ASC
+            """,
+            (crawl_id,)
+        )
+        events = cur.fetchall()
+        
+        found_completion_event = False
+        for event in events:
+            event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx = event
             
             # Get crawl mode and completion status
             cur.execute("SELECT crawl_mode, updated_at FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
@@ -986,19 +1009,35 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
             )
             events = cur.fetchall()
             
-            for event in events:
-                event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx = event
+            if event_type == "page_processed":
+                payload.update({
+                    "markdown_file": markdown_file,
+                    "html_file": html_file,
+                    "screenshot": screenshot,
+                    "seo_json": seo_json,
+                    "seo_md": seo_md,
+                    "seo_xlsx": seo_xlsx
+                })
+            elif event_type == "crawl_completed":
+                found_completion_event = True
                 
-                payload = {
-                    "type": event_type,
-                    "url": url,
-                    "title": title
-                }
-                
-                replayed_event_types.add(event_type)
-    
-                if event_type == "page_processed":
-                    payload.update({
+                try:
+                    conn_job = get_db_connection()
+                    cur_job = conn_job.cursor()
+                    cur_job.execute("SELECT links_file_path, summary_file_path FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+                    job_paths = cur_job.fetchone()
+                    cur_job.close()
+                    conn_job.close()
+                    
+                    if job_paths:
+                        payload["links_file_path"] = job_paths[0]
+                        payload["summary_file_path"] = job_paths[1]
+                except Exception as e:
+                    logger.error(f"Error fetching paths for replay: {e}")
+
+                payload.update({
+                    "summary": {
+                        "start_url": url,
                         "markdown_file": markdown_file,
                         "html_file": html_file,
                         "screenshot": screenshot,
@@ -1063,17 +1102,6 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                 continue
 
             data = message["data"]
-
-            # Skip events we already sent during the DB replay phase to avoid duplicates
-            try:
-                msg_type = json.loads(data).get("type")
-                if msg_type and msg_type in replayed_event_types:
-                    logger.debug(f"Skipping already-replayed event type '{msg_type}' for crawl_id={crawl_id}")
-                    replayed_event_types.discard(msg_type)  # only skip the first occurrence
-                    continue
-            except Exception:
-                pass
-
             await websocket.send_text(data)
 
             # 🔥 PERSIST EVENT AND CLOSE IF COMPLETED
@@ -1089,66 +1117,50 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                             links_file_path = payload.get("links_file_path") or summary_data.get("links_file_path")
                             summary_file_path = payload.get("summary_file_path") or summary_data.get("summary_file_path")
 
-                            with get_pooled_connection() as conn_job:
-                                cur_job = conn_job.cursor()
-                                cur_job.execute(
-                                    "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
-                                    (datetime.now(), links_file_path, summary_file_path, crawl_id)
-                                )
-                                conn_job.commit()
-                                cur_job.close()
+                            conn_job = get_db_connection()
+                            cur_job = conn_job.cursor()
+                            cur_job.execute(
+                                "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
+                                (datetime.now(), links_file_path, summary_file_path, crawl_id)
+                            )
+                            conn_job.commit()
+                            cur_job.close()
+                            conn_job.close()
                         except Exception as e:
                             logger.error(f"Error updating completion timestamp: {e}")
 
-                    # Persist event to crawl_events for replay on reconnect
-                    try:
-                        with get_pooled_connection() as conn_ev:
-                            cur_ev = conn_ev.cursor()
-                            try:
-                                cur_ev.execute(
-                                    """
-                                    INSERT INTO crawl_events 
-                                    (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                                    """,
-                                    (
-                                        crawl_id,
-                                        event_type,
-                                        payload.get("url"),
-                                        payload.get("title"),
-                                        payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                        payload.get("html_file"),
-                                        payload.get("screenshot"),
-                                        payload.get("seo_json"),
-                                        payload.get("seo_md"),
-                                        payload.get("seo_xlsx")
-                                    )
-                                )
-                                conn_ev.commit()
-                            except Exception:
-                                conn_ev.rollback()
-                                cur_ev.execute(
-                                    """
-                                    UPDATE crawl_events SET
-                                        markdown_file = %s, html_file = %s, screenshot = %s,
-                                        seo_json = %s, seo_md = %s, seo_xlsx = %s
-                                    WHERE crawl_id = %s AND url = %s
-                                    """,
-                                    (
-                                        payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                        payload.get("html_file"),
-                                        payload.get("screenshot"),
-                                        payload.get("seo_json"),
-                                        payload.get("seo_md"),
-                                        payload.get("seo_xlsx"),
-                                        crawl_id,
-                                        payload.get("url"),
-                                    )
-                                )
-                                conn_ev.commit()
-                            cur_ev.close()
-                    except Exception as ev_err:
-                        logger.error(f"Error persisting event to crawl_events: {ev_err}")
+                    # Store event in crawl_events (respecting user request for 'all' mode)
+                    if event_type == "crawl_completed" and crawl_mode == "all":
+                        # User wants to avoid storing completion message for 'all' mode in crawl_events table
+                        logger.info(f"Skipping crawl_events storage for 'all' mode completion: {crawl_id}")
+                    else:
+                        conn_ev = get_db_connection()
+                        cur_ev = conn_ev.cursor()
+                        
+                        # Note: ON CONFLICT handles duplicates for file paths as requested
+                        cur_ev.execute(
+                            """
+                            INSERT INTO crawl_events 
+                            (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                            ON CONFLICT (crawl_id, markdown_file) DO NOTHING
+                            """,
+                            (
+                                crawl_id, 
+                                event_type, 
+                                payload.get("url"), 
+                                payload.get("title"),
+                                payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
+                                payload.get("html_file"), 
+                                payload.get("screenshot"),
+                                payload.get("seo_json"), 
+                                payload.get("seo_md"), 
+                                payload.get("seo_xlsx")
+                            )
+                        )
+                        conn_ev.commit()
+                        cur_ev.close()
+                        conn_ev.close()
 
                 if event_type == "crawl_completed":
                     logger.info(f"🔌 Closing WebSocket for crawl_id={crawl_id}")
@@ -1168,6 +1180,7 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
             await websocket.close()
         except Exception:
             pass 
+        logger.info(f"✅ WebSocket closed for crawl_id={crawl_id}")
         logger.info(f"✅ WebSocket closed for crawl_id={crawl_id}")
 
 
