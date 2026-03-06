@@ -1104,48 +1104,41 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                     try:
                         with get_pooled_connection() as conn_ev:
                             cur_ev = conn_ev.cursor()
-                            try:
-                                cur_ev.execute(
-                                    """
-                                    INSERT INTO crawl_events 
-                                    (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                                    """,
-                                    (
-                                        crawl_id,
-                                        event_type,
-                                        payload.get("url"),
-                                        payload.get("title"),
-                                        payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                        payload.get("html_file"),
-                                        payload.get("screenshot"),
-                                        payload.get("seo_json"),
-                                        payload.get("seo_md"),
-                                        payload.get("seo_xlsx")
-                                    )
+                            # Use INSERT ... ON CONFLICT (crawl_id, url) DO UPDATE
+                            # This matches the unique_crawl_url constraint on the table.
+                            # For events with no URL (e.g. crawl_completed), use empty string
+                            # as a sentinel so the unique constraint can still de-duplicate.
+                            event_url = payload.get("url") or ""
+                            md_file = payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None)
+                            cur_ev.execute(
+                                """
+                                INSERT INTO crawl_events 
+                                (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (crawl_id, url) DO UPDATE SET
+                                    event_type   = EXCLUDED.event_type,
+                                    title        = EXCLUDED.title,
+                                    markdown_file = EXCLUDED.markdown_file,
+                                    html_file    = EXCLUDED.html_file,
+                                    screenshot   = EXCLUDED.screenshot,
+                                    seo_json     = EXCLUDED.seo_json,
+                                    seo_md       = EXCLUDED.seo_md,
+                                    seo_xlsx     = EXCLUDED.seo_xlsx
+                                """,
+                                (
+                                    crawl_id,
+                                    event_type,
+                                    event_url,
+                                    payload.get("title"),
+                                    md_file,
+                                    payload.get("html_file"),
+                                    payload.get("screenshot"),
+                                    payload.get("seo_json"),
+                                    payload.get("seo_md"),
+                                    payload.get("seo_xlsx")
                                 )
-                                conn_ev.commit()
-                            except Exception:
-                                conn_ev.rollback()
-                                cur_ev.execute(
-                                    """
-                                    UPDATE crawl_events SET
-                                        markdown_file = %s, html_file = %s, screenshot = %s,
-                                        seo_json = %s, seo_md = %s, seo_xlsx = %s
-                                    WHERE crawl_id = %s AND url = %s
-                                    """,
-                                    (
-                                        payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                        payload.get("html_file"),
-                                        payload.get("screenshot"),
-                                        payload.get("seo_json"),
-                                        payload.get("seo_md"),
-                                        payload.get("seo_xlsx"),
-                                        crawl_id,
-                                        payload.get("url"),
-                                    )
-                                )
-                                conn_ev.commit()
+                            )
+                            conn_ev.commit()
                             cur_ev.close()
                     except Exception as ev_err:
                         logger.error(f"Error persisting event to crawl_events: {ev_err}")
