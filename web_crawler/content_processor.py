@@ -10,6 +10,32 @@ from web_crawler.utils import absolutize_url
 from web_crawler.cleanup_html import cleanup_html
 
 
+def _post_process_markdown(md: str) -> str:
+    """
+    Firecrawl-style markdown post-processing:
+      1. Strip trailing whitespace from every line
+      2. Collapse 3+ consecutive blank lines into exactly 2
+      3. Remove leading / trailing blank lines from the whole document
+    """
+    # 1. Strip trailing whitespace per line
+    lines = [line.rstrip() for line in md.splitlines()]
+
+    # 2. Collapse runs of 3+ blank lines → 2 blank lines
+    result = []
+    blank_run = 0
+    for line in lines:
+        if line == "":
+            blank_run += 1
+            if blank_run <= 2:
+                result.append(line)
+        else:
+            blank_run = 0
+            result.append(line)
+
+    # 3. Strip leading/trailing blank lines from document
+    return "\n".join(result).strip() + "\n"
+
+
 
 class ContentProcessor:
     """Process and extract content from pages"""
@@ -119,27 +145,32 @@ class ContentProcessor:
     
     @staticmethod
     def convert_to_markdown(html: str, url: str) -> str:
-        """Convert HTML to clean markdown"""
+        """Convert HTML to clean, LLM-ready markdown (Firecrawl-style)"""
         title, clean_body, links, images, script_data = cleanup_html(html, url)
-        
+
         converter = html2text.HTML2Text()
-        converter.ignore_links = False
-        converter.ignore_images = False
-        converter.ignore_tables = False
-        converter.ignore_emphasis = False
-        converter.ignore_style = True
-        converter.skip_internal_links = True
-        converter.inline_links = False
-        converter.body_width = 0
-        
+        converter.ignore_links      = False
+        converter.ignore_images     = False
+        converter.ignore_tables     = False
+        converter.ignore_emphasis   = False    # Firecrawl preserves bold "**"
+        converter.ignore_style      = True
+        converter.skip_internal_links = False
+        converter.inline_links      = True
+        converter.body_width        = 0        # Firecrawl does NOT wrap lines
+        converter.protect_links     = False
+        converter.wrap_links        = False
+
         markdown_body = converter.handle(clean_body)
-        
-        header = [
-            f"# {title}",
-            f"URL: {url}",
-            "",
-            "---",
-            ""
-        ]
-        
-        return "\n".join(header) + markdown_body + "\n\n---\n"
+
+        # Post-process: collapse blank lines, strip trailing whitespace
+        markdown_body = _post_process_markdown(markdown_body)
+
+        # Replace standard html2text list markers `* ` with Firecrawl's `- `
+        import re
+        markdown_body = re.sub(r'(?m)^(\s*)\*\s', r'\1- ', markdown_body)
+
+        # Firecrawl renders lists compactly. html2text often inserts blank lines between list items.
+        # Collapse double newlines between list items into a single newline.
+        markdown_body = re.sub(r'\n{2,}(?=\s*- )', '\n', markdown_body)
+
+        return markdown_body + "\n"

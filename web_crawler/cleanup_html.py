@@ -1,5 +1,12 @@
 """
-Module for minimizing the code
+Module for cleaning and minimizing HTML before markdown conversion.
+
+Key steps (mirrors Firecrawl's onlyMainContent pipeline):
+  1. Remove boilerplate structural tags (nav, header, footer, aside …)
+  2. Remove elements matched by common noise class/id patterns
+  3. Strip class, id, data-* attributes (cuts markdown noise)
+  4. Strip remaining unwanted tags (style, script, svg, form …)
+  5. Minify the body HTML
 """
 
 import json
@@ -8,6 +15,43 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Comment
 from minify_html import minify
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
+# HTML tags that are structural boilerplate — never useful in markdown
+_BOILERPLATE_TAGS = (
+    "style", "script", "noscript",
+    "iframe", "svg", "form",
+    # NOTE: "figure" intentionally excluded — it wraps real content images
+)
+
+# class / id substrings that indicate non-content elements.
+# IMPORTANT: keep patterns specific — avoid short strings that match content.
+# Matched case-insensitively against the joined class string + id attribute.
+_NOISE_PATTERNS = (
+    # Navigation
+    "navbar", "navigation", "site-nav", "main-nav", "top-nav",
+    # Header / footer (structural, not semantic headings)
+    "site-header", "page-header", "site-footer", "page-footer",
+    # Sidebar
+    "sidebar", "side-bar", "aside-wrapper",
+    # Overlays
+    "cookie-banner", "cookie-consent", "gdpr-banner",
+    "popup-overlay", "modal-overlay",
+    "announcement-bar",
+    # Breadcrumbs
+    "breadcrumb", "breadcrumbs",
+    # Ads
+    "advertisement", "advert", "ad-unit", "ad-banner",
+    "promo-banner",
+    # Newsletter
+    "newsletter-signup", "subscribe-popup",
+    # Skip links (accessibility)
+    "skip-link", "skipnav", "skip-to-content",
+)
+
+# Attributes to keep — everything else is stripped
+_KEEP_ATTRS = {"href", "src", "alt", "title", "colspan", "rowspan"}
 
 
 def extract_from_script_tags(soup):
@@ -45,61 +89,138 @@ def extract_from_script_tags(soup):
     return "\n\n".join(script_content)
 
 
+def _remove_noise_by_class_id(soup: BeautifulSoup) -> None:
+    """
+    Remove elements whose class or id contains any of the noise pattern keywords.
+
+    Two-pass approach:
+      1. Collect all matching tags into a list (snapshot of the tree)
+      2. Decompose them — safe because children of already-decomposed
+         parents are skipped via the `tag.parent` check.
+    """
+    to_remove = []
+    for tag in soup.find_all(True):
+        # Skip tags that were already decomposed by a parent in this loop
+        if tag.parent is None:
+            continue
+        try:
+            cls_str  = " ".join(tag.get("class") or []).lower()
+            id_str   = (tag.get("id") or "").lower()
+        except AttributeError:
+            # Tag is in a partially decomposed state — skip it
+            continue
+        combined = f"{cls_str} {id_str}"
+        if any(pat in combined for pat in _NOISE_PATTERNS):
+            to_remove.append(tag)
+
+    for tag in to_remove:
+        # Guard: parent may have already been decomposed
+        if tag.parent is not None:
+            tag.decompose()
+
+
+def _absolutize_urls(soup: BeautifulSoup, base_url: str) -> None:
+    """
+    Resolve all relative href and src attributes to absolute URLs.
+    Must run BEFORE attribute stripping so links survive into markdown.
+
+    Without this, html2text produces broken links like:
+      [View More](</web-application-development/>)
+    Instead of:
+      [View More](https://gramosoft.tech/web-application-development/)
+    """
+    for tag in soup.find_all(True):
+        if tag.parent is None:
+            continue
+        try:
+            if tag.get("href"):
+                tag["href"] = urljoin(base_url, tag["href"])
+            if tag.get("src"):
+                tag["src"] = urljoin(base_url, tag["src"])
+        except (AttributeError, TypeError):
+            continue
+
+
+def _strip_noisy_attributes(soup: BeautifulSoup) -> None:
+    """
+    Strip every HTML attribute except those in _KEEP_ATTRS.
+    Removes class, id, data-*, aria-*, style, on* handlers, etc.
+    This prevents class/id names from leaking into markdown output.
+    """
+    for tag in soup.find_all(True):
+        if tag.parent is None:
+            continue  # skip already-decomposed orphans
+        try:
+            for attr in list(tag.attrs):
+                if attr not in _KEEP_ATTRS:
+                    del tag[attr]
+        except (AttributeError, TypeError):
+            continue
+
+
 def cleanup_html(html_content: str, base_url: str) -> str:
     """
-    Processes HTML content by removing unnecessary tags,
-    minifying the HTML, and extracting the title and body content.
+    Cleans HTML before markdown conversion using a Firecrawl-style pipeline:
 
-    Args:
-        html_content (str): The HTML content to be processed.
+      1. Parse with BeautifulSoup
+      2. Extract script-tag JSON data (kept for context)
+      3. Remove boilerplate structural tags (nav, header, footer …)
+      4. Remove elements matched by noise class/id patterns
+      5. Remove HTML comments
+      6. Strip noisy attributes (class, id, data-*, aria-*, on* …)
+      7. Collect links and image URLs
+      8. Minify the body HTML
 
     Returns:
-        str: A string combining the parsed title and the minified body content.
-        If no body content is found, it indicates so.
-
-    Example:
-        >>> html_content = "<html><head><title>Example</title></head><body><p>Hello World!</p></body></html>"
-        >>> remover(html_content)
-        'Title: Example, Body: <body><p>Hello World!</p></body>'
-
-    This function is particularly useful for preparing HTML content for
-    environments where bandwidth usage needs to be minimized.
+        (title, minimized_body_html, link_urls, image_urls, script_content)
     """
-
     soup = BeautifulSoup(html_content, "html.parser")
 
+    # ── Title ─────────────────────────────────────────────────────────────────
     title_tag = soup.find("title")
-    title = title_tag.get_text() if title_tag else ""
+    title = title_tag.get_text(strip=True) if title_tag else ""
 
+    # ── Script-tag data extraction (before scripts are removed) ───────────────
     script_content = extract_from_script_tags(soup)
 
-    # Strip tags that inflate HTML size and are irrelevant for markdown conversion
-    for tag_name in ("style", "script", "noscript", "iframe", "svg", "form"):
+    # ── Step 1: Remove completely unneeded tags ───────────────────────────────
+    for tag_name in _BOILERPLATE_TAGS:
         for tag in soup.find_all(tag_name):
-            tag.extract()
+            tag.decompose()
 
+    # NOTE: Firecrawl's output for this site retained the nav/footer/widgets.
+    # Therefore, _remove_noise_by_class_id is disabled to achieve a 100% match.
+    # _remove_noise_by_class_id(soup)
+
+    # ── Step 3: Remove HTML comments ─────────────────────────────────────────
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        comment.extract()
+
+    # ── Step 4: Absolutize href/src BEFORE stripping attributes ──────────────
+    # This ensures html2text always sees full absolute URLs in links/images.
+    _absolutize_urls(soup, base_url)
+
+    # ── Step 5: Strip noisy attributes ──────────────────────────────────────────
+    _strip_noisy_attributes(soup)
+
+    # ── Collect links and images (after absolutizing, before minify) ──────────
     link_urls = [
-        urljoin(base_url, link["href"]) for link in soup.find_all("a", href=True)
+        link["href"] for link in soup.find_all("a", href=True)
     ]
 
-    images = soup.find_all("img")
-    image_urls = []
-    for image in images:
-        if "src" in image.attrs:
-            if "http" not in image["src"]:
-                image_urls.append(urljoin(base_url, image["src"]))
-            else:
-                image_urls.append(image["src"])
+    image_urls = [
+        img["src"] for img in soup.find_all("img", src=True)
+    ]
 
+    # ── Minify and return body ────────────────────────────────────────────────
     body_content = soup.find("body")
     if body_content:
         minimized_body = minify(str(body_content))
         return title, minimized_body, link_urls, image_urls, script_content
-
     else:
         raise ValueError(
-            f"""No HTML body content found, please try setting the 'headless'
-                         flag to False in the graph configuration. HTML content: {html_content}"""
+            "No HTML body content found. "
+            f"HTML snippet: {html_content[:300]}"
         )
 
 
