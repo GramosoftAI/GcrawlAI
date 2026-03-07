@@ -561,14 +561,15 @@ def get_markdown(file_path: str):
     """
     Return markdown content + metadata as JSON
     """
-
     try:
         md_path = Path(file_path).resolve()
         filename = md_path.name
         filename_parts = filename.split(".")
         formatted_title = filename_parts[0].replace("_", " ").title()
-
-        clean_title = formatted_title[2:]  # strip first 2 characters
+        if formatted_title == "Links":
+            clean_title = formatted_title
+        else:
+            clean_title = formatted_title[2:]  # strip first 2 characters
 
         if not md_path.exists() or not md_path.is_file():
             raise HTTPException(status_code=404, detail="File not found")
