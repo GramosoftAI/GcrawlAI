@@ -25,6 +25,7 @@ export class SigninComponent {
   hideConfirmPassword: boolean = true;
   hidePassword: boolean = true;
   Isforgot: boolean = false;
+  isLoading: boolean = false;
   firstLogin: any;
   activeTab: 'login' | 'signup' = 'signup';
   jsonData = JSON.stringify({
@@ -109,14 +110,22 @@ export class SigninComponent {
     if (this.loginForm.invalid) {
       return
     }
-    this.apiService.post(URLS.signin, this.loginForm.value, { type: 'LO' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
-      if (res.status === "success") {
-        this.toastr.success('Signin Sucessfully')
-        this.authService.login(res);
-      } else {
-        this.toastr.error('Failed')
+    this.isLoading = true;
+    this.apiService.post(URLS.signin, this.loginForm.value, { type: 'LO' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe({
+      next: (res: any) => {
+        this.isLoading = false;
+        if (res.status === "success") {
+          this.toastr.success('Signin Sucessfully')
+          this.authService.login(res);
+        } else {
+          this.toastr.error('Failed')
+        }
+      },
+      error: () => {
+        this.isLoading = false;
+        this.toastr.error('An error occurred');
       }
-    })
+    });
   }
 
   signUpSubmit() {
@@ -124,12 +133,22 @@ export class SigninComponent {
     if (this.loginForm.invalid) {
       return
     }
-    this.apiService.post(URLS.signup, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
-      if (res.status === "success") {
-        this.toastr.success(res.message);
-        this.openOtpModal();
+    this.isLoading = true;
+    this.apiService.post(URLS.signup, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe({
+      next: (res: any) => {
+        this.isLoading = false;
+        if (res.status === "success") {
+          this.toastr.success(res.message);
+          this.openOtpModal();
+        } else {
+          this.toastr.error('Signup Failed');
+        }
+      },
+      error: () => {
+        this.isLoading = false;
+        this.toastr.error('An error occurred');
       }
-    })
+    });
   }
 
   openOtpModal() {

@@ -100,20 +100,20 @@ export class LocalStorageService {
   }
 
   public setAccessToken(token: string): void {
-    this.setItem('accessToken', token);
+    this.setItem('accessToken', token, true);
   }
 
   public getAccessToken(): string | null {
-    const accessToken = this.getItem('accessToken');
+    const accessToken = this.getItem('accessToken', true);
     return accessToken || null;
   }
 
   public setUserDetails(userDetails: any): void {
-    this.setItem('userDetails', userDetails);
+    this.setItem('userDetails', userDetails, true);
   }
 
   public getUserDetails(): any | null {
-    return this.getItem('userDetails');
+    return this.getItem('userDetails', true);
   }
 
   public clearSessionStore(): void {

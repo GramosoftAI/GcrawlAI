@@ -1,0 +1,271 @@
+.contact-section {
+    min-height: calc(100vh - 80px);
+    padding: 60px 0;
+    font-family: var(--primary-font), sans-serif !important;
+}
+
+/* ── Info Card ── */
+.contact-info-card {
+    background: var(--card-bg, rgba(255, 255, 255, 0.85));
+    border: 1px solid var(--card-border, rgba(0, 0, 0, 0.1));
+    border-radius: 16px;
+    padding: 36px 28px;
+    height: 100%;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.contact-brand h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0 0 6px;
+}
+
+.contact-brand p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.6;
+}
+
+.contact-highlight {
+    width: 44px;
+    height: 4px;
+    background: var(--primary-gradient, linear-gradient(135deg, #21D496 0%, #02a157 100%));
+    border-radius: 4px;
+    margin-top: 12px;
+}
+
+.info-items {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.info-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.info-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(33, 212, 150, 0.15) 0%, rgba(2, 161, 87, 0.1) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.info-content h5 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0 0 4px;
+}
+
+.info-content p {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 4px;
+}
+
+.info-content a {
+    display: block;
+    font-size: 12px;
+    color: var(--primary, #21D496);
+    font-weight: 600;
+    transition: opacity 0.2s;
+
+    &:hover {
+        opacity: 0.75;
+    }
+}
+
+/* ── Form Card ── */
+.contact-form-card {
+    background: var(--card-bg, rgba(255, 255, 255, 0.85));
+    border: 1px solid var(--card-border, rgba(0, 0, 0, 0.1));
+    border-radius: 16px;
+    padding: 36px 28px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+.form-card-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.form-card-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+/* ── Inputs ── */
+.field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.field-input {
+    width: 100%;
+    background: var(--input-bg, transparent);
+    border: 1px solid var(--card-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    color: var(--text-main);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+
+    &::placeholder {
+        color: var(--text-muted);
+        opacity: 0.7;
+    }
+
+    &:focus {
+        outline: none;
+        border-color: var(--primary, #21D496);
+        box-shadow: 0 0 0 3px rgba(33, 212, 150, 0.15);
+    }
+
+    &.is-invalid {
+        border-color: var(--danger, #ff595e);
+        box-shadow: 0 0 0 3px rgba(255, 89, 94, 0.12);
+    }
+}
+
+textarea.field-input {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.field-error {
+    font-size: 11px;
+    color: var(--danger, #ff595e);
+    margin-top: 4px;
+}
+
+/* ── Submit Button ── */
+.btn-submit {
+    background: var(--primary-gradient, linear-gradient(135deg, #21D496 0%, #02a157 100%));
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    &:hover:not(:disabled) {
+        opacity: 0.88;
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+.btn-cancel {
+    background: var(--danger, linear-gradient(135deg, #d42121 0%, #a10202 100%));
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    &:hover:not(:disabled) {
+        opacity: 0.88;
+        transform: translateY(-1px);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+}
+
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+
+    .contact-info-card,
+    .contact-form-card {
+        padding: 24px 18px;
+    }
+}
+
+::ng-deep {
+    .iti__country-list {
+        max-height: 200px !important;
+    }
+
+    ngx-intl-tel-input {
+        display: block;
+        width: 100%;
+
+        .iti {
+            width: 100%;
+        }
+
+        .iti__tel-input {
+            width: 100% !important;
+            background: var(--input-bg, transparent) !important;
+            border: 1px solid var(--card-border, rgba(0, 0, 0, 0.12)) !important;
+            border-radius: 8px !important;
+            padding: 9px 12px 9px 93px !important;
+            /* Extra left padding for flag */
+            font-size: 13px !important;
+            color: var(--text-main) !important;
+            transition: border-color 0.2s, box-shadow 0.2s !important;
+            font-family: inherit !important;
+            height: auto !important;
+
+            &::placeholder {
+                color: var(--text-muted) !important;
+                opacity: 0.7 !important;
+            }
+
+            &:focus {
+                outline: none !important;
+                border-color: var(--primary, #21D496) !important;
+                box-shadow: 0 0 0 3px rgba(33, 212, 150, 0.15) !important;
+            }
+        }
+    }
+
+    .is-invalid .iti__tel-input {
+        border-color: var(--danger, #ff595e) !important;
+        box-shadow: 0 0 0 3px rgba(255, 89, 94, 0.12) !important;
+    }
+}

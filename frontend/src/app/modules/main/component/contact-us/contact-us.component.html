@@ -1,0 +1,152 @@
+<section class="contact-section my-5">
+    <div class="container">
+
+        <div class="row g-4 align-items-stretch">
+
+            <!-- ── Left: Contact Info ── -->
+            <div class="col-12 col-md-5">
+                <div class="contact-info-card">
+
+                    <div class="contact-brand">
+                        <h2>Get in Touch</h2>
+                        <p>We would love to hear from you. Let's schedule a free estimation call and discuss the next
+                            steps.</p>
+                        <div class="contact-highlight"></div>
+                    </div>
+
+                    <div class="info-items">
+
+                        <div class="info-item">
+                            <div class="info-icon">✉️</div>
+                            <div class="info-content">
+                                <h5>Email</h5>
+                                <p>Our friendly team is here to help</p>
+                                <a href="mailto:info@gramosoft.in">info@gramosoft.in</a>
+                            </div>
+                        </div>
+
+                        <!-- <div class="info-item mt-2">
+                            <div class="info-icon">📞</div>
+                            <div class="info-content">
+                                <h5>Phone</h5>
+                                <p>Available at Office Hours — IST</p>
+                                <div class="d-flex">
+                                    <a href="tel:+919361632577">+91 93616 32577</a>
+                                    <a class="ms-2" href="tel:+918977741931">+91 89777 41931</a>
+                                </div>
+                            </div>
+                        </div> -->
+
+                        <div class="info-item mt-2">
+                            <div class="info-icon">🌐</div>
+                            <div class="info-content">
+                                <h5>Location</h5>
+                                <p>India — Chennai,available globally</p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Right: Contact Form ── -->
+            <div class="col-12 col-md-7">
+                <div class="contact-form-card">
+
+                    <p class="form-card-title">Let's discuss your project</p>
+                    <p class="form-card-sub">Fill in the form below and we will get back to you shortly.</p>
+
+                    <form [formGroup]="contactForm" (ngSubmit)="submitContact()" novalidate>
+
+                        <div class="row g-3">
+
+                            <!-- Name -->
+                            <div class="col-12 col-sm-6">
+                                <label class="field-label">Name <span class="txt-red">*</span></label>
+                                <input type="text" class="field-input" [class.is-invalid]="isInvalid('name')"
+                                    formControlName="name" placeholder="Your full name">
+                                <div class="field-error" *ngIf="isInvalid('name')">
+                                    <span *ngIf="f['name'].errors?.['required']">Name is required.</span>
+                                    <span *ngIf="f['name'].errors?.['minlength']">Minimum 2 characters.</span>
+                                </div>
+                            </div>
+
+                            <!-- Email -->
+                            <div class="col-12 col-sm-6">
+                                <label class="field-label">Email <span class="txt-red">*</span></label>
+                                <input type="email" class="field-input" [class.is-invalid]="isInvalid('email')"
+                                    formControlName="email" placeholder="you@example.com">
+                                <div class="field-error" *ngIf="isInvalid('email')">
+                                    <span *ngIf="f['email'].errors?.['required']">Email is required.</span>
+                                    <span *ngIf="f['email'].errors?.['email']">Enter a valid email.</span>
+                                </div>
+                            </div>
+
+                            <!-- Mobile -->
+                            <div class="col-12 col-sm-6">
+                                <label class="field-label">Mobile <span class="txt-red">*</span></label>
+                                <ngx-intl-tel-input [class.is-invalid]="isInvalid('mobile')"
+                                    [cssClass]="'custom-phone-input'" [preferredCountries]="preferredCountries"
+                                    [enableAutoCountrySelect]="false" [enablePlaceholder]="true"
+                                    [searchCountryFlag]="true"
+                                    [searchCountryField]="[SearchCountryField.Iso2, SearchCountryField.Name]"
+                                    [selectFirstCountry]="false" [selectedCountryISO]="selectedCountryISO"
+                                    [maxLength]="15" [phoneValidation]="true" [separateDialCode]="separateDialCode"
+                                    name="mobile" formControlName="mobile" (countryChange)="onCountryChange($event)">
+                                </ngx-intl-tel-input>
+                                <div class="field-error" *ngIf="isInvalid('mobile')">
+                                    <span *ngIf="f['mobile'].errors?.['required']">Phone is required.</span>
+                                    <span *ngIf="f['mobile'].errors?.['validatePhoneNumber']">Enter a valid phone
+                                        number.</span>
+                                </div>
+                            </div>
+
+                            <!-- Company -->
+                            <div class="col-12 col-sm-6">
+                                <label class="field-label">Company <span class="txt-red">*</span></label>
+                                <input type="text" [class.is-invalid]="isInvalid('company')" class="field-input"
+                                    formControlName="company" placeholder="Your company name">
+                                <div class="field-error" *ngIf="isInvalid('company')">
+                                    <span *ngIf="f['company'].errors?.['required']">This field is required.</span>
+                                </div>
+                            </div>
+
+                            <!-- Country -->
+                            <div class="col-12">
+                                <label class="field-label">Country</label>
+                                <input type="text" class="field-input" formControlName="country"
+                                    placeholder="Your country">
+                            </div>
+
+                            <!-- Message -->
+                            <div class="col-12">
+                                <label class="field-label">Message <span class="txt-red">*</span></label>
+                                <textarea class="field-input" rows="4" [class.is-invalid]="isInvalid('message')"
+                                    formControlName="message" placeholder="Tell us about your project..."></textarea>
+                                <div class="field-error" *ngIf="isInvalid('message')">
+                                    <span *ngIf="f['message'].errors?.['required']">Message is required.</span>
+                                    <span *ngIf="f['message'].errors?.['minlength']">Minimum 10 characters.</span>
+                                </div>
+                            </div>
+
+                            <!-- Submit -->
+                            <div class="col-12 mt-2">
+                                <div class="d-flex justify-content-start">
+                                    <button type="submit" class="btn-submit" [disabled]="isSubmitting">
+                                        <span *ngIf="!isSubmitting">Send Message</span>
+                                        <span *ngIf="isSubmitting">Sending...</span>
+                                    </button>
+                                    <button routerLink="/app/" type="submit" class="btn-cancel ms-3">
+                                        <span *ngIf="!isSubmitting">Back</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>

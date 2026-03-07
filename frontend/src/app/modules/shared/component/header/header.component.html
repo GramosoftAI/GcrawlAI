@@ -1,50 +1,83 @@
-<section class="my-3">
+<section class="my-3 header-fixed">
     <div class="container">
         <div class="d-flex justify-content-between w-100">
             <div class="logo no-animation">
                 <img [src]="isDarkTheme() ? '/assets/image/GcrawlWhiteLogo.svg' : '/assets/image/Logo.svg'"
-                    class="me-3 logo" alt="Logo">
+                    class="me-3 logo cursor" alt="Logo" routerLink="/">
             </div>
 
-            <div class="header-actions no-animation">
-                <!-- If NOT Logged In -->
-                <button *ngIf="!token" (click)="Onclick()" type="button" class="btn-danger-soft">
+            <div class="d-flex align-items-center">
+                <!-- Outside buttons (Always visible) -->
+                <button (click)="themeService.toggleTheme()" type="button" class="btn-outline me-5 me-lg-3">
+                    <img class="fav-icons cursor" routerLink="/"
+                        [src]="isDarkTheme() ? '/assets/image/dark-mode.png' : '/assets/image/light-mode.png'" alt="">
+                </button>
+
+                <a href="https://github.com/GramosoftAI/GcrawlAI" target="_blank" rel="noopener noreferrer"
+                    class="gh-star-btn me-2 me-lg-3 d-none d-sm-flex" title="Star on GitHub">
+                    <span class="gh-star-main">
+                        <img class="gh-icon" src="/assets/image/github.png" alt="GitHub" />
+                    </span>
+                    <span class="gh-star-count">⭐ {{ stars | number }}</span>
+                </a>
+
+                <button [ngStyle]="{'display': !isLoggedIn ? 'block' : 'none'}" (click)="Onclick()" type="button" class="btn-danger-soft me-2 me-lg-3">
                     Signup
                 </button>
 
-
-                <!-- If Logged In -->
-                <div *ngIf="token" class="dropdown me-3">
-
-                    <button class="btn-outline" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        {{ userDetails?.user?.name }}
+                <!-- Desktop-only controls (Hidden on Mobile) -->
+                <div class="d-none d-lg-flex align-items-center">
+                    <div *ngIf="isLoggedIn" class="dropdown me-3">
+                        <button class="btn-outline" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            {{ user?.user?.name }}
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><span class="dropdown-item cursor" (click)="logout()">Logout</span></li>
+                        </ul>
+                    </div>
+                    <button routerLink="/app/contact-us" type="button" class="btn-bg-primary text-light py-1 ms-0">
+                        Contact
                     </button>
-
-                    <ul class="dropdown-menu">
-
-                        <li>
-                            <span class="dropdown-item" (click)="logout()">
-                                Logout
-                            </span>
-                        </li>
-
-                    </ul>
-
                 </div>
 
-
-                <button (click)="themeService.toggleTheme()" type="button" class="btn-outline">
-                    <img class="fav-icons"
-                        [src]="isDarkTheme() ? '/assets/image/dark-mode.png' : '/assets/image/light-mode.png'" alt="">
+                <!-- Hamburger menu (Mobile only) -->
+                <button class="navbar-toggler d-lg-none btn-outline border-0 p-1" type="button"
+                    data-bs-toggle="offcanvas" data-bs-target="#headerOffcanvas" aria-controls="headerOffcanvas">
+                    <i class="bi bi-list fs-3" [ngStyle]="{'color': isDarkTheme() ? '#fff' : '#000'}"></i>
                 </button>
-                <a href="https://github.com/GramosoftAI/GcrawlAI" target="_blank" rel="noopener noreferrer"
-                    class="btn btn-light fs-13">
-                    <img class="fav-icon" src="/assets/image/github.png" alt="GitHub" />
-
-                    {{ stars }}
-                </a>
-
             </div>
         </div>
     </div>
 </section>
+
+<!-- Mobile Offcanvas Menu-->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="headerOffcanvas" aria-labelledby="headerOffcanvasLabel">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title fw-bold" id="headerOffcanvasLabel"
+            [ngStyle]="{'color': isDarkTheme() ? '#fff' : '#333'}">
+            Menu
+        </h5>
+        <button type="button" class="btn-close" [class.btn-close-white]="isDarkTheme()" data-bs-dismiss="offcanvas"
+            aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+        <div class="d-flex flex-column w-100">
+            <!-- Mobile-only User Info & Logout -->
+            <ng-container *ngIf="isLoggedIn">
+                <div class="mb-3 text-center fw-semibold fs-5" [ngStyle]="{'color': isDarkTheme() ? '#fff' : '#000'}">
+                    Hi, {{ user?.user?.name }}
+                </div>
+                <button (click)="logout()" data-bs-dismiss="offcanvas" type="button"
+                    class="btn-danger-soft w-100 text-center mb-3">
+                    Logout
+                </button>
+            </ng-container>
+
+            <!-- Mobile-only Contact -->
+            <button routerLink="/app/contact-us" data-bs-dismiss="offcanvas" type="button"
+                class="btn-bg-primary text-light py-2 w-100 text-center ms-0">
+                Contact
+            </button>
+        </div>
+    </div>
+</div>

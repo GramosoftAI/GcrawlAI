@@ -6,6 +6,10 @@
   color: var(--text-color);
 }
 
+.sticky-top {
+  top: -17px !important;
+}
+
 .nav-pills .nav-link.active {
   color: var(--text-color) !important;
   background: var(--card-bg-color) !important;
@@ -25,7 +29,7 @@
 
 .scroll-tabs {
   overflow-x: auto;
-  flex-wrap: nowrap;
+  flex-wrap: nowrap !important;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   background-color: var(--grid-line-color) !important;
 }
@@ -38,10 +42,16 @@
   border: 1px solid #eee;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   padding: 10px;
-  max-height: 470px;
+  max-height: 425px;
   overflow-y: auto;
-  width: 878px;
+  width: 100%;
+  // max-width: 878px;
   background: var(--card-bg);
+}
+
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .report-container {
@@ -63,6 +73,8 @@
   overflow-x: auto;
   font-size: 13px;
   color: var(--text-color);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .gcnot-login {
@@ -93,7 +105,7 @@
 @media (max-width: 768px) {
   .header-actions {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center !important;
   }
 
   .header-actions button {
@@ -216,30 +228,68 @@
   }
 }
 
-/* SEO Metrics Grid */
 .seo-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.metric-node {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
   background: var(--card-bg);
+  padding: 15px;
+  border-radius: 8px;
   border: 1px solid var(--grid-line-color);
-  border-radius: 10px;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    border-color: var(--bs-danger);
+  .metric-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    background: rgba(var(--bs-light-rgb), 0.3);
+    border-radius: 4px;
+
+    .metric-label {
+      font-weight: 700;
+      color: #1a335e;
+      font-size: 13px;
+      min-width: 140px;
+      text-transform: capitalize;
+    }
+
+    .metric-value {
+      color: var(--text-color);
+      font-size: 13px;
+      word-break: break-all;
+      flex: 1;
+    }
+  }
+
+  &.scrape-layout {
+    .metric-item {
+      flex-direction: row;
+      align-items: flex-start;
+
+      .metric-label {
+        text-align: left;
+        border-right: 1px solid rgba(0, 0, 0, 0.05);
+        margin-right: 10px;
+      }
+    }
+  }
+
+  &.crawl-layout {
+    // In case we want to use the grid for Crawl mode too, 
+    // though the standard table is already "top-bottom".
+    grid-template-columns: 1fr;
+
+    .metric-item {
+      flex-direction: column;
+      align-items: flex-start;
+
+      .metric-label {
+        margin-bottom: 6px;
+        width: 100%;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        padding-bottom: 4px;
+      }
+    }
   }
 }
 
@@ -348,7 +398,7 @@
 .metric-node {
   flex: 1 1 200px;
   min-width: 150px;
-  max-width: 300px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   /* Key on top */
@@ -410,4 +460,69 @@ table thead tr th {
 table tbody tr td {
   color: var(--text-color) !important;
   text-align: start;
+}
+
+.seo-xlsx-td {
+  max-width: 100%;
+}
+
+/* Custom Thin Scrollbar for long data cells */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--grid-line-color);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--text-color-secondary);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-color);
+}
+
+.loading-text .dots::after {
+  content: '';
+  animation: dots 1.5s steps(4, end) infinite;
+}
+
+.loading-text {
+  font-size: 11px;
+  color: darkorange;
+}
+
+@keyframes dots {
+  0% {
+    content: '';
+    color: red;
+  }
+
+  25% {
+    content: '.';
+    color: green;
+  }
+
+  50% {
+    content: '..';
+    color: yellow;
+  }
+
+  75% {
+    content: '...';
+    color: orange;
+  }
+
+  100% {
+    content: '';
+    color: white;
+  }
+}
+
+.owl-carousel .owl-item {
+  width: 320px !important;
 }
