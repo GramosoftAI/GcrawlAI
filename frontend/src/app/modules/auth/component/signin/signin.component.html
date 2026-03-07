@@ -53,7 +53,7 @@
       <form [formGroup]="loginForm" (ngSubmit)="OnSubmit()" *ngIf="!Isforgot">
         <div class="mb-3">
           <label class="form-label">Email</label>
-          <input type="email" formControlName="email" class="form-control" />
+          <input placeholder="example123@gmail.com" type="email" formControlName="email" class="form-control" />
 
           <div class="text-danger" *ngIf="loginForm.get('email')?.touched">
             <small *ngIf="loginForm.get('email')?.errors?.['required']">
@@ -63,7 +63,7 @@
         </div>
         <div class="mb-4 position-relative">
           <label class="form-label">Password</label>
-          <input [type]="hidePassword ? 'password' : 'text'" formControlName="password"
+          <input placeholder="Welcome#3" [type]="hidePassword ? 'password' : 'text'" formControlName="password"
             class="form-control position-relative" />
           <button type="button" class="btn btn-outline-secondary confirm-visible"
             (click)="hidePassword = !hidePassword">
@@ -83,8 +83,9 @@
           </div>
         </div>
 
-        <button class="btn btn-orange w-100" type="submit">
-          {{ activeTab === 'signup' ? 'Create Account' : 'Log In' }}
+        <button class="btn btn-orange w-100" type="submit" [disabled]="isLoading">
+          <span *ngIf="!isLoading">{{ activeTab === 'signup' ? 'Create Account' : 'Log In' }}</span>
+          <span *ngIf="isLoading">Please wait...</span>
         </button>
         <div class="d-flex justify-content-start w-100 mt-1" (click)="forgot()">
           Forgot password
@@ -135,7 +136,7 @@
         <button class="btn btn-orange w-100" type="submit" [disabled]="passwordForm.invalid">
           Submit
         </button>
-          <p class="text-end pt-1">Back to <a (click)="this.activeTab = 'login'">Login?</a></p>
+        <p class="text-end pt-1">Back to <a (click)="this.activeTab = 'login'">Login?</a></p>
       </form>
     </div>
   </div>

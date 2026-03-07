@@ -9,7 +9,13 @@
       <a class="text-color-black text-break text-center" [href]="parsedBlocks[0]?.url" target="_blank">
         {{ parsedBlocks[0]?.url }}
       </a>
-      <h3 class="title mb-0">Total Pages ({{parsedBlocks.length}})</h3>
+      <h3 class="title mb-0" *ngIf="isCrawlMode()">
+        Total Pages: {{parsedBlocks.length}} / 10
+        <p class="loading-text" *ngIf="isCrawlMode() && parsedBlocks.length !== 10">
+          Crawling the pages<span class="dots"></span>
+        </p>
+      </h3>
+      <h3 class="title mb-0" *ngIf="!isCrawlMode()">Total Pages: {{parsedBlocks.length}}</h3>
       <!-- <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1">
         <img src="assets/image/upload.png" class="fav-icon">
         Share
@@ -35,11 +41,11 @@
 
       <div class="d-flex flex-wrap gap-2">
 
-        <!-- <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1 md-title" data-bs-toggle="modal"
+        <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1 md-title" data-bs-toggle="modal"
           data-bs-target="#exampleModal">
           <img src="/assets/image/danger.png" class="fav-icon">
           Report issue
-        </button> -->
+        </button>
 
         <!-- <button *ngIf="token" type="button" class="btn dark-btn fs-13 p-2 py-1 md-title">
           <img src="/assets/image/download.png" class="fav-icon">
@@ -115,20 +121,21 @@
     </ul>
 
 
-    <!-- Tab Content -->
-    <div class="tab-content mx-auto no-animation" [ngStyle]="{ overflow: token ? 'auto' : 'hidden' }">
+    <div class="tab-content mx-auto no-animation w-100" [ngStyle]="{ overflow: token ? 'auto' : 'hidden' }">
 
       <div class="tab-pane fade p-2" id="pills-screenshot" [class.show]="activeTab === 'pills-screenshot'"
         [class.active]="activeTab === 'pills-screenshot'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title">
-              {{ i + 1 }}. {{ block?.title }} Screenshot
-            </h3>
+          <div class="d-flex justify-content-end">
             <button *ngIf="token && block.screenshot" class="btn-bg-primary-light txt-red ms-5"
               (click)="download(block.screenshot, i, 'png')">
               Download PNG
             </button>
+          </div>
+          <div class="d-flex justify-content-between flex-wrap gap-2">
+            <h3 class="title">
+              {{ i + 1 }}. {{ block?.title }} Screenshot
+            </h3>
           </div>
           <div class="screenshot-wrapper text-center mt-3" *ngIf="block.screenshot">
             <img [src]="block.screenshot" class="img-fluid rounded border shadow-sm" [alt]="block.title">
@@ -142,13 +149,15 @@
       <div class="tab-pane fade p-2" id="pills-markdown" [class.show]="activeTab === 'pills-markdown'"
         [class.active]="activeTab === 'pills-markdown'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <div class="d-flex justify-content-end">
+            <button *ngIf="token" class="btn-bg-primary-light txt-red" (click)="download(block.raw, i)">
+              Download .md
+            </button>
+          </div>
           <div class="d-flex justify-content-between flex-wrap gap-2">
             <h3 class="title md-title">
               {{ i + 1 }}. {{ block?.title }}
             </h3>
-            <button *ngIf="token" class="btn-bg-primary-light txt-red" (click)="download(block.raw, i)">
-              Download .md
-            </button>
           </div>
           <pre class="content">{{ block?.raw }}</pre>
         </div>
@@ -171,21 +180,23 @@
         [class.active]="activeTab === 'pills-links'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
           <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title">
-              {{ i + 1 }}. {{ block?.title }} Links
+            <h3 class="title d-flex align-items-center">
+              {{ i + 1 }}. {{ block?.title }}
+              <span *ngIf="block.linksCount" class="badge bg-danger ms-2 fs-11 fw-normal rounded-pill px-2">{{
+                block.linksCount }} Links</span>
             </h3>
-            <button *ngIf="token && block.links" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+            <button *ngIf="token && block.links" class=" btn-bg-primary-light txt-red fs-12 p-1 px-2"
               (click)="download(block.links, i, 'md')">
               Download Links
             </button>
           </div>
           <div class="code-editor-viewer mt-3" *ngIf="block.links">
-            <div class="editor-header">
+            <!-- <div class="editor-header">
               <span class="dot red"></span>
               <span class="dot yellow"></span>
               <span class="dot green"></span>
               <span class="file-name">extracted_links.txt</span>
-            </div>
+            </div> -->
             <pre class="editor-body text-start">{{ block.links }}</pre>
           </div>
           <div *ngIf="!block.links" class="text-muted p-4 text-center">
@@ -207,10 +218,10 @@
             <h3 class="title">
               {{ i + 1 }}. {{ block?.title }} HTML
             </h3>
-            <button *ngIf="token && block.rawHtml" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+            <!-- <button *ngIf="token && block.rawHtml" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
               (click)="download(block.rawHtml, i, 'html')">
               Download Individual HTML
-            </button>
+            </button> -->
           </div>
           <div class="code-editor-viewer" *ngIf="block.rawHtml">
             <div class="editor-header">
@@ -274,7 +285,7 @@
 
           <!-- Right: Download buttons -->
           <div class="seo-header-right flex-grow-1 d-flex justify-content-end gap-2">
-            <button *ngIf="token && activeSeoTab === 'xlsx' && consolidatedXlsxTable.length > 1"
+            <button *ngIf="token && activeSeoTab === 'xlsx' && consolidatedXlsxTable.rows.length > 0"
               class="btn-bg-primary-light txt-red" (click)="downloadConsolidatedXlsx()">
               Download SEO Excel
             </button>
@@ -291,29 +302,104 @@
 
         <!-- Excel View -->
         <div *ngIf="activeSeoTab === 'xlsx'">
+
+          <!-- Scrape Mode: Structured Grid (Label on left, Value on right) -->
+          <div *ngIf="isScrapeMode() && consolidatedXlsxTable.headers.length > 0"
+            class="table-responsive bg-white rounded border shadow-sm p-3 mb-4">
+            <table class="table table-hover table-bordered mb-0 fs-13">
+              <tbody>
+                <tr *ngFor="let header of consolidatedXlsxTable.headers">
+                  <th class="bg-light text-nowrap text-start" style="width: 30%;">{{ header }}</th>
+                  <td class="text-break">{{ consolidatedXlsxTable.rows[0]?.[header] || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Crawl Mode: Standard Table (Headers on top, values below) -->
           <div class="xlsx-grid-wrapper report-container mb-4"
-            *ngIf="consolidatedXlsxTable && consolidatedXlsxTable.length > 1">
-            <div class="table-responsive bg-white rounded border shadow-sm p-2">
-              <table class="table table-hover table-bordered mb-0 fs-13">
-                <thead class="bg-light">
+            *ngIf="isCrawlMode() && consolidatedXlsxTable.headers.length > 0">
+
+            <div class="table-responsive rounded border shadow-sm p-3"
+              [ngStyle]="{ maxHeight: token ? '600px' : 'auto' }" style="overflow-x: auto;">
+              <table class="table table-hover table-bordered mb-0 fs-13 w-100">
+
+                <thead class="bg-light sticky-top" style="z-index: 2;">
                   <tr>
-                    <th class="text-nowrap" *ngFor="let header of consolidatedXlsxTable[0]">
-                      {{ header }}
+                    <th class="text-nowrap text-center" *ngFor="let header of consolidatedXlsxTable.headers"
+                      style="min-width: 150px;">
+                      {{ header | titleCaseHeader }}
                     </th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  <tr *ngFor="let row of consolidatedXlsxTable | slice:1">
-                    <td *ngFor="let cell of $any(row)" class="text-truncate" style="max-width: 250px;">
-                      {{ cell || '-' }}
-                    </td>
-                  </tr>
+                  <ng-container *ngFor="let row of consolidatedXlsxTable.rows; let idx = index">
+
+                    <!-- Full-Width Highlighted Title Row -->
+                    <tr>
+                      <td [attr.colspan]="consolidatedXlsxTable.headers.length" class="p-0 border-0">
+                        <div class="text-start p-1 rounded fs-11 shadow-sm fw-bold" style="color: #1a335e;">
+                          {{idx + 1}} {{ row['title'] || row['url'] || ('Page ' + (idx + 1)) }}
+                        </div>
+                      </td>
+                    </tr>
+
+                    <!-- Data Row -->
+                    <tr>
+                      <td *ngFor="let header of consolidatedXlsxTable.headers"
+                        style="min-width: 200px; max-width: 600px; word-wrap: break-word; vertical-align: top;">
+                        <ng-container *ngIf="header === 'image_alts'; else defaultCell">
+                          <div class="d-flex justify-content-between align-items-start mb-1">
+                            <span class="fs-12 fw-bold text-muted">Image Alts List</span>
+                            <button *ngIf="row[header]" class="btn btn-sm btn-light p-0 px-1 border"
+                              (click)="copyToClipboard(row[header], idx + '_' + header)" title="Copy to Clipboard">
+                              <ng-container *ngIf="copiedItem === (idx + '_' + header); else copyIcon">
+                                <i class="fa fa-check text-success" style="font-size: 11px;"></i> <span
+                                  class="text-success">Copied!</span>
+                              </ng-container>
+                              <ng-template #copyIcon>
+                                <i class="fa fa-copy" style="font-size: 11px;"></i> Copy
+                              </ng-template>
+                            </button>
+                          </div>
+                          <div style="max-height: 100px; overflow: auto;" class="pe-1 custom-scrollbar">
+                            {{ row[header] || '-' }}
+                          </div>
+                        </ng-container>
+                        <ng-template #defaultCell>
+                          <ng-container *ngIf="isLongData(row[header]); else shortData">
+                            <div class="d-flex justify-content-end mb-1">
+                              <button class="btn btn-sm btn-light p-0 px-1 border"
+                                (click)="copyToClipboard(row[header], idx + '_' + header)" title="Copy to Clipboard">
+                                <ng-container *ngIf="copiedItem === (idx + '_' + header); else copyIcon">
+                                  <i class="fa fa-check text-success" style="font-size: 11px;"></i> <span
+                                    class="text-success">Copied!</span>
+                                </ng-container>
+                                <ng-template #copyIcon>
+                                  <i class="fa fa-copy" style="font-size: 11px;"></i> Copy
+                                </ng-template>
+                              </button>
+                            </div>
+                            <div style="max-height: 100px; overflow: auto;" class="pe-1 custom-scrollbar">
+                              {{ row[header] }}
+                            </div>
+                          </ng-container>
+                          <ng-template #shortData>
+                            {{ row[header] || '-' }}
+                          </ng-template>
+                        </ng-template>
+                      </td>
+                    </tr>
+
+                  </ng-container>
                 </tbody>
+
               </table>
             </div>
+
           </div>
-          <div *ngIf="!consolidatedXlsxTable || consolidatedXlsxTable.length <= 1"
-            class="text-muted p-3 text-center fs-13">
+          <div *ngIf="consolidatedXlsxTable.headers.length === 0" class="text-muted p-3 text-center fs-13">
             No SEO Excel data available.
           </div>
         </div>
@@ -328,12 +414,6 @@
             <!-- Markdown View -->
             <div *ngIf="activeSeoTab === 'md'">
               <div class="seo-content" *ngIf="block.seo?.md">
-                <!-- <div class="d-flex justify-content-start mb-2">
-                  <button *ngIf="token" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
-                    (click)="download(block.seo.md, i, 'md')">
-                    Download SEO MD
-                  </button>
-                </div> -->
                 <pre>{{block.seo.md}}</pre>
               </div>
 
@@ -408,69 +488,52 @@
 
       <div class="modal-body">
 
-        <form [formGroup]="reportForm">
+        <form [formGroup]="reportForm" (ngSubmit)="submitReport()">
 
-          <div class="mb-2">
-            <label class="fs-13">URL affected</label>
-            <input type="text" class="form-control p-1">
+          <!-- URL -->
+          <div class="mb-1">
+            <label class="fs-13 mb-2">URL affected:</label>
+            <input type="text" class="form-control p-1" formControlName="url_affected">
           </div>
 
-
-          <div class="mb-2">
-            <label class="fs-13">Email</label>
-            <input type="email" class="form-control p-1">
+          <!-- Email -->
+          <div class="mb-1">
+            <label class="fs-13 mb-2">Email:</label>
+            <input type="email" class="form-control p-1" formControlName="email">
           </div>
 
-
-          <div class="mb-2">
-
-            <label class="fs-13">
-              What's the issue?
-            </label>
+          <!-- Issues -->
+          <div class="mb-1">
+            <label class="fs-13 mb-2">What's the issue?</label>
 
             <div class="issue-container">
 
-              <label class="issue-box">
-                <input type="checkbox">
-                Missing content
+              <label class="issue-box" *ngFor="let issue of issueList">
+
+                <input type="checkbox" [value]="issue" (change)="onIssueChange($event)">
+
+                {{ issue }}
+
               </label>
 
-              <label class="issue-box">
-                <input type="checkbox">
-                Bot protections
-              </label>
-
-              <label class="issue-box">
-                <input type="checkbox">
-                Formatting issues
-              </label>
-
-              <input type="text" class="form-control" placeholder="Other">
+              <!-- Other -->
+              <input type="text" class="form-control" placeholder="Other" formControlName="other_issue">
 
             </div>
-
           </div>
 
-
+          <!-- Explanation -->
           <div class="mb-2">
+            <label class="fs-13 mb-1">Explanation:</label>
 
-            <label class="fs-13">Explanation</label>
-
-            <textarea class="form-control" rows="3" placeholder="Provide details">
-            </textarea>
-
+            <textarea class="form-control" rows="3" formControlName="explanation">
+    </textarea>
           </div>
 
+          <button class="btn btn-danger w-100" type="submit">
+            Submit Report
+          </button>
         </form>
-
-      </div>
-
-
-      <div class="modal-footer p-2">
-
-        <button class="btn btn-danger w-100">
-          Submit Report
-        </button>
 
       </div>
 

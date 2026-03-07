@@ -15,7 +15,11 @@ import { ErrorPageComponent } from './component/error-page/error-page.component'
 import { LoaderComponent } from './component/loader/loader.component';
 import { ToastrModule } from 'ngx-toastr';
 import { AnimatebgComponent } from './component/animatebg/animatebg.component';
-import {MatTooltipModule} from '@angular/material/tooltip';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { TitleCaseHeaderPipe } from 'src/app/pipes/title-case-header.pipe';
+import { NgxIntlTelInputModule } from 'ngx-intl-tel-input';
+import { CarouselModule } from 'ngx-owl-carousel-o';
 
 @NgModule({
   declarations: [
@@ -24,6 +28,7 @@ import {MatTooltipModule} from '@angular/material/tooltip';
     OtpModalComponent,
     AlertComponent,
     TimerPipe,
+    TitleCaseHeaderPipe,
     ErrorPageComponent,
     LoaderComponent,
     AnimatebgComponent,
@@ -37,14 +42,19 @@ import {MatTooltipModule} from '@angular/material/tooltip';
     MatTooltipModule,
     NgOtpInputModule,
     MatIconModule,
+    MatSnackBarModule,
     MatInputModule,
+    NgxIntlTelInputModule,
+    CarouselModule,
     ToastrModule.forRoot({
       preventDuplicates: true,
       timeOut: 3000
     })
   ],
   exports: [
+    CommonModule,
     AnimatebgComponent,
+    TitleCaseHeaderPipe,
     HeaderComponent,
     FooterComponent,
     OtpModalComponent,
@@ -52,10 +62,13 @@ import {MatTooltipModule} from '@angular/material/tooltip';
     MatDialogModule,
     NgOtpInputModule,
     ReactiveFormsModule,
+    NgxIntlTelInputModule,
     FormsModule,
     MatIconModule,
+    MatSnackBarModule,
     MatInputModule,
-    MatTooltipModule
+    MatTooltipModule,
+    CarouselModule
   ]
 })
 export class SharedModule { }

@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { URLS } from 'src/app/configs/api.config';
@@ -10,7 +10,7 @@ import { ToastrService } from 'ngx-toastr';
 import { ActivatedRoute } from '@angular/router';
 import { SeoService } from 'src/app/services/seo.service';
 import { isPlatformBrowser } from '@angular/common';
-
+import { CrawlHistoryComponent } from '../crawl-history/crawl-history.component';
 
 @Component({
   selector: 'app-homesearchresult',
@@ -33,12 +33,15 @@ export class HomesearchresultComponent implements OnInit {
   unSubscribe$ = new Subject();
   crawlform: FormGroup;
   socketMessages: string[] = [];
+  pendingErrors: Set<string> = new Set();
+  crawlCompleted: boolean = false;
   markdownBlocks: any[] = [];
   mode: any;
   formdata: any;
   selectedText = '';
   private visitedPaths = new Set<string>();
   private isBrowser: boolean;
+  @ViewChild(CrawlHistoryComponent) crawlHistory!: CrawlHistoryComponent;
   linksTooltipcontent = 'Attempts to output all websites URLs in a few seconds.';
   scrapeTooltipcontent = 'Scrapes only the specified URL without scrapping subpages. Outputs the content from the page.'
   crawlTooltipcontent = 'Crawls a URL and all its accessible subpages, outputting the content from each page.'
@@ -60,9 +63,10 @@ export class HomesearchresultComponent implements OnInit {
     return `${labels[selected[0]]} +${selected.length - 1}`;
   }
 
-  constructor(private seoservice: SeoService, private apiService: ApiService, private route: ActivatedRoute, private cd: ChangeDetectorRef, private toastr: ToastrService, private fb: FormBuilder,
+  constructor(private seoService: SeoService, private apiService: ApiService, private route: ActivatedRoute, private cd: ChangeDetectorRef, private toastr: ToastrService, private fb: FormBuilder,
     private localService: LocalStorageService, private socketService: QuoteSocketService, @Inject(PLATFORM_ID) private platformId: Object) {
     this.crawlform = this.fb.group({
+      user_id: [null],
       url: ['', [Validators.required, Validators.pattern('https?://.+')]],
       crawl_mode: [''],
       enable_md: [true],
@@ -85,20 +89,25 @@ export class HomesearchresultComponent implements OnInit {
       const id = this.localService.getCrawlID();
       this.crawlID = id ? id : null;
     }
-    this.seoservice.updateSeoTags({
-      title: 'Crawler Dashboard | Gramocrawl',
-      description: 'Manage your distributed crawl tasks, monitor Celery workers, and view real-time scraping progress.',
-      keywords: 'scraping dashboard, celery monitor, real-time crawler',
-      image: 'assets/dashboard-preview.jpg'
+    this.seoService.updateSeoTags({
+      title: 'GCrawl — Free AI Web Crawler | Scrape Any Website into Markdown & LLM-Ready Data',
+      description: 'GCrawl is a free, open-source AI web crawler by Gramosoft. Scrape any website into clean Markdown, HTML, Screenshots or SEO data in seconds.',
+      keywords: 'web crawler, AI web scraper, website to markdown, LLM data extraction, open source web crawler',
+      url: 'https://gcrawl.gramopro.ai',
+      image: 'https://gcrawl.gramopro.ai/assets/image/Logo.svg'
     });
 
     this.route.queryParams.subscribe(params => {
       this.isLogin = params['isLogin'] === 'true';
-      console.log('isLogin', this.isLogin)
     })
     this.formValues = this.localService.getformDetails();
     if (this.formValues) {
       this.crawlform.patchValue(this.formValues);
+      // Strip stored https:// prefix so it doesn't double up with the static label
+      const storedUrl = this.crawlform.get('url')?.value || '';
+      this.crawlform.get('url')?.setValue(
+        storedUrl.replace(/^(https?:\/\/)+/i, ''), { emitEvent: false }
+      );
       this.formdata = this.formValues;
       this.updateSelectedText();
     }
@@ -108,6 +117,7 @@ export class HomesearchresultComponent implements OnInit {
     } else if (this.crawlID) {
       const storedPaths = this.localService.getStorage('discovery_paths');
       if (storedPaths && Array.isArray(storedPaths) && storedPaths.length > 0) {
+        this.crawlCompleted = true;
         storedPaths.forEach((page: any) => {
           if (page.markdown) this.getContent(page.markdown, 'markdown', page.page);
           if (page.screenshot) this.getContent(page.screenshot, 'screenshot', page.page);
@@ -120,7 +130,6 @@ export class HomesearchresultComponent implements OnInit {
         });
         this.scrape = true;
       } else {
-        // ID exists but no results recovered -> Scan might be ongoing or results lost -> Reconnect socket
         this.startSocket(this.crawlID);
         this.scrape = true;
       }
@@ -146,11 +155,14 @@ export class HomesearchresultComponent implements OnInit {
         enable_image: false
       });
     } else {
-      // If switching from links back to scrape or crawl, unset links and set md
       this.crawlform.patchValue({
         enable_links: false,
         enable_md: true
       });
+    }
+
+    if (this.crawlHistory) {
+      this.crawlHistory.getuserHistoryid();
     }
   }
 
@@ -196,11 +208,11 @@ export class HomesearchresultComponent implements OnInit {
         result.push(key);
       }
     });
-    console.log('Selected:', result);
     return result;
   }
 
   Onsubmit() {
+    this.ensureHttps();
     this.crawlform.markAllAsTouched();
     if (this.crawlform.invalid) {
       const { url, button } = this.crawlform.controls;
@@ -216,7 +228,6 @@ export class HomesearchresultComponent implements OnInit {
       return;
     }
 
-    // Check if at least one output format is selected
     const formats = ['enable_md', 'enable_html', 'enable_ss', 'enable_seo', 'enable_json', 'enable_links', 'enable_summary', 'enable_brand', 'enable_image'];
     const anySelected = formats.some(key => this.crawlform.get(key)?.value);
 
@@ -226,12 +237,35 @@ export class HomesearchresultComponent implements OnInit {
     }
 
     this.scrapStart();
+    // Strip https:// back off so the static prefix label doesn't double up visually
+    const urlCtrl = this.crawlform.get('url');
+    if (urlCtrl) {
+      urlCtrl.setValue(urlCtrl.value.replace(/^(https?:\/\/)+/i, ''), { emitEvent: false });
+    }
+  }
+
+  /** Strip any protocol the user typed — the static prefix handles it */
+  stripProtocol(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const cleaned = input.value.replace(/^(https?:\/\/)+/i, '');
+    if (cleaned !== input.value) {
+      this.crawlform.get('url')?.setValue(cleaned, { emitEvent: false });
+    }
+  }
+
+  /** Ensure the URL stored in the form always starts with https:// */
+  private ensureHttps() {
+    const ctrl = this.crawlform.get('url');
+    if (!ctrl) return;
+    const raw = (ctrl.value || '').replace(/^(https?:\/\/)+/i, '');
+    ctrl.setValue('https://' + raw, { emitEvent: false });
   }
 
 
 
   scrapStart() {
     debugger
+    this.scrape = false; // Reset to trigger ngOnChanges later
     this.isLoading = true;
     this.scrapReset();
     this.localService.clearcrawlID();
@@ -243,6 +277,7 @@ export class HomesearchresultComponent implements OnInit {
     } else {
       this.crawl_mode = 'links';
       this.crawlform.patchValue({
+        user_id: this.localService.getUserDetails()?.user?.user_id || null,
         enable_md: false,
         enable_html: false,
         enable_ss: false,
@@ -255,7 +290,8 @@ export class HomesearchresultComponent implements OnInit {
       });
     }
     this.crawlform.patchValue({
-      crawl_mode: this.crawl_mode
+      crawl_mode: this.crawl_mode,
+      user_id: this.localService.getUserDetails()?.user?.user_id || null,
     });
     this.apiService.post(URLS.config, this.crawlform.value).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res: any) => {
@@ -284,65 +320,124 @@ export class HomesearchresultComponent implements OnInit {
     });
   }
 
+  private isValidPath(path: any): boolean {
+    if (!path) return false;
+    if (typeof path !== 'string') return false;
+    const p = path.trim().toLowerCase();
+    return p !== '' && p !== 'none' && p !== 'null' && p !== 'undefined';
+  }
+
   startSocket(crawlId: string) {
     debugger
     this.isLoading = true;
     this.crawlID = crawlId;
     this.socketService.connect(crawlId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data: any) => {
-        console.log('Socket Raw Data:', JSON.stringify(data));
+        // console.log('Socket Raw Data:', JSON.stringify(data));
 
         if (data?.type === 'page_processed') {
           const pagePaths: any = { page: data.page };
 
-          if (data.markdown_file && this.formdata?.enable_md) {
-            pagePaths.markdown = data.markdown_file;
-            this.getContent(data.markdown_file, 'markdown', data.page);
+          if (this.formdata?.enable_md) {
+            if (this.isValidPath(data.markdown_file)) {
+              pagePaths.markdown = data.markdown_file;
+              this.getContent(data.markdown_file, 'markdown', data.page);
+            } else if (this.formdata?.crawl_mode !== 'links') {
+              this.pendingErrors.add('Generation failed for Markdown');
+            }
           }
-          if (data.screenshot && this.formdata?.enable_ss) {
-            pagePaths.screenshot = data.screenshot;
-            this.getContent(data.screenshot, 'screenshot', data.page);
+          if (this.formdata?.enable_ss) {
+            if (this.isValidPath(data.screenshot)) {
+              pagePaths.screenshot = data.screenshot;
+              this.getContent(data.screenshot, 'screenshot', data.page);
+            } else if (this.formdata?.crawl_mode !== 'links') {
+              this.pendingErrors.add('Generation failed for Screenshot');
+            }
           }
-          if (data.html_file && this.formdata?.enable_html) {
-            pagePaths.engineHtml = data.html_file;
-            this.getContent(data.html_file, 'html', data.page);
+          if (this.formdata?.enable_html) {
+            if (this.isValidPath(data.html_file)) {
+              pagePaths.engineHtml = data.html_file;
+              this.getContent(data.html_file, 'html', data.page);
+            } else if (this.formdata?.crawl_mode !== 'links') {
+              this.pendingErrors.add('Generation failed for HTML');
+            }
           }
-          if (data.links_file_path && this.formdata?.enable_links) {
-            pagePaths.links = data.links_file_path;
-            this.getContent(data.links_file_path, 'links', data.page);
+          if (this.formdata?.enable_links) {
+            debugger
+            if (this.isValidPath(data.links_file_path)) {
+              pagePaths.links = data.links_file_path;
+              this.getContent(data.links_file_path, 'links', data.page);
+            } else if (this.formdata?.crawl_mode !== 'links') {
+              this.pendingErrors.add('Generation failed for Links');
+            }
           }
-          if (data.summary_file && this.formdata?.enable_summary) {
-            pagePaths.summary = data.summary_file;
-            this.getContent(data.summary_file, 'summary', data.page);
+          if (this.formdata?.enable_summary) {
+            if (this.isValidPath(data.summary_file)) {
+              pagePaths.summary = data.summary_file;
+              this.getContent(data.summary_file, 'summary', data.page);
+            } else if (this.formdata?.crawl_mode !== 'links') {
+              this.pendingErrors.add('Generation failed for Summary');
+            }
           }
-          if (data.seo_json && this.formdata?.enable_seo) {
-            pagePaths.seo_json = data.seo_json;
-            this.getContent(data.seo_json, 'seo_json', data.page);
-          }
-          if (data.seo_md && this.formdata?.enable_seo) {
-            pagePaths.seo_md = data.seo_md;
-            this.getContent(data.seo_md, 'seo_md', data.page);
-          }
-          if (data.seo_xlsx && this.formdata?.enable_seo) {
-            pagePaths.seo_xlsx = data.seo_xlsx;
-            this.getContent(data.seo_xlsx, 'seo_xlsx', data.page);
+          if (this.formdata?.enable_seo) {
+            if (this.isValidPath(data.seo_json)) {
+              pagePaths.seo_json = data.seo_json;
+              this.getContent(data.seo_json, 'seo_json', data.page);
+            }
+            if (this.isValidPath(data.seo_md)) {
+              pagePaths.seo_md = data.seo_md;
+              this.getContent(data.seo_md, 'seo_md', data.page);
+            }
+            if (this.isValidPath(data.seo_xlsx)) {
+              pagePaths.seo_xlsx = data.seo_xlsx;
+              this.getContent(data.seo_xlsx, 'seo_xlsx', data.page);
+            }
+
+            if (!this.isValidPath(data.seo_json) && !this.isValidPath(data.seo_md) && !this.isValidPath(data.seo_xlsx)) {
+              if (this.formdata?.crawl_mode !== 'links') this.pendingErrors.add('Generation failed for SEO Data');
+            }
           }
           this.savePagePaths(pagePaths);
 
         } else if (data?.type === 'crawl_completed') {
-          const mdPath = data?.summary?.markdown_file ?? data?.summary?.markdown_path;
-          const linksPath = data?.summary?.links_file_path || data?.links_file_path;
-          const jsonSummaryPath = data?.summary?.summary_file || data?.summary_file_path;
+          const summary = data?.summary || {};
+          const mdPath = summary.markdown_file ?? summary.markdown_path;
+          const linksPath = summary.links_file_path || data?.links_file_path;
+          const jsonSummaryPath = summary.summary_file || data?.summary_file_path;
 
-          if (linksPath && this.formdata?.enable_links && !this.visitedPaths.has(linksPath)) {
-            this.getContent(linksPath, 'links');
+          if (this.formdata?.enable_links) {
+            if (this.isValidPath(linksPath)) {
+              if (!this.visitedPaths.has(linksPath)) this.getContent(linksPath, 'links');
+            } else {
+              this.pendingErrors.add('Final Links file generation failed');
+            }
           }
-          if (mdPath && this.formdata?.enable_md && mdPath.toLowerCase().endsWith('.md') && !this.visitedPaths.has(mdPath)) {
-            this.getContent(mdPath, 'markdown');
+
+          if (this.formdata?.enable_md) {
+            if (this.isValidPath(mdPath)) {
+              if (mdPath.toLowerCase().endsWith('.md') && !this.visitedPaths.has(mdPath)) {
+                this.getContent(mdPath, 'markdown');
+              }
+            } else {
+              this.pendingErrors.add('Final Markdown file generation failed');
+            }
           }
-          if (jsonSummaryPath && this.formdata?.enable_summary && !this.visitedPaths.has(jsonSummaryPath)) {
-            this.getContent(jsonSummaryPath, 'summary');
+
+          if (this.formdata?.enable_summary) {
+            if (this.isValidPath(jsonSummaryPath)) {
+              if (!this.visitedPaths.has(jsonSummaryPath)) this.getContent(jsonSummaryPath, 'summary');
+            } else {
+              this.pendingErrors.add('Final Summary file generation failed');
+            }
           }
+
+          // Show all accumulated errors uniquely
+          if (this.pendingErrors.size > 0) {
+            this.pendingErrors.forEach(err => this.toastr.error(err));
+            this.pendingErrors.clear();
+          }
+
+          this.crawlCompleted = true;
           if (this.loadingCounter === 0) {
             this.isLoading = false;
             this.cd.detectChanges();
@@ -365,6 +460,9 @@ export class HomesearchresultComponent implements OnInit {
   scrapReset() {
     this.markdownBlocks = [];
     this.visitedPaths.clear();
+    this.pendingErrors.clear();
+    this.crawlCompleted = false;
+    this.loadingCounter = 0;
     this.localService.removeStorage('discovery_paths');
   }
 
@@ -385,17 +483,6 @@ export class HomesearchresultComponent implements OnInit {
     this.markdownBlocks.push(combined);
   }
 
-  getUserhistory() {
-    debugger
-    const user_id = 4;
-    const urlWithId = `${URLS.user_history}/${user_id}`;
-    this.apiService.get(urlWithId, null, true).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (res: any) => {
-        console.log('History Data:', res);
-      }
-    });
-  }
-
   getContent(path: any, type: 'markdown' | 'screenshot' | 'html' | 'links' | 'summary' | 'seo_json' | 'seo_md' | 'seo_xlsx', pageIndex?: number) {
     debugger
     if (!path || this.visitedPaths.has(path)) return;
@@ -409,12 +496,27 @@ export class HomesearchresultComponent implements OnInit {
     this.isLoading = true;
     this.apiService.get(URLS.markdown_Details, params, true).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res: any) => {
-        let content = res.markdown || res.image || res.screenshot || res.content || res.json || res.xlsx || res.seo_md || res.markdown_content || res;
+        // Automatically unwrap 'data' payload from typical API responses
+        const payload = res.data ? res.data : res;
+
+        let content = payload.markdown || payload.image || payload.screenshot || payload.content || payload.json || payload.xlsx || payload.seo_md || payload.markdown_content || payload.seo_xlsx || payload;
+
         if (typeof content === 'object' && content !== null) {
-          if (type === 'seo_json' && content.json) content = content.json;
-          if (type === 'seo_xlsx' && content.xlsx) content = content.xlsx;
-          if (type === 'seo_md' && content.markdown) content = content.markdown;
+          if (type === 'seo_json') content = content.json || content.seo_json || content.content || content;
+          if (type === 'seo_xlsx') content = content.xlsx || content.seo_xlsx || content.content || content;
+          if (type === 'seo_md') content = content.markdown || content.seo_md || content.content || content;
+          if (type === 'markdown') content = content.markdown || content.content || content;
+          if (type === 'screenshot') content = content.screenshot || content.image || content.content || content;
+          if (type === 'html') content = content.html || content.engineHtml || content.content || content;
         }
+
+        // Failsafe serialization if it's still somehow an object, to prevent silent JS errors crashing marked parses.
+        if (typeof content === 'object' && content !== null && type !== 'seo_json' && type !== 'seo_xlsx') {
+          try {
+            content = content.content || content.markdown || JSON.stringify(content, null, 2);
+          } catch (e) { }
+        }
+
         if (type === 'seo_json' && typeof content === 'object') {
           content = JSON.stringify(content, null, 2);
         }
@@ -422,29 +524,46 @@ export class HomesearchresultComponent implements OnInit {
         if (type === 'screenshot' && typeof content === 'string' && !content.startsWith('data:')) {
           content = `data:image/png;base64,${content}`;
         }
+        const keyMap: any = {
+          'markdown': 'raw', // Or 'markdown'
+          'html': 'engineHtml',
+          'screenshot': 'screenshot',
+          'links': 'links',
+          'summary': 'summary',
+          'seo_json': 'seo_json',
+          'seo_md': 'seo_md',
+          'seo_xlsx': 'seo_xlsx'
+        };
+        const key = keyMap[type] || type;
+
         if (pageIndex !== undefined) {
           let blockIndex = this.markdownBlocks.findIndex(b => b.page === pageIndex);
           if (blockIndex === -1) {
-            const newBlock = { page: pageIndex, [type === 'html' ? 'engineHtml' : type]: content };
+            const newBlock: any = { page: pageIndex, [key]: content };
+            if (res.title) newBlock.title = res.title;
             this.markdownBlocks = [...this.markdownBlocks, newBlock].sort((a, b) => a.page - b.page);
           } else {
-            const updatedBlock = { ...this.markdownBlocks[blockIndex], [type === 'html' ? 'engineHtml' : type]: content };
+            const updatedBlock = { ...this.markdownBlocks[blockIndex], [key]: content };
+            if (res.title && !updatedBlock.title) updatedBlock.title = res.title;
             const newBlocks = [...this.markdownBlocks];
             newBlocks[blockIndex] = updatedBlock;
             this.markdownBlocks = newBlocks;
           }
         } else {
-          const key = (type === 'html' ? 'engineHtml' : type);
-          this.markdownBlocks = [...this.markdownBlocks, { [key]: content, page: 0 }];
+          const newBlock: any = { [key]: content, page: 0 };
+          if (res.title) newBlock.title = res.title;
+          this.markdownBlocks = [...this.markdownBlocks, newBlock];
         }
 
         this.loadingCounter--;
-        this.isLoading = this.loadingCounter > 0;
+        this.isLoading = this.crawlCompleted ? this.loadingCounter > 0 : true;
+
         this.cd.detectChanges();
       },
       error: () => {
         this.loadingCounter--;
-        this.isLoading = this.loadingCounter > 0;
+        this.isLoading = this.crawlCompleted ? this.loadingCounter > 0 : true;
+
         this.toastr.error('Something went wrong')
         this.cd.detectChanges();
       }
@@ -467,6 +586,66 @@ export class HomesearchresultComponent implements OnInit {
   }
 
 
+
+  onHistoricalReportClicked(historyResponse: any) {
+    if (!historyResponse || !historyResponse.pages || historyResponse.pages.length === 0) {
+      this.toastr.info("No content available for this report.");
+      return;
+    }
+
+    this.scrapReset();
+    this.isLoading = true;
+    this.scrape = true;
+    this.crawlCompleted = true; // Historical is treated as already finished
+
+    // We update the local formdata to infer types of buttons, but we don't know the precise mode
+    // We can infer by checking if it's more than 1 page (crawl vs scrape)
+    const isCrawl = historyResponse.pages.length > 1;
+    this.formdata = {
+      enable_md: historyResponse.pages.some((p: any) => p.markdown_file),
+      enable_html: historyResponse.pages.some((p: any) => p.html_file),
+      enable_seo: historyResponse.pages.some((p: any) => p.seo_json || p.seo_md || p.seo_xlsx),
+      enable_links: historyResponse.pages.some((p: any) => p.links_file_path || p.links),
+      enable_ss: historyResponse.pages.some((p: any) => p.screenshot),
+      enable_summary: historyResponse.pages.some((p: any) => p.summary_file),
+      button: isCrawl ? 'crawl' : 'scrape'
+    };
+
+    historyResponse.pages.forEach((page: any, index: number) => {
+      // Notice we pass mapping to getContent (path, type, index)
+      // Manually add the title/url to a blank initial object to help `getContent` attach it if `res.title` isn't available
+      const tempBlock = { page: index, title: page.title, url: page.url };
+      if (!this.markdownBlocks[index]) {
+        this.markdownBlocks[index] = tempBlock;
+      } else {
+        this.markdownBlocks[index].title = page.title;
+        this.markdownBlocks[index].url = page.url;
+      }
+
+      if (page.markdown_file) this.getContent(page.markdown_file, 'markdown', index);
+      if (page.html_file) this.getContent(page.html_file, 'html', index);
+      if (page.screenshot) this.getContent(page.screenshot, 'screenshot', index);
+      // Backend sometimes sends `links` and sometimes `links_file_path`
+      const linksPath = page.links_file_path || page.links;
+      if (linksPath) this.getContent(linksPath, 'links', index);
+      if (page.summary_file) this.getContent(page.summary_file, 'summary', index);
+      if (page.seo_json) this.getContent(page.seo_json, 'seo_json', index);
+      if (page.seo_md) this.getContent(page.seo_md, 'seo_md', index);
+      if (page.seo_xlsx) this.getContent(page.seo_xlsx, 'seo_xlsx', index);
+    });
+
+    if (this.loadingCounter === 0) {
+      this.isLoading = false;
+      this.cd.detectChanges();
+    }
+
+    // Scroll to the top of the page when the report starts loading so the user focuses on the tabs
+    if (this.isBrowser) {
+      setTimeout(() => {
+        window.scrollTo({ top: 300, behavior: 'smooth' });
+      }, 300);
+    }
+  }
 
   ngOnDestroy() {
     this.destroy$.next();
