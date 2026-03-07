@@ -91,7 +91,7 @@ def main(
                 }
             )
     elif crawl_mode == "links":
-        summary["markdown_path"] = summary["markdown_file"]
+        summary["markdown_path"] = None  # map mode produces no markdown
 
         if client_id:
             from web_crawler.redis_events import publish_event
@@ -101,7 +101,10 @@ def main(
                     "type": "crawl_completed",
                     "summary": summary,
                     "links_file_path": summary.get("links_file_path"),
-                    "summary_file_path": summary.get("summary_file_path")
+                    "summary_file_path": summary.get("summary_file_path"),
+                    "total_links_found": summary.get("total_links_found"),
+                    "from_sitemap": summary.get("from_sitemap"),
+                    "from_homepage": summary.get("from_homepage"),
                 }
             )
     else:

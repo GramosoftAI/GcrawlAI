@@ -19,6 +19,7 @@ from web_crawler.file_manager import FileManager
 from web_crawler.page_crawler import PageCrawler
 from web_crawler.seo_report import CrawlReportWriter
 from web_crawler.utils import normalize_url
+from web_crawler.map_crawler import map_website
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ class WebCrawler:
     ) -> Dict:
         """Main crawl orchestration"""
 
-        max_pages = 1 if crawl_mode == "single" or crawl_mode == "links" else self.config.max_pages
+        max_pages = 1 if crawl_mode == "single" else self.config.max_pages
 
         tz = pytz.timezone(self.config.timezone)
         start_time = datetime.now(tz)
@@ -104,9 +105,50 @@ class WebCrawler:
         logger.info("🚀 Crawl started")
 
         # =========================================================
+        # MAP MODE  (Firecrawl-style: robots.txt → sitemap → homepage)
+        # No browser — pure HTTP requests, returns full site URL list
+        # =========================================================
+        if crawl_mode == "links":
+            logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
+
+            map_result = map_website(start_url)
+            elapsed = perf_counter() - start_perf
+
+            discovered_urls = map_result["urls"]
+
+            # Persist to links.txt (same path the rest of the system uses)
+            if enable_links:
+                with open(self.config.links_file, "w", encoding="utf-8") as f:
+                    f.write("\n".join(discovered_urls))
+
+            summary = {
+                "start_url": start_url,
+                "pages_crawled": 0,
+                "pages_failed": 0,
+                "total_links_found": map_result["total"],
+                "capped": map_result["capped"],
+                "from_sitemap": map_result["from_sitemap"],
+                "from_homepage": map_result["from_homepage"],
+                "sitemaps_used": map_result["sitemaps_used"],
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "crawl_mode": crawl_mode,
+                "markdown_file": "None",
+                "links_file_path": str(self.config.links_file),
+                "summary_file_path": str(self.config.summary_file),
+            }
+
+            with open(self.config.summary_file, "w", encoding="utf-8") as f:
+                json.dump(summary, f, indent=2)
+
+            logger.info("✅ Map crawl finished")
+            logger.info(json.dumps(summary, indent=2))
+            return summary
+
+        # =========================================================
         # SINGLE PAGE MODE (NO THREADING)
         # =========================================================
-        if crawl_mode == "single" or crawl_mode == "links":
+        if crawl_mode == "single":
             logger.info("🔹 Single-page crawl mode")
 
             # Auto-resolve canonical URL (follows redirects: naukri.com → www.naukri.com)
@@ -145,8 +187,6 @@ class WebCrawler:
                     with open(self.config.links_file, "w", encoding="utf-8") as f:
                         f.write("\n".join(sorted(result["links"])))
             
-            file_name = result.get("markdown_file", "None") if result and crawl_mode == "single" else "None"
-
             summary = {
                 "start_url": start_url,
                 "pages_crawled": 1 if result else 0,
@@ -155,7 +195,7 @@ class WebCrawler:
                 "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
-                "markdown_file": file_name,
+                "markdown_file": result.get("markdown_file", "None") if result else "None",
                 "links_file_path": str(self.config.links_file),
                 "summary_file_path": str(self.config.summary_file),
             }
