@@ -92,6 +92,7 @@ from api.auth_routes import (
     StandardResponse,
     CurrentUserResponse,
 )
+from api.contact_routes import router as contact_router
 
 # ================= LOGGING =================
 
@@ -112,6 +113,9 @@ app.add_middleware(
 
 security = HTTPBearer()
 auth_manager: Optional[AuthManager] = None
+
+# ── Routers ──
+app.include_router(contact_router)
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
