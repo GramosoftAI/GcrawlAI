@@ -1,9 +1,9 @@
 /* =========================================
    Hero Section
    ========================================= */
-.hero {
-  padding: 0 16px;
-}
+// .hero {
+//   padding: 0 16px;
+// }
 
 .badge-promo {
   display: inline-block;
@@ -18,9 +18,8 @@
 }
 
 .hero h1 {
-  font-size: 48px;
-  /* fluid scaling */
-  font-weight: 800;
+  font-size: 42px;
+  font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.03em;
   margin-bottom: 16px;
@@ -59,8 +58,8 @@
 }
 
 .scrape-bar.initial-state {
-    width: 595px;
-    max-width: 100%;
+  width: 100%;
+  max-width: 595px;
 }
 
 .scrape-bar:focus-within {
@@ -89,6 +88,15 @@
     border-color: var(--primary);
     box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.1);
   }
+}
+
+.https-prefix {
+  color: var(--text-muted);
+  font-size: 14px;
+  white-space: nowrap;
+  user-select: none;
+  opacity: 0.7;
+  margin-right: 2px;
 }
 
 /* =========================================
@@ -122,6 +130,11 @@
       border-color: var(--primary);
     }
 
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     &::after {
       content: '\F229';
       /* Bootstrap bi-chevron-down */
@@ -139,6 +152,8 @@
     border: 1px solid var(--card-border);
     padding: 8px;
     min-width: 180px;
+    max-width: 90vw;
+    /* Prevent from going off-screen on mobile */
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 
     .format-item {
@@ -314,9 +329,14 @@
   flex-shrink: 0;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(33, 212, 150, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-primary:active {
@@ -354,20 +374,20 @@
     font-size: 42px;
   }
 
-  .scrape-bar {
-    max-width: 90%;
-  }
+  // .scrape-bar {
+  //   max-width: 90%;
+  // }
 }
 
 @media (max-width: 768px) {
-  .hero {
-    margin: 40px 0 30px;
-  }
+  // .hero {
+  //   margin: 40px 0 30px;
+  // }
 
   .scrape-bar {
     padding: 14px 16px;
     border-radius: 16px;
-    max-width: 100%;
+    // max-width: 100%;
   }
 
   .controls-wrapper {
@@ -377,7 +397,6 @@
 
   .custom-tabs {
     width: 100%;
-    justify-content: flex-start;
   }
 
   /* On tablets, we might want buttons to be auto width if space permits, or full width if not */
@@ -388,8 +407,12 @@
 
 /* Mobile: 480px */
 @media (max-width: 480px) {
-  .hero {
-    margin: 28px 0 24px;
+  // .hero {
+  //   margin: 28px 0 24px;
+  // }
+
+  .hero h1 {
+    font-size: 32px;
   }
 
   .badge-promo {
@@ -414,6 +437,16 @@
     /* prevents iOS zoom on focus */
   }
 
+  .controls-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-primary {
+    width: 100%;
+    margin-top: 8px;
+  }
+
   .tab-btn {
     padding: 7px 10px;
     font-size: 12px;
@@ -434,4 +467,51 @@
   .tab-btn {
     padding: 8px;
   }
+}
+
+/* =========================================
+   Features Section (SEO)
+   ========================================= */
+.features-section {
+  border-top: 1px solid var(--card-border);
+  width: 100%;
+}
+
+.feature-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 24px;
+  height: 100%;
+  text-align: left;
+  transition: transform 0.3s ease, border-color 0.3s ease;
+
+  &:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary);
+  }
+
+  h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text-main);
+    line-height: 1.3;
+  }
+
+  p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 0;
+  }
+}
+
+.max-w-800 {
+  max-width: 800px;
+}
+
+.mx-auto {
+  margin-left: auto;
+  margin-right: auto;
 }

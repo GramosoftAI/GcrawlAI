@@ -28,6 +28,13 @@ export class HeaderComponent {
     }
 
   }
+  get isLoggedIn() {
+    return this.authService.isLoggedIn();
+  }
+
+  get user() {
+    return this.authService.currentUser();
+  }
 
   private loadGithubStars(): void {
     this.github.getStars().subscribe({
@@ -44,7 +51,7 @@ export class HeaderComponent {
 
   Onclick() {
     if (!this.token) {
-      this.router.navigate(['/auth'])
+      this.router.navigate(['/login'])
     }
   }
 

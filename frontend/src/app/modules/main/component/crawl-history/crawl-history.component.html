@@ -1,0 +1,44 @@
+<section class="mt-5 carousel-card" *ngIf="historyData && historyData.length > 0">
+    <p class="text-start fw-400 fs-16 mb-2">Recent Searches</p>
+    <owl-carousel-o [options]="customOptions">
+        <ng-template carouselSlide *ngFor="let item of historyData">
+            <div class="history-card pb-2 mx-1 mb-2 h-100">
+                <div class="history-card-header d-flex justify-content-between align-items-center">
+                    <span class="history-url text-truncate me-2"
+                        [title]="item.url || item.path || item.endpoint || item.page">
+                        {{ item.url || item.path || item.endpoint || item.page || 'Unknown URL' }}
+                    </span>
+                    <span class="icon-circle flex-shrink-0" style="cursor: pointer;">
+                        <img src="/assets/image/top-arrow.png" (click)="getReport(item.crawl_id)" alt="" class="arrow-img" />
+                    </span>
+                </div>
+                <div class="history-card-body py-1 px-2">
+                    <div class="history-row mt-1">
+                        <span class="history-label">Endpoint</span>
+                        <span class="history-value fw-semibold text-primary">
+                            {{ getMode(item.crawl_mode) }}
+                        </span>
+                    </div>
+                    <div class="history-row mt-1">
+                        <span class="history-label">Status</span>
+                        <span class="history-value">
+                            <span class="badge status-badge"
+                                [ngClass]="{'bg-success-soft text-success': item.status === 'completed' || item.status === 'Success', 'bg-warning-soft text-warning': item.status === 'pending', 'bg-danger-soft text-danger': item.status === 'failed'}">
+                                {{ item.status || 'Completed' }}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="history-row mt-1">
+                        <span class="history-label">Started</span>
+                        <span class="history-value">{{ (item.created_at || item.timestamp || item.started) ?
+                            ((item.created_at || item.timestamp || item.started) | date:'medium') : '-' }}</span>
+                    </div>
+                    <div class="history-row mt-1">
+                        <span class="history-label">Format</span>
+                        <span class="history-value fw-semibold">{{ getFormats(item) }}</span>
+                    </div>
+                </div>
+            </div>
+        </ng-template>
+    </owl-carousel-o>
+</section>

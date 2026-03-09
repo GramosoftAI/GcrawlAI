@@ -49,75 +49,24 @@ export class AuthInterceptor implements HttpInterceptor {
             map((event: HttpEvent<any>) => {
                 if (event instanceof HttpResponse) {
                     if (event.url && !event.url.includes('assets/data') && event.body) {
-                        if (event.body.status === true) {
-                            if (req.method == 'DELETE') {
-                                this.toastr.success('Deleted Successfully...');
-                            } else {
-                                switch (req.headers.get('Type')) {
-                                    case 'CR':
-                                        this.toastr.success('Created Successfully...');
-                                        break;
-
-                                    case 'UP':
-                                        this.toastr.success('Uploaded Successfully...');
-                                        break;
-
-                                    case 'ED':
-                                        this.toastr.success('Updated Successfully...');
-                                        break;
-
-                                    case 'DL':
-                                        this.toastr.success('Deleted Successfully...');
-                                        break;
-
-                                    case 'CL':
-                                        this.toastr.success('Canceled Successfully...');
-                                        break;
-
-                                    case 'SE':
-                                        this.toastr.success('Sented Successfully...');
-                                        break;
-
-                                    case 'OC':
-                                        this.toastr.success('Order Completed Successfully...');
-                                        break;
-
-                                    case 'OR':
-                                        this.toastr.success('Order Rejected Successfully...');
-                                        break;
-
-                                    case 'OS':
-                                        this.toastr.success('Order Rescheduled Successfully...');
-                                        break;
-
-                                    case 'LO':
-                                        this.toastr.success(event.body.message || 'Login Successfully......');
-                                        break;
-
-                                    default:
-                                        if (event.body.message && req.headers.get('Type') !== 'NT') {
-                                            this.toastr.success(event.body.message);
-                                        }
-                                        break;
-                                }
-                            }
+                        // NT = No Interceptor handling — skip all toasts and dialogs
+                        if (req.headers.get('Type') === 'NT') {
+                            return event;
                         }
                         else {
                             if (event.status !== 200) {
-                                const message = event.status !== 200 ? event.body?.message : 'Some thing went wrong';
+                                const message = event.body?.message || 'Something went wrong';
                                 const dialogData = new AlertDialog("Alert", message, 'AL');
-                                const dialogRef = this.dialog.open(AlertComponent, {
+                                this.dialog.open(AlertComponent, {
                                     maxWidth: "400px",
                                     data: dialogData
                                 });
                             } else {
-                                const message = event.status !== 200 ? event.body?.message : 'Some thing went wrong';
-                                if (event.status !== 200) {
-                                    this.toastr.info(message);
+                                if (event.body?.message) {
+                                    this.toastr.info(event.body.message);
                                 }
                             }
                         }
-
                     }
                 }
                 return event;
