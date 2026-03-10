@@ -93,6 +93,7 @@ from api.auth_routes import (
     CurrentUserResponse,
 )
 from api.contact_routes import router as contact_router
+from api.search_routes import router as search_router
 
 # ================= LOGGING =================
 
@@ -116,6 +117,7 @@ auth_manager: Optional[AuthManager] = None
 
 # ── Routers ──
 app.include_router(contact_router)
+app.include_router(search_router)
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -380,6 +382,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                     "headless": config.headless,
                     "use_stealth": config.use_stealth,
                     "output_dir": str(config.output_dir),  # ✅ convert Path → str
+                    "proxy": config.proxy,
                 },
                 crawl_mode="all",
                 enable_md=payload.enable_md,

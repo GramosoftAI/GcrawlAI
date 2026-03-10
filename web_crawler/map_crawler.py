@@ -62,10 +62,20 @@ _SITEMAP_XML_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
-def _get(url: str, timeout: Tuple[int, int] = _SITEMAP_TIMEOUT) -> Optional[requests.Response]:
+def _get(
+    url: str, 
+    timeout: Tuple[int, int] = _SITEMAP_TIMEOUT,
+    proxy_dict: Optional[dict] = None
+) -> Optional[requests.Response]:
     """Safe HTTP GET; returns None on any error."""
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=timeout, allow_redirects=True)
+        resp = requests.get(
+            url, 
+            headers=_HEADERS, 
+            timeout=timeout, 
+            allow_redirects=True,
+            proxies=proxy_dict
+        )
         if resp.status_code == 200:
             return resp
         logger.debug(f"HTTP {resp.status_code} for {url}")
@@ -135,13 +145,14 @@ def _find_sitemaps_from_robots(base_url: str) -> List[str]:
 def _fetch_and_extract_urls(
     sitemap_url: str,
     base_url: str,
+    proxy_dict: Optional[dict] = None
 ) -> Tuple[str, List[str], List[str]]:
     """
     Fetch one sitemap URL and return:
       (sitemap_url, child_sitemap_urls, page_urls)
     child_sitemap_urls are only returned for same-host sitemaps.
     """
-    resp = _get(sitemap_url, timeout=_SITEMAP_TIMEOUT)
+    resp = _get(sitemap_url, timeout=_SITEMAP_TIMEOUT, proxy_dict=proxy_dict)
     if not resp:
         return sitemap_url, [], []
 
@@ -185,6 +196,7 @@ def _collect_sitemap_urls(
     sitemap_hints: List[str],
     collected: Set[str],
     lock: threading.Lock,
+    proxy_dict: Optional[dict] = None
 ) -> None:
     """
     Discover URLs from all sitemaps using a BFS queue + thread pool.
@@ -233,7 +245,7 @@ def _collect_sitemap_urls(
 
         with ThreadPoolExecutor(max_workers=len(batch)) as executor:
             futures = {
-                executor.submit(_fetch_and_extract_urls, url, base_url): url
+                executor.submit(_fetch_and_extract_urls, url, base_url, proxy_dict): url
                 for url in batch
             }
             for future in as_completed(futures):
@@ -339,7 +351,12 @@ def _collect_homepage_links_from_resp(
     return added
 
 
-def _collect_homepage_links(base_url: str, collected: Set[str], lock: threading.Lock) -> int:
+def _collect_homepage_links(
+    base_url: str, 
+    collected: Set[str], 
+    lock: threading.Lock,
+    proxy_dict: Optional[dict] = None
+) -> int:
     """
     Fetch the homepage and extract internal links.
     (Used as fallback when pre-fetching is not used.)
@@ -350,7 +367,7 @@ def _collect_homepage_links(base_url: str, collected: Set[str], lock: threading.
             return 0
 
     logger.info(f"🔗 Fetching homepage links: {base_url}")
-    resp = _get(base_url, timeout=_PAGE_TIMEOUT)
+    resp = _get(base_url, timeout=_PAGE_TIMEOUT, proxy_dict=proxy_dict)
     if not resp:
         logger.warning("Homepage fetch failed — skipping link extraction")
         return 0
@@ -362,7 +379,7 @@ def _collect_homepage_links(base_url: str, collected: Set[str], lock: threading.
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
-def map_website(start_url: str) -> dict:
+def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
     """
     Firecrawl-style map mode: discover page URLs on a site without a browser.
 
@@ -399,8 +416,8 @@ def map_website(start_url: str) -> dict:
     t_total = time.perf_counter()
 
     with ThreadPoolExecutor(max_workers=2) as pre_exec:
-        fut_robots   = pre_exec.submit(_get, f"{_origin(start_url)}/robots.txt", _ROBOTS_TIMEOUT)
-        fut_homepage = pre_exec.submit(_get, start_url, _PAGE_TIMEOUT)
+        fut_robots   = pre_exec.submit(_get, f"{_origin(start_url)}/robots.txt", _ROBOTS_TIMEOUT, proxy_dict)
+        fut_homepage = pre_exec.submit(_get, start_url, _PAGE_TIMEOUT, proxy_dict)
 
     robots_resp   = fut_robots.result()
     homepage_resp = fut_homepage.result()
@@ -423,7 +440,7 @@ def map_website(start_url: str) -> dict:
     # ── Step 2: XML sitemaps (parallel child fetching) ───────────────────────
     before_sitemap = len(collected)
     t0 = time.perf_counter()
-    _collect_sitemap_urls(start_url, sitemap_hints, collected, lock)
+    _collect_sitemap_urls(start_url, sitemap_hints, collected, lock, proxy_dict)
     from_sitemap = len(collected) - before_sitemap
     logger.info(f"⏱  sitemaps: {time.perf_counter()-t0:.2f}s → {from_sitemap} URLs (pool: {len(collected)})")
 

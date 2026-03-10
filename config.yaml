@@ -23,4 +23,4 @@ email:
   from_email: "${EMAIL_FROM}"
   from_name: "${EMAIL_FROM_NAME:Gcrawler}"
   use_tls: "${EMAIL_USE_TLS:true}"
-  reset_password_url: "${RESET_PASSWORD_URL:https://app.gramopro.ai/auth/reset_password}"
+  reset_password_url: "${RESET_PASSWORD_URL:https://gcrawl.gramopro.ai/auth/reset_password}"

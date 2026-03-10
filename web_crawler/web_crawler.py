@@ -11,9 +11,9 @@ from datetime import datetime
 from time import perf_counter
 from typing import Set, List, Dict, Optional
 from urllib.parse import urlparse
+import requests
 import threading
 from threading import Semaphore, Thread
-
 from web_crawler.config import CrawlConfig
 from web_crawler.file_manager import FileManager
 from web_crawler.page_crawler import PageCrawler
@@ -24,35 +24,31 @@ from web_crawler.map_crawler import map_website
 logger = logging.getLogger(__name__)
 
 
-def resolve_canonical_url(url: str, timeout: int = 8) -> str:
+def resolve_canonical_url(url: str, timeout: int = 8, proxies: Optional[dict] = None) -> str:
     """
     Follow redirects to find the canonical URL of a page.
-    Uses a lightweight HEAD request so no content is downloaded.
+    Uses a lightweight HEAD request.
     Returns the original URL unchanged if resolution fails.
-    
-    Example: http://naukri.com → https://www.naukri.com/
     """
     try:
-        req = urllib.request.Request(
-            url,
-            method="HEAD",
+        resp = requests.head(
+            url, 
+            timeout=timeout, 
+            allow_redirects=True, 
+            proxies=proxies,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
             }
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            final_url = resp.url
-            if final_url and final_url != url:
-                parsed_orig = urlparse(url)
-                parsed_final = urlparse(final_url)
-                # Only use the resolved URL if the host changed (e.g. www added)
-                # Keep original path intent if paths diverge significantly
-                if parsed_orig.netloc != parsed_final.netloc:
-                    logger.info(f"🔀 URL canonicalized: {url} → {final_url}")
-                    return final_url
+        final_url = resp.url
+        if final_url and final_url != url:
+            parsed_orig = urlparse(url)
+            parsed_final = urlparse(final_url)
+            if parsed_orig.netloc != parsed_final.netloc:
+                logger.info(f"🔀 URL canonicalized: {url} → {final_url}")
+                return final_url
     except Exception:
-        pass  # Network error, SSL issue, timeout — just use original
+        pass
     return url
 
 
@@ -111,7 +107,10 @@ class WebCrawler:
         if crawl_mode == "links":
             logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
 
-            map_result = map_website(start_url)
+            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                "stealth" if self.config.proxy_mode == "stealth" else "basic"
+            )
+            map_result = map_website(start_url, proxy_dict=p_dict)
             elapsed = perf_counter() - start_perf
 
             discovered_urls = map_result["urls"]
@@ -151,8 +150,11 @@ class WebCrawler:
         if crawl_mode == "single":
             logger.info("🔹 Single-page crawl mode")
 
+            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                "stealth" if self.config.proxy_mode == "stealth" else "basic"
+            )
             # Auto-resolve canonical URL (follows redirects: naukri.com → www.naukri.com)
-            canonical_url = resolve_canonical_url(start_url)
+            canonical_url = resolve_canonical_url(start_url, proxies=p_dict)
 
             result = self.page_crawler.crawl_page(
                 canonical_url,
@@ -164,7 +166,24 @@ class WebCrawler:
                 client_id=client_id,
                 websocket_manager=websocket_manager,
                 crawl_mode=crawl_mode,
+                proxy_type="stealth" if self.config.proxy_mode == "stealth" else "basic"
             )
+
+            # Firecrawl-style auto-retry with stealth
+            if result and result.get("status_code") in [401, 403, 429] and self.config.proxy_mode == "auto":
+                logger.info(f"🛡️ Proxy block detected (status {result.get('status_code')}). Retrying with stealth proxy...")
+                result = self.page_crawler.crawl_page(
+                    canonical_url,
+                    count=1,
+                    enable_md=enable_md,
+                    enable_html=enable_html,
+                    enable_ss=enable_ss,
+                    enable_seo=enable_seo,
+                    client_id=client_id,
+                    websocket_manager=websocket_manager,
+                    crawl_mode=crawl_mode,
+                    proxy_type="stealth"
+                )
 
             elapsed = perf_counter() - start_perf
             
@@ -214,6 +233,8 @@ class WebCrawler:
             nonlocal successful_pages
 
             try:
+                # Initial attempt
+                proxy_type = "stealth" if self.config.proxy_mode == "stealth" else "basic"
                 result = self.page_crawler.crawl_page(
                     url,
                     page_no,
@@ -224,12 +245,29 @@ class WebCrawler:
                     client_id,
                     websocket_manager,
                     crawl_mode=crawl_mode,
+                    proxy_type=proxy_type
                 )
 
-                if not result:
+                # Firecrawl-style auto-retry with stealth
+                if result and result.get("status_code") in [401, 403, 429] and self.config.proxy_mode == "auto":
+                    logger.info(f"🛡️ Proxy block detected (status {result.get('status_code')}). Retrying with stealth proxy for: {url}")
+                    result = self.page_crawler.crawl_page(
+                        url,
+                        page_no,
+                        enable_md,
+                        enable_html,
+                        enable_ss,
+                        enable_seo,
+                        client_id,
+                        websocket_manager,
+                        crawl_mode=crawl_mode,
+                        proxy_type="stealth"
+                    )
+
+                if not result or "error" in result:
                     with lock:
                         self.failed.add(url)
-                    logger.warning(f"Failed: {url}")
+                    logger.warning(f"Failed: {url} - {result.get('error') if result else 'Unknown error'}")
                     return
 
                 canonical = result["canonical"]

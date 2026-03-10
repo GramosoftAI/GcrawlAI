@@ -184,7 +184,24 @@ class PageCrawler:
         self.file_manager = file_manager
         self.browser_utils = BrowserUtils()
         self.content_processor = ContentProcessor()
-        self.proxy_manager = ProxyManager(config.proxy)
+        self.proxy_manager = ProxyManager(
+            proxies=config.proxy,
+            basic_proxies=config.basic_proxies,
+            stealth_proxies=config.stealth_proxies
+        )
+
+    def _resolve_playwright_proxy(self, proxy_type: str = "basic") -> Optional[Dict]:
+        """
+        Resolve proxy settings for Playwright contexts.
+        Priority:
+        1) Firecrawl-style BYOP env proxy (PROXY_SERVER/USERNAME/PASSWORD)
+        2) Requested proxy type from rotating manager
+        """
+        byop_proxy = self.config.get_playwright_proxy()
+        if byop_proxy:
+            return byop_proxy
+
+        return self.proxy_manager.get_playwright_proxy(proxy_type)
     
     def process_page(
         self,
@@ -302,11 +319,12 @@ class PageCrawler:
                 "screenshot": screenshot_path,
                 "markdown_file": str(md_path) if md_path else None,
                 "links": links,
+                "status_code": page.evaluate("() => window.performance.getEntries()[0].responseStatus") or 200,
             }
             
         except Exception as e:
             logger.error(f"Error processing page {url}: {e}")
-            return None
+            return {"url": url, "error": str(e), "status_code": 500}
 
     def is_captcha_page(self, text_content: str) -> bool:
         """Check if the page is a Google/Cloudflare CAPTCHA page"""
@@ -324,6 +342,7 @@ class PageCrawler:
         ]
         
         if len(text_content.strip()) < 1500 and any(marker in text_lower for marker in captcha_markers):
+            logger.warning("CAPTCHA detected on page content.")
             return True
         return False
     
@@ -335,10 +354,12 @@ class PageCrawler:
         enable_html: bool,
         enable_ss: bool,
         enable_seo: bool,
-        client_id: Optional[str]
+        client_id: Optional[str],
+        proxy_type: str = "basic"
     ) -> Optional[Dict]:
         """Crawl page using Chromium with stealth"""
         try:
+            proxy_settings = self._resolve_playwright_proxy()
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=self.config.headless,
@@ -359,7 +380,7 @@ class PageCrawler:
                     ]
                 )
                 
-                context = browser.new_context(
+                context_kwargs = dict(
                     viewport={"width": 1920, "height": 1080},
                     locale='en-US',
                     # Fix 1: Updated to current Chrome version (133, Feb 2026)
@@ -371,16 +392,19 @@ class PageCrawler:
                         "sec-ch-ua": '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
                         "sec-ch-ua-mobile": "?0",
                         "sec-ch-ua-platform": '"Windows"'
-                    },
-                    # Proxy rotation: Get a proxy from Manager
-                    **(dict(proxy={"server": self.proxy_manager.get_proxy()}) if self.proxy_manager.has_proxies() else {})
+                    }
                 )
+                if proxy_settings:
+                    context_kwargs["proxy"] = proxy_settings
+
+                context = browser.new_context(**context_kwargs)
                 
                 # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
                 from playwright_stealth import Stealth
                 Stealth().apply_stealth_sync(context)
                 
                 page = context.new_page()
+                self.browser_utils.inject_stealth_scripts(page)
                 # Fix 3: stealth already applied at context level above — do NOT re-apply to page
 
                 if self.config.use_custom_headers:
@@ -391,23 +415,28 @@ class PageCrawler:
                     page.route("**/*", self.browser_utils.block_resources)
                 
                 try:
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                    logger.info(f"Navigating to {url} (Chromium)...")
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                    logger.info(f"Response status: {response.status if response else 'None'}")
                     
-                    if not response or not (200 <= response.status < 300):
-                        raise Exception(f"HTTP {response.status if response else 'None'}")   
+                    if not response:
+                        return {"url": url, "error": "No response", "status_code": 0}
+                    
+                    if not (200 <= response.status < 300):
+                        return {"url": url, "error": f"HTTP {response.status}", "status_code": response.status}
                     
                     # Note: check_cloudflare needs a loaded page to work correctly
                     # self.browser_utils.check_cloudflare(page, self.config)
                     if not self.browser_utils.wait_for_ready(page):
-                        raise Exception("Page not ready")
+                        return {"url": url, "error": "Page not ready", "status_code": 504}
                         
                     # Validate content
                     text_content = page.evaluate("document.body.innerText")
                     if self.is_captcha_page(text_content):
-                        raise Exception("CAPTCHA detected")
+                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
                         
                     if len(text_content.strip()) < 200:
-                        raise Exception(f"Content too short ({len(text_content.strip())} chars)")
+                        return {"url": url, "error": f"Content too short ({len(text_content.strip())} chars)", "status_code": 422}
                     
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                     return result
@@ -452,7 +481,8 @@ class PageCrawler:
         enable_html: bool,
         enable_ss: bool,
         enable_seo: bool,
-        client_id: Optional[str]
+        client_id: Optional[str],
+        proxy_type: str = "basic"
     ) -> Optional[Dict]:
         """Fallback crawl using Camoufox"""
         if not self.config.camoufox_path:
@@ -460,6 +490,7 @@ class PageCrawler:
             return None
         
         try:
+            proxy_settings = self._resolve_playwright_proxy()
             with sync_playwright() as p:
                 if platform.system() == "Windows":
                     browser = p.firefox.launch(
@@ -472,23 +503,26 @@ class PageCrawler:
                     )
                 
                 try:
-                    context = browser.new_context(
+                    context_kwargs = dict(
                         viewport={"width": 1920, "height": 1080},
                         locale='en-US',
                         # Fix 4: No user_agent override — let Camoufox (Firefox) present its native UA.
                         # Overriding with Chrome UA on a Firefox binary creates a contradictory fingerprint.
                         java_script_enabled=True,
                         ignore_https_errors=True,
-                        bypass_csp=True,
-                        # Proxy rotation: Get a proxy from Manager
-                        **(dict(proxy={"server": self.proxy_manager.get_proxy()}) if self.proxy_manager.has_proxies() else {})
+                        bypass_csp=True
                     )
+                    if proxy_settings:
+                        context_kwargs["proxy"] = proxy_settings
+
+                    context = browser.new_context(**context_kwargs)
                     
                     # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
                     from playwright_stealth import Stealth
                     Stealth().apply_stealth_sync(context)
                     
                     page = context.new_page()
+                    self.browser_utils.inject_stealth_scripts(page)
                     # Fix 3: stealth already applied at context level — do NOT re-apply to page
 
                     if self.config.use_custom_headers:
@@ -498,21 +532,26 @@ class PageCrawler:
                     if not self.browser_utils.is_protected_domain(url):
                         page.route("**/*", self.browser_utils.block_resources)
                     
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_0000)
+                    logger.info(f"Navigating to {url} (Camoufox)...")
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                    logger.info(f"Response status: {response.status if response else 'None'}")
                     
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     page.wait_for_timeout(4000)
                     
-                    if not response or not (200 <= response.status < 300):
-                        return None
+                    if not response:
+                        return {"url": url, "error": "No response", "status_code": 0}
+
+                    if not (200 <= response.status < 300):
+                        return {"url": url, "error": f"HTTP {response.status}", "status_code": response.status}
                     
                     if not self.browser_utils.wait_for_ready(page):
-                        return None
+                        return {"url": url, "error": "Page not ready", "status_code": 504}
                         
                     text_content = page.evaluate("document.body.innerText")
                     if self.is_captcha_page(text_content):
                         logger.warning(f"Camoufox also hit CAPTCHA for {url}")
-                        return None
+                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
                     
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
                     return result
@@ -557,6 +596,7 @@ class PageCrawler:
         client_id: Optional[str],
         websocket_manager,
         crawl_mode: str = "all",
+        proxy_type: str = "basic",
     ) -> Optional[Dict]:
         """Crawl a single page with fallback browsers"""
         logger.info(f"Crawling [{count}]: {url}")
@@ -569,7 +609,7 @@ class PageCrawler:
         })
         
         # Try Chromium first
-        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
         
         if result:
             logger.info(f"Chromium success: {url}")
@@ -577,7 +617,7 @@ class PageCrawler:
     
         # Fallback to Camoufox
         logger.info(f"Trying Camoufox fallback for: {url}")
-        result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+        result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
         
         if result:
             logger.info(f"Camoufox success: {url}")
