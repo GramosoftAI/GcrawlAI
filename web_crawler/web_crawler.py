@@ -20,8 +20,62 @@ from web_crawler.page_crawler import PageCrawler
 from web_crawler.seo_report import CrawlReportWriter
 from web_crawler.utils import normalize_url
 from web_crawler.map_crawler import map_website
+from web_crawler.search_engine import execute_search_router
+from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
+
+
+# Search engine domains that should be routed through the search API
+SEARCH_ENGINE_DOMAINS = [
+    "google.com", "google.co.in", "google.co.uk",
+    "bing.com", "yahoo.com", "yandex.com",
+    "duckduckgo.com", "search.brave.com",
+]
+
+def _is_search_url(url: str) -> bool:
+    """Detect if a URL is a search engine results page."""
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower().lstrip("www.")
+    path = parsed.path.lower()
+    query = parse_qs(parsed.query)
+    
+    # Must have a query parameter and be on a search path
+    has_query = "q" in query or "query" in query or "search_query" in query
+    is_search_path = "/search" in path or path == "/"
+    is_search_domain = any(d in domain for d in SEARCH_ENGINE_DOMAINS)
+    
+    return is_search_domain and has_query and is_search_path
+
+def _extract_search_query(url: str) -> str:
+    """Extract the search query from a search engine URL."""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    return query.get("q", query.get("query", query.get("search_query", [""])))[-1]
+
+def _format_search_results_markdown(query: str, results: list) -> str:
+    """Format search results as clean markdown."""
+    lines = [f"# Search Results: {query}\n"]
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "Untitled")
+        url = r.get("url", "")
+        desc = r.get("description", "")
+        lines.append(f"## {i}. [{title}]({url})\n")
+        if desc:
+            lines.append(f"{desc}\n")
+        lines.append("")
+    return "\n".join(lines)
+
+def _format_search_results_html(query: str, results: list) -> str:
+    """Format search results as HTML."""
+    items = []
+    for r in results:
+        title = r.get("title", "Untitled")
+        url = r.get("url", "")
+        desc = r.get("description", "")
+        items.append(f'<div class="result"><h3><a href="{url}">{title}</a></h3><p>{desc}</p></div>')
+    body = "\n".join(items)
+    return f"<html><head><title>Search: {query}</title></head><body><h1>Search Results: {query}</h1>{body}</body></html>"
 
 
 def resolve_canonical_url(url: str, timeout: int = 8, proxies: Optional[dict] = None) -> str:
@@ -145,6 +199,126 @@ class WebCrawler:
             return summary
 
         # =========================================================
+        # SEARCH MODE (Firecrawl-style: route search URLs via API)
+        # No browser — uses DuckDuckGo/SearXNG, returns structured results
+        # =========================================================
+        if _is_search_url(start_url):
+            query = _extract_search_query(start_url)
+            logger.info(f"🔍 Search URL detected. Routing query '{query}' through search engine router...")
+            
+            search_results = execute_search_router(query, limit=10)
+            elapsed = perf_counter() - start_perf
+            
+            if search_results:
+                successful_pages = 1
+                md_content = _format_search_results_markdown(query, search_results)
+                html_content = _format_search_results_html(query, search_results)
+                result_links = [r.get("url") for r in search_results if r.get("url")]
+                
+                md_path = None
+                html_path = None
+                screenshot_path = None
+                
+                if enable_md:
+                    md_path = self.config.md_dir / f"search_{query[:50].replace(' ', '_')}.md"
+                    md_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(md_path, "w", encoding="utf-8") as f:
+                        f.write(md_content)
+                    logger.info(f"📄 Search markdown saved: {md_path}")
+                
+                if enable_html:
+                    html_path = self.config.html_dir / f"search_{query[:50].replace(' ', '_')}.html"
+                    html_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(html_path, "w", encoding="utf-8") as f:
+                        f.write(html_content)
+                
+                if enable_links:
+                    with open(self.config.links_file, "w", encoding="utf-8") as f:
+                        f.write("\n".join(result_links))
+                
+                # Screenshot: render the HTML in a headless browser
+                if enable_ss:
+                    try:
+                        from playwright.sync_api import sync_playwright
+                        screenshot_path = self.config.screenshot_dir / f"search_{query[:50].replace(' ', '_')}.png"
+                        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+                        with sync_playwright() as p:
+                            browser = p.chromium.launch(headless=True)
+                            page = browser.new_page(viewport={"width": 1280, "height": 800})
+                            page.set_content(html_content)
+                            page.wait_for_timeout(500)
+                            page.screenshot(path=str(screenshot_path), full_page=True)
+                            browser.close()
+                        logger.info(f"📸 Search screenshot saved: {screenshot_path}")
+                    except Exception as e:
+                        logger.warning(f"Screenshot generation failed: {e}")
+                
+                # SEO report from search results
+                if enable_seo:
+                    try:
+                        seo_data = {
+                            "url": start_url,
+                            "title": f"Search Results: {query}",
+                            "meta_description": f"Search results for '{query}' via DuckDuckGo",
+                            "h1": f"Search Results: {query}",
+                            "results_count": len(search_results),
+                            "results": [
+                                {"position": i+1, "title": r.get("title"), "url": r.get("url"), "description": r.get("description")}
+                                for i, r in enumerate(search_results)
+                            ]
+                        }
+                        
+                        seo_result = {
+                            "url": start_url,
+                            "canonical": start_url,
+                            "seo": seo_data,
+                            "links": result_links,
+                        }
+                        
+                        writer = CrawlReportWriter(self.config.output_dir)
+                        domain = urlparse(start_url).netloc
+                        writer.save_json(domain, [seo_result], result_links)
+                        writer.save_markdown(domain, [seo_result], result_links)
+                        writer.save_excel(domain, [seo_result])
+                        logger.info(f"📊 Search SEO report saved")
+                    except Exception as e:
+                        logger.warning(f"SEO report generation failed: {e}")
+                
+                result = {
+                    "url": start_url,
+                    "canonical": start_url,
+                    "markdown_file": str(md_path) if md_path else None,
+                    "html_file": str(html_path) if html_path else None,
+                    "screenshot": str(screenshot_path) if screenshot_path else None,
+                    "links": result_links,
+                    "status_code": 200,
+                }
+            else:
+                logger.warning(f"Search engine router returned no results for: {query}")
+                result = {"url": start_url, "error": "No search results", "status_code": 404}
+            
+            summary = {
+                "start_url": start_url,
+                "pages_crawled": successful_pages,
+                "pages_failed": 1 - successful_pages,
+                "total_links_found": len(result.get("links", [])) if successful_pages else 0,
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "crawl_mode": "search",
+                "search_query": query,
+                "markdown_file": result.get("markdown_file", "None"),
+                "links_file_path": str(self.config.links_file),
+                "summary_file_path": str(self.config.summary_file),
+            }
+            
+            with open(self.config.summary_file, "w", encoding="utf-8") as f:
+                json.dump(summary, f, indent=2)
+            
+            logger.info("✅ Search crawl finished")
+            logger.info(json.dumps(summary, indent=2))
+            return summary
+
+        # =========================================================
         # SINGLE PAGE MODE (NO THREADING)
         # =========================================================
         if crawl_mode == "single":
@@ -170,8 +344,10 @@ class WebCrawler:
             )
 
             # Firecrawl-style auto-retry with stealth
-            if result and result.get("status_code") in [401, 403, 429] and self.config.proxy_mode == "auto":
-                logger.info(f"🛡️ Proxy block detected (status {result.get('status_code')}). Retrying with stealth proxy...")
+            # Retry on: Unauthorized, Forbidden (CAPTCHA), Rate Limit, Proxy Errors, or Timeouts
+            retry_codes = [401, 403, 429, 502, 504, 0]
+            if result and result.get("status_code") in retry_codes and self.config.proxy_mode == "auto":
+                logger.info(f"🛡️ Proxy/Connection issue detected (status {result.get('status_code')}). Retrying with stealth proxy...")
                 result = self.page_crawler.crawl_page(
                     canonical_url,
                     count=1,
@@ -184,6 +360,9 @@ class WebCrawler:
                     crawl_mode=crawl_mode,
                     proxy_type="stealth"
                 )
+
+            if result and "error" not in result:
+                successful_pages = 1
 
             elapsed = perf_counter() - start_perf
             
@@ -208,13 +387,13 @@ class WebCrawler:
             
             summary = {
                 "start_url": start_url,
-                "pages_crawled": 1 if result else 0,
-                "pages_failed": 0 if result else 1,
-                "total_links_found": len(result.get("links", [])) if result else 0,
+                "pages_crawled": successful_pages,
+                "pages_failed": 1 - successful_pages,
+                "total_links_found": len(result.get("links", [])) if (result and "error" not in result) else 0,
                 "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
-                "markdown_file": result.get("markdown_file", "None") if result else "None",
+                "markdown_file": result.get("markdown_file", "None") if (result and "error" not in result) else "None",
                 "links_file_path": str(self.config.links_file),
                 "summary_file_path": str(self.config.summary_file),
             }
@@ -249,8 +428,10 @@ class WebCrawler:
                 )
 
                 # Firecrawl-style auto-retry with stealth
-                if result and result.get("status_code") in [401, 403, 429] and self.config.proxy_mode == "auto":
-                    logger.info(f"🛡️ Proxy block detected (status {result.get('status_code')}). Retrying with stealth proxy for: {url}")
+                # Retry on: Unauthorized, Forbidden (CAPTCHA), Rate Limit, Proxy Errors, or Timeouts
+                retry_codes = [401, 403, 429, 502, 504, 0]
+                if result and result.get("status_code") in retry_codes and self.config.proxy_mode == "auto":
+                    logger.info(f"🛡️ Proxy/Connection issue detected (status {result.get('status_code')}) for: {url}. Retrying with stealth proxy...")
                     result = self.page_crawler.crawl_page(
                         url,
                         page_no,

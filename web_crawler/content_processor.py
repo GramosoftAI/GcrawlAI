@@ -32,8 +32,39 @@ def _post_process_markdown(md: str) -> str:
             blank_run = 0
             result.append(line)
 
-    # 3. Strip leading/trailing blank lines from document
-    return "\n".join(result).strip() + "\n"
+    # 3. Fix multi-line links (Firecrawl style: add backslashes before newlines in links)
+    # Also handle cases where html2text joined multiple elements inside a link.
+    # We look for patterns like "![" or "**" or existing newlines inside [...] 
+    # and ensure they are formatted as multi-line links with \\ escapes.
+    
+    # First, let's fix the specific joined text case for complex links:
+    # Look for [ ... ![ ... ] ... ] and ensure proper spacing.
+    import re
+    
+    def fix_link_formatting(match):
+        content = match.group(1)
+        # 1. Handle existing newlines
+        content = content.replace("\n", "\\\\\n")
+        # 2. Add extra breaks before internal elements (image/bold/headers)
+        # We look for a position that is NOT the start of the content.
+        def add_break(m):
+            return f"{m.group(1)}\\\\\n{m.group(2)}"
+        
+        # If there's an image or bold text preceded by anything, insert a break
+        content = re.sub(r'(.+?)\s*(!\[|\*\*)', add_break, content)
+        return f"[{content}]"
+
+    doc = "\n".join(result)
+    doc = re.sub(r'\[(.*?)\](?=\()', fix_link_formatting, doc, flags=re.DOTALL)
+
+    # 4. Remove "Skip to Content" links
+    doc = re.sub(r'\[Skip to Content\]\(#[^\)]*\)', '', doc, flags=re.IGNORECASE)
+
+    # 5. Collapse duplicate newlines inside escaped links if any
+    doc = re.sub(r'(\\\\\n){2,}', '\\\\\n\\\\\n', doc)
+
+    # 6. Final cleanup: strip leading/trailing blank lines
+    return doc.strip() + "\n"
 
 
 
@@ -144,9 +175,9 @@ class ContentProcessor:
         }
     
     @staticmethod
-    def convert_to_markdown(html: str, url: str) -> str:
+    def convert_to_markdown(html: str, url: str, only_main_content: bool = False) -> str:
         """Convert HTML to clean, LLM-ready markdown (Firecrawl-style)"""
-        title, clean_body, links, images, script_data = cleanup_html(html, url)
+        title, clean_body, links, images, script_data = cleanup_html(html, url, only_main_content)
 
         converter = html2text.HTML2Text()
         converter.ignore_links      = False

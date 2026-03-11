@@ -21,33 +21,31 @@ from minify_html import minify
 # HTML tags that are structural boilerplate — never useful in markdown
 _BOILERPLATE_TAGS = (
     "style", "script", "noscript",
-    "iframe", "svg", "form",
+    "iframe", "svg", "form", "meta", "head",
     # NOTE: "figure" intentionally excluded — it wraps real content images
 )
 
-# class / id substrings that indicate non-content elements.
-# IMPORTANT: keep patterns specific — avoid short strings that match content.
-# Matched case-insensitively against the joined class string + id attribute.
+# class / id substrings that indicate non-content elements. (From Firecrawl excludeNonMainTags)
 _NOISE_PATTERNS = (
-    # Navigation
-    "navbar", "navigation", "site-nav", "main-nav", "top-nav",
-    # Header / footer (structural, not semantic headings)
-    "site-header", "page-header", "site-footer", "page-footer",
-    # Sidebar
-    "sidebar", "side-bar", "aside-wrapper",
-    # Overlays
-    "cookie-banner", "cookie-consent", "gdpr-banner",
-    "popup-overlay", "modal-overlay",
-    "announcement-bar",
-    # Breadcrumbs
-    "breadcrumb", "breadcrumbs",
-    # Ads
-    "advertisement", "advert", "ad-unit", "ad-banner",
-    "promo-banner",
-    # Newsletter
-    "newsletter-signup", "subscribe-popup",
-    # Skip links (accessibility)
+    "navbar", "navigation", "site-nav", "main-nav", "top-nav", "nav",
+    "site-header", "page-header", "header", "#header", ".header", "top",
+    "site-footer", "page-footer", "footer", "#footer", ".footer", "bottom",
+    "sidebar", "side-bar", "side", "aside", "#sidebar", ".sidebar",
+    "cookie-banner", "cookie-consent", "gdpr-banner", "cookie", "#cookie",
+    "popup-overlay", "modal-overlay", "modal", "popup", "overlay",
+    "announcement-bar", "breadcrumbs", "breadcrumb", "#breadcrumbs",
+    "advertisement", "advert", "ad-unit", "ad-banner", "ad", "ads", "promo-banner",
+    "newsletter-signup", "subscribe-popup", "lang-selector", "language",
+    "social", "social-media", "social-links", "share", "#share",
+    "menu", "widget", "#widget",
     "skip-link", "skipnav", "skip-to-content",
+)
+
+# Elements that should be preserved even if they match noise patterns (From Firecrawl forceIncludeMainTags)
+_FORCE_INCLUDE_PATTERNS = (
+    "#main", "main-content", ".swoogo-cols", ".swoogo-text", ".swoogo-table-div",
+    ".swoogo-space", ".swoogo-alert", ".swoogo-sponsors", ".swoogo-title",
+    ".swoogo-tabs", ".swoogo-logo", ".swoogo-image", ".swoogo-button", ".swoogo-agenda"
 )
 
 # Attributes to keep — everything else is stripped
@@ -110,6 +108,11 @@ def _remove_noise_by_class_id(soup: BeautifulSoup) -> None:
             # Tag is in a partially decomposed state — skip it
             continue
         combined = f"{cls_str} {id_str}"
+        
+        # Check if it should be forced-included
+        if any(pat in combined for pat in _FORCE_INCLUDE_PATTERNS):
+            continue
+
         if any(pat in combined for pat in _NOISE_PATTERNS):
             to_remove.append(tag)
 
@@ -158,14 +161,52 @@ def _strip_noisy_attributes(soup: BeautifulSoup) -> None:
             continue
 
 
-def cleanup_html(html_content: str, base_url: str) -> str:
+def _process_srcset(soup: BeautifulSoup) -> None:
+    """
+    Firecrawl logic: pick the largest image from srcset and set it as src.
+    """
+    for img in soup.find_all("img", srcset=True):
+        try:
+            srcset = img.get("srcset", "")
+            if not srcset:
+                continue
+
+            # Parse srcset: "url size, url size, ..."
+            # size can be "1200w" or "2x"
+            candidates = []
+            for item in srcset.split(","):
+                parts = item.strip().split()
+                if not parts:
+                    continue
+                url = parts[0]
+                size_str = parts[1] if len(parts) > 1 else "1x"
+                
+                # Extract numeric value from size_str (e.g., "1200w" -> 1200, "2x" -> 2)
+                size_val = 1
+                try:
+                    if size_str.lower().endswith(("w", "x")):
+                        size_val = int(size_str[:-1]) if size_str[:-1].isdigit() else 1
+                except ValueError:
+                    size_val = 1
+                
+                candidates.append({"url": url, "size": size_val})
+
+            if candidates:
+                # Sort by size descending
+                candidates.sort(key=lambda x: x["size"], reverse=True)
+                img["src"] = candidates[0]["url"]
+        except Exception:
+            continue
+
+
+def cleanup_html(html_content: str, base_url: str, only_main_content: bool = False) -> str:
     """
     Cleans HTML before markdown conversion using a Firecrawl-style pipeline:
 
       1. Parse with BeautifulSoup
       2. Extract script-tag JSON data (kept for context)
       3. Remove boilerplate structural tags (nav, header, footer …)
-      4. Remove elements matched by noise class/id patterns
+      4. Remove elements matched by noise class/id patterns (if only_main_content=True)
       5. Remove HTML comments
       6. Strip noisy attributes (class, id, data-*, aria-*, on* …)
       7. Collect links and image URLs
@@ -188,13 +229,20 @@ def cleanup_html(html_content: str, base_url: str) -> str:
         for tag in soup.find_all(tag_name):
             tag.decompose()
 
-    # NOTE: Firecrawl's output for this site retained the nav/footer/widgets.
-    # Therefore, _remove_noise_by_class_id is disabled to achieve a 100% match.
-    # _remove_noise_by_class_id(soup)
+    # Step 2: Remove noise (only if only_main_content is enabled)
+    if only_main_content:
+        _remove_noise_by_class_id(soup)
+    else:
+        # Even in non-main-content mode, we still remove the absolute unneeded tags
+        # passed in _BOILERPLATE_TAGS already (script, style, etc.)
+        pass
 
     # ── Step 3: Remove HTML comments ─────────────────────────────────────────
     for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
         comment.extract()
+
+    # ── Step 3b: Process srcset images ───────────────────────────────────────
+    _process_srcset(soup)
 
     # ── Step 4: Absolutize href/src BEFORE stripping attributes ──────────────
     # This ensures html2text always sees full absolute URLs in links/images.
@@ -212,11 +260,10 @@ def cleanup_html(html_content: str, base_url: str) -> str:
         img["src"] for img in soup.find_all("img", src=True)
     ]
 
-    # ── Minify and return body ────────────────────────────────────────────────
+    # ── return body ────────────────────────────────────────────────
     body_content = soup.find("body")
     if body_content:
-        minimized_body = minify(str(body_content))
-        return title, minimized_body, link_urls, image_urls, script_content
+        return title, str(body_content), link_urls, image_urls, script_content
     else:
         raise ValueError(
             "No HTML body content found. "

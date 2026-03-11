@@ -224,7 +224,8 @@ class PageCrawler:
         
         try:
             # Scroll to load dynamic content
-            self.scroll_to_bottom(page)
+            if not enable_ss:
+                self.scroll_to_bottom(page)
             
             html = page.content()
             soup = BeautifulSoup(html, "lxml")
@@ -323,8 +324,15 @@ class PageCrawler:
             }
             
         except Exception as e:
-            logger.error(f"Error processing page {url}: {e}")
-            return {"url": url, "error": str(e), "status_code": 500}
+            err_msg = str(e)
+            status_code = 500
+            if "Timeout" in err_msg:
+                status_code = 0
+            elif "NS_ERROR_PROXY_BAD_GATEWAY" in err_msg or "ERR_PROXY_CONNECTION_FAILED" in err_msg:
+                status_code = 502
+            
+            logger.error(f"Error processing page {url}: {err_msg}")
+            return {"url": url, "error": err_msg, "status_code": status_code}
 
     def is_captcha_page(self, text_content: str) -> bool:
         """Check if the page is a Google/Cloudflare CAPTCHA page"""
@@ -359,7 +367,7 @@ class PageCrawler:
     ) -> Optional[Dict]:
         """Crawl page using Chromium with stealth"""
         try:
-            proxy_settings = self._resolve_playwright_proxy()
+            proxy_settings = self._resolve_playwright_proxy(proxy_type)
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=self.config.headless,
@@ -397,6 +405,15 @@ class PageCrawler:
                 if proxy_settings:
                     context_kwargs["proxy"] = proxy_settings
 
+                # Define nav_timeout and search mobile persona
+                nav_timeout = 90_000 if proxy_type == "stealth" else 60_000
+                if "google.com/search" in url and proxy_type == "stealth":
+                    mobile_ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+                    context_kwargs["user_agent"] = mobile_ua
+                    context_kwargs["viewport"] = {"width": 390, "height": 844}
+                    context_kwargs["is_mobile"] = True
+                    context_kwargs["has_touch"] = True
+
                 context = browser.new_context(**context_kwargs)
                 
                 # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
@@ -416,7 +433,7 @@ class PageCrawler:
                 
                 try:
                     logger.info(f"Navigating to {url} (Chromium)...")
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
                     logger.info(f"Response status: {response.status if response else 'None'}")
                     
                     if not response:
@@ -490,7 +507,7 @@ class PageCrawler:
             return None
         
         try:
-            proxy_settings = self._resolve_playwright_proxy()
+            proxy_settings = self._resolve_playwright_proxy(proxy_type)
             with sync_playwright() as p:
                 if platform.system() == "Windows":
                     browser = p.firefox.launch(
@@ -533,7 +550,8 @@ class PageCrawler:
                         page.route("**/*", self.browser_utils.block_resources)
                     
                     logger.info(f"Navigating to {url} (Camoufox)...")
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                    nav_timeout = 90_000 if proxy_type == "stealth" else 60_000
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
                     logger.info(f"Response status: {response.status if response else 'None'}")
                     
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -551,6 +569,19 @@ class PageCrawler:
                     text_content = page.evaluate("document.body.innerText")
                     if self.is_captcha_page(text_content):
                         logger.warning(f"Camoufox also hit CAPTCHA for {url}")
+                        # Final attempt: try a small random sleep and scroll to look human
+                        page.wait_for_timeout(2000)
+                        page.mouse.move(100, 100)
+                        page.mouse.move(200, 300)
+                        page.keyboard.press("PageDown")
+                        page.wait_for_timeout(1000)
+                        
+                        # Re-check
+                        text_content = page.evaluate("document.body.innerText")
+                        if not self.is_captcha_page(text_content):
+                             result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                             return result
+                        
                         return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
                     
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
@@ -611,7 +642,7 @@ class PageCrawler:
         # Try Chromium first
         result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
         
-        if result:
+        if result and "error" not in result:
             logger.info(f"Chromium success: {url}")
             return result
     
@@ -619,8 +650,9 @@ class PageCrawler:
         logger.info(f"Trying Camoufox fallback for: {url}")
         result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
         
-        if result:
+        if result and "error" not in result:
             logger.info(f"Camoufox success: {url}")
+            return result
         else:
             logger.error(f"All browsers failed for: {url}")
             # Record the failure in the DB so operators can review it
