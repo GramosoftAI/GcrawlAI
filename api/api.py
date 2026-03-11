@@ -297,6 +297,32 @@ def root():
     return {"status": "running"}
 
 # ================= CRAWLER ENDPOINT =================
+def _run_background_crawl_task(client_id: str, **kwargs):
+    """Wrapper to run synchronous crawls (single, links) and persist their completion to DB."""
+    # Run the actual crawl
+    summary = crawl_main(**kwargs)
+    
+    # Persist the completion to the database directly
+    # This prevents WebSockets from hanging if they connect AFTER the short crawl completes
+    try:
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
+                (datetime.now(), summary.get("links_file_path"), summary.get("summary_file_path"), client_id)
+            )
+            cur.execute(
+                """
+                INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file)
+                VALUES (%s, 'crawl_completed', '', 'Crawl Completed', %s)
+                ON CONFLICT (crawl_id, url) DO NOTHING
+                """,
+                (client_id, summary.get("markdown_file"))
+            )
+            conn.commit()
+            cur.close()
+    except Exception as e:
+        logger.error(f"Failed to persist BG crawl completion for {client_id}: {e}")
 
 @app.post("/crawler", response_model=CrawlResponse)
 def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
@@ -336,7 +362,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             crawl_id = uuid.uuid4().hex
 
             background_tasks.add_task(
-                crawl_main,
+                _run_background_crawl_task,
+                client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="single",
                 enable_links=True,
@@ -344,8 +371,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
-                config=config,
-                client_id=crawl_id
+                config=config
             )
 
             markdown_path = ""
@@ -356,7 +382,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             crawl_id = uuid.uuid4().hex
 
             background_tasks.add_task(
-                crawl_main,
+                _run_background_crawl_task,
+                client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="links",
                 enable_links=True,
@@ -364,8 +391,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
-                config=config,
-                client_id=crawl_id
+                config=config
             )
 
             markdown_path = ""

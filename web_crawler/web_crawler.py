@@ -207,22 +207,6 @@ class WebCrawler:
 
             logger.info("✅ Map crawl finished")
             logger.info(json.dumps(summary, indent=2))
-            
-            if client_id:
-                from web_crawler.redis_events import publish_event
-                publish_event(
-                    crawl_id=client_id,
-                    payload={
-                        "type": "crawl_completed",
-                        "total_pages": 0,
-                        "successful_pages": 0,
-                        "failed_pages": 0,
-                        "links_found": map_result["total"],
-                        "summary_file": str(self.config.summary_file),
-                        "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s"
-                    }
-                )
-                
             return summary
 
         # =========================================================
