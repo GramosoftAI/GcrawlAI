@@ -197,6 +197,9 @@ class PageCrawler:
         1) Firecrawl-style BYOP env proxy (PROXY_SERVER/USERNAME/PASSWORD)
         2) Requested proxy type from rotating manager
         """
+        if proxy_type == "none":
+            return None
+
         byop_proxy = self.config.get_playwright_proxy()
         if byop_proxy:
             return byop_proxy
@@ -224,8 +227,7 @@ class PageCrawler:
         
         try:
             # Scroll to load dynamic content
-            if not enable_ss:
-                self.scroll_to_bottom(page)
+            self.scroll_to_bottom(page)
             
             html = page.content()
             soup = BeautifulSoup(html, "lxml")
@@ -256,14 +258,6 @@ class PageCrawler:
                 except Exception as e:
                     logger.error(f"Failed to save HTML for {url}: {e}")
             
-            # Save screenshot
-            if enable_ss:
-                screenshot_path = str(self.config.screenshot_dir / f"{prefix}.png")
-                try:
-                    page.screenshot(path=screenshot_path, full_page=True)
-                except Exception as e:
-                    logger.error(f"Failed to save screenshot for {url}: {e}")
-            
             # Save markdown (per page file)
             if enable_md:
                 try:
@@ -276,6 +270,18 @@ class PageCrawler:
                         f.write(markdown)
                 except Exception as e:
                     logger.error(f"Failed to save markdown for {url}: {e}")
+
+            # Save screenshot
+            if enable_ss:
+                screenshot_path = str(self.config.screenshot_dir / f"{prefix}.png")
+                try:
+                    # Scroll back to top before capturing full page screenshot
+                    # to ensure fixed headers/elements render in their correct initial positions.
+                    page.evaluate("window.scrollTo(0, 0)")
+                    page.wait_for_timeout(1000) # Give UI elements a moment to settle
+                    page.screenshot(path=screenshot_path, full_page=True)
+                except Exception as e:
+                    logger.error(f"Failed to save screenshot for {url}: {e}")
 
             if client_id:
                 publish_event(
@@ -639,15 +645,15 @@ class PageCrawler:
             "count": count
         })
         
-        # Try Chromium first
-        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
+        # Try Chromium first (ALWAYS without proxy as per requirements)
+        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type="none")
         
         if result and "error" not in result:
-            logger.info(f"Chromium success: {url}")
+            logger.info(f"Chromium (no proxy) success: {url}")
             return result
     
-        # Fallback to Camoufox
-        logger.info(f"Trying Camoufox fallback for: {url}")
+        # Fallback to Camoufox (WITH proxy as per requirements)
+        logger.info(f"Chromium failed, trying Camoufox fallback with {proxy_type} proxy for: {url}")
         result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
         
         if result and "error" not in result:

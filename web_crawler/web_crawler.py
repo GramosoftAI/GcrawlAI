@@ -161,10 +161,21 @@ class WebCrawler:
         if crawl_mode == "links":
             logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
 
-            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
-                "stealth" if self.config.proxy_mode == "stealth" else "basic"
-            )
-            map_result = map_website(start_url, proxy_dict=p_dict)
+            # Step 1: Try without proxy first (as per user's "no proxy first" rule)
+            logger.info("  → Attempting map discovery without proxy...")
+            map_result = map_website(start_url, proxy_dict=None)
+
+            # Step 2: Fallback to proxy if discovery failed (only returned start_url)
+            if map_result["total"] <= 1:
+                logger.info("  → Map discovery failed or returned only 1 URL. Retrying with proxy...")
+                p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                    "stealth" if self.config.proxy_mode == "stealth" else "basic"
+                )
+                if p_dict:
+                    map_result = map_website(start_url, proxy_dict=p_dict)
+                else:
+                    logger.warning("  ⚠ No proxy configured for fallback.")
+            
             elapsed = perf_counter() - start_perf
 
             discovered_urls = map_result["urls"]
@@ -343,24 +354,6 @@ class WebCrawler:
                 proxy_type="stealth" if self.config.proxy_mode == "stealth" else "basic"
             )
 
-            # Firecrawl-style auto-retry with stealth
-            # Retry on: Unauthorized, Forbidden (CAPTCHA), Rate Limit, Proxy Errors, or Timeouts
-            retry_codes = [401, 403, 429, 502, 504, 0]
-            if result and result.get("status_code") in retry_codes and self.config.proxy_mode == "auto":
-                logger.info(f"🛡️ Proxy/Connection issue detected (status {result.get('status_code')}). Retrying with stealth proxy...")
-                result = self.page_crawler.crawl_page(
-                    canonical_url,
-                    count=1,
-                    enable_md=enable_md,
-                    enable_html=enable_html,
-                    enable_ss=enable_ss,
-                    enable_seo=enable_seo,
-                    client_id=client_id,
-                    websocket_manager=websocket_manager,
-                    crawl_mode=crawl_mode,
-                    proxy_type="stealth"
-                )
-
             if result and "error" not in result:
                 successful_pages = 1
 
@@ -426,24 +419,6 @@ class WebCrawler:
                     crawl_mode=crawl_mode,
                     proxy_type=proxy_type
                 )
-
-                # Firecrawl-style auto-retry with stealth
-                # Retry on: Unauthorized, Forbidden (CAPTCHA), Rate Limit, Proxy Errors, or Timeouts
-                retry_codes = [401, 403, 429, 502, 504, 0]
-                if result and result.get("status_code") in retry_codes and self.config.proxy_mode == "auto":
-                    logger.info(f"🛡️ Proxy/Connection issue detected (status {result.get('status_code')}) for: {url}. Retrying with stealth proxy...")
-                    result = self.page_crawler.crawl_page(
-                        url,
-                        page_no,
-                        enable_md,
-                        enable_html,
-                        enable_ss,
-                        enable_seo,
-                        client_id,
-                        websocket_manager,
-                        crawl_mode=crawl_mode,
-                        proxy_type="stealth"
-                    )
 
                 if not result or "error" in result:
                     with lock:

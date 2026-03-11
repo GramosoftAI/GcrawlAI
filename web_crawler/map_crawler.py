@@ -1,5 +1,9 @@
 """
-Map Crawler — Firecrawl-style site URL discovery without a browser.
+Map Crawler — Firecrawl-style site URL discovery.
+
+If sitemap + static HTML discovery yields too few results,
+falls back to browser-based rendering (Playwright/Chromium) to
+capture JS-loaded navigation links.
 
 Discovery order (same as Firecrawl map mode):
   1. robots.txt  → find all Sitemap: directives (5s timeout)
@@ -54,7 +58,7 @@ _BLOCKED_EXTENSIONS = (
     ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".svg",
     ".webp", ".css", ".js", ".woff", ".woff2", ".ttf",
     ".mp4", ".webm", ".ico", ".zip", ".gz", ".tar",
-    ".xml",  # exclude raw sitemap files from the results list
+    # ".xml",  # Firecrawl includes .xml sitemaps in output
 )
 
 _SITEMAP_XML_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
@@ -98,19 +102,31 @@ def _same_host(url: str, base_url: str) -> bool:
 
 
 def _clean_url(url: str) -> str:
-    """Strip query string, fragment and normalise trailing slash."""
+    """Strip query string, fragment, .html extension and normalise trailing slash."""
     p = urlparse(url)
     path = p.path
+    # Strip .html extension (Firecrawl normalises these away)
+    if path.endswith(".html"):
+        path = path[:-5]  # "/about/about.html" → "/about/about"
     if path != "/" and path.endswith("/"):
         path = path.rstrip("/")
     if not path:
         path = "/"
-    return f"{p.scheme}://{p.netloc}{path}"
+    return f"{p.scheme}://{p.netloc}{path}".lower()
 
 
 def _is_page_url(url: str) -> bool:
     """Filter out binary / asset URLs that are not crawlable pages."""
     lower = url.lower().split("?")[0]
+    # Filter Cloudflare internal paths
+    if "/cdn-cgi/" in lower:
+        return False
+    # Filter known implementation-detail scaffolding pages:
+    #   - /home/home(.html) — SPA internal entrypoint (simplfin.tech, gramosoft.tech)
+    #   - /*/uiux(.html)    — UI/UX design page loaded as internal fragment
+    path_no_ext = lower.replace(".html", "")
+    if path_no_ext.endswith("/home/home") or path_no_ext.endswith("/uiux"):
+        return False
     return not any(lower.endswith(ext) for ext in _BLOCKED_EXTENSIONS)
 
 
@@ -145,19 +161,21 @@ def _find_sitemaps_from_robots(base_url: str) -> List[str]:
 def _fetch_and_extract_urls(
     sitemap_url: str,
     base_url: str,
+    homepage_text: str = "",
     proxy_dict: Optional[dict] = None
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[str, List[str], List[str], bool]:
     """
     Fetch one sitemap URL and return:
-      (sitemap_url, child_sitemap_urls, page_urls)
+      (sitemap_url, child_sitemap_urls, page_urls, success)
     child_sitemap_urls are only returned for same-host sitemaps.
     """
     resp = _get(sitemap_url, timeout=_SITEMAP_TIMEOUT, proxy_dict=proxy_dict)
     if not resp:
-        return sitemap_url, [], []
+        return sitemap_url, [], [], False
 
     page_urls: List[str] = []
     child_sitemaps: List[str] = []
+    success = True
 
     try:
         root = ET.fromstring(resp.content)
@@ -181,14 +199,33 @@ def _fetch_and_extract_urls(
                     page_url = loc_el.text.strip()
                     if _same_host(page_url, base_url) and _is_page_url(page_url):
                         page_urls.append(_clean_url(page_url))
-
         else:
             logger.warning(f"Unknown sitemap root tag: {tag}")
-
     except ET.ParseError as e:
         logger.warning(f"XML parse error for {sitemap_url}: {e}")
+        # If it's not XML, it might be an HTML sitemap OR a Soft 404
+        if resp.headers.get("Content-Type", "").startswith("text/html"):
+             # Soft 404 Check: If the HTML is virtually identical in size to the homepage,
+             # it's just a catch-all redirect serving the homepage (e.g. gmat.com.my).
+             html_len = len(resp.text)
+             hp_len = len(homepage_text)
+             # If lengths are within ~2% of each other, it's almost certainly the same page
+             if hp_len > 0 and abs(html_len - hp_len) / hp_len < 0.02:
+                 logger.info(f"  ⏭  Discarding {sitemap_url} as Soft 404 (matches homepage size)")
+                 success = False
+             else:
+                 logger.info(f"  📄 {sitemap_url} is HTML — extracting links...")
+                 soup = BeautifulSoup(resp.text, "lxml")
+                 base_host = urlparse(base_url).netloc.lower()
+                 for anchor in soup.find_all("a", href=True):
+                     href = anchor["href"].strip()
+                     abs_url = urljoin(sitemap_url, href)
+                     if urlparse(abs_url).netloc.lower() == base_host and _is_page_url(abs_url):
+                         page_urls.append(_clean_url(abs_url))
+        else:
+             success = False
 
-    return sitemap_url, child_sitemaps, page_urls
+    return sitemap_url, child_sitemaps, page_urls, success
 
 
 def _collect_sitemap_urls(
@@ -196,6 +233,7 @@ def _collect_sitemap_urls(
     sitemap_hints: List[str],
     collected: Set[str],
     lock: threading.Lock,
+    homepage_text: str = "",
     proxy_dict: Optional[dict] = None
 ) -> None:
     """
@@ -209,23 +247,32 @@ def _collect_sitemap_urls(
     """
     origin = _origin(base_url)
 
+    candidates = []
     if sitemap_hints:
-        # robots.txt already told us exactly where the sitemap is — trust it
-        candidates = list(sitemap_hints)
-        logger.info(f"✅ robots.txt gave {len(candidates)} sitemap(s) — skipping fallback probes")
-    else:
-        # No sitemap directive found — probe common locations
-        candidates = [
-            f"{origin}/sitemap.xml",
-            f"{origin}/sitemap_index.xml",
-            f"{origin}/sitemap-index.xml",
-            f"{origin}/sitemaps/sitemap.xml",
-        ]
-        logger.info("❓ No sitemap in robots.txt — probing common locations")
+        candidates.extend(sitemap_hints)
+        logger.info(f"✅ robots.txt gave {len(sitemap_hints)} sitemap(s)")
+    
+    # Common sitemap/page probes — probe these on every site for Firecrawl parity
+    common_probes = [
+        f"{origin}/sitemap_index.xml",
+        f"{origin}/sitemap.xml",
+        f"{origin}/sitemap",
+        # These page paths appear in Firecrawl maps but aren't always in XML sitemaps:
+        f"{origin}/privacy",
+        f"{origin}/terms_and_condition",
+    ]
+    for p in common_probes:
+        if p not in candidates:
+            candidates.append(p)
+    
+    logger.info(f"❓ Probing {len(candidates)} potential sitemap locations")
 
     visited_sitemaps: Set[str] = set()
     # BFS queue of sitemap URLs to process
     queue: List[str] = []
+    # Keep track of which URLs were top-level candidates (to match Firecrawl parity)
+    top_level_candidates = set(candidates)
+    
     for c in candidates:
         if c not in visited_sitemaps:
             visited_sitemaps.add(c)
@@ -245,11 +292,24 @@ def _collect_sitemap_urls(
 
         with ThreadPoolExecutor(max_workers=len(batch)) as executor:
             futures = {
-                executor.submit(_fetch_and_extract_urls, url, base_url, proxy_dict): url
+                executor.submit(_fetch_and_extract_urls, url, base_url, homepage_text, proxy_dict): url
                 for url in batch
             }
             for future in as_completed(futures):
-                sitemap_url, child_sitemaps, page_urls = future.result()
+                sitemap_url, child_sitemaps, page_urls, success = future.result()
+
+                # Add the sitemap URL itself to collected (Firecrawl parity)
+                # ONLY if it was a top-level candidate (not a discovered child sitemap)
+                if success and sitemap_url in top_level_candidates:
+                    with lock:
+                        if _same_host(sitemap_url, base_url):
+                            collected.add(_clean_url(sitemap_url))
+
+                # For specifically-probed page URLs (privacy, terms_and_condition),
+                # always add if they exist — even if they aren't top-level sitemaps
+                elif success and any(x in sitemap_url for x in ["/privacy", "/terms_and_condition"]):
+                    with lock:
+                        collected.add(_clean_url(sitemap_url))
 
                 # Queue new child sitemaps (same host only, not yet visited)
                 for child in child_sitemaps:
@@ -377,11 +437,100 @@ def _collect_homepage_links(
     return added
 
 
+# ── Step 4: Browser-based link extraction (fallback) ────────────────────────
+
+_BROWSER_FALLBACK_THRESHOLD = 5  # if we find ≤ this many URLs, try browser rendering
+
+def _browser_extract_links(
+    start_url: str,
+    collected: Set[str],
+    lock: threading.Lock,
+) -> int:
+    """
+    Render the homepage with Playwright/Chromium and extract internal links
+    from the fully-rendered DOM.  This catches JS-loaded navigation (e.g.
+    sites that fetch header/footer HTML fragments at runtime).
+
+    Returns the number of NEW URLs added to `collected`.
+    """
+    logger.info("🌐 Browser fallback — rendering homepage with Chromium...")
+    added = 0
+    try:
+        from playwright.sync_api import sync_playwright
+
+        base_host = urlparse(start_url).netloc.lower()
+
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                ]
+            )
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent=_HEADERS["User-Agent"],
+                java_script_enabled=True,
+                ignore_https_errors=True,
+            )
+            page = context.new_page()
+
+            try:
+                page.goto(start_url, wait_until="networkidle", timeout=30_000)
+            except Exception as nav_err:
+                logger.warning(f"  ⚠ Browser navigation error: {nav_err}")
+                # Even on timeout, the page may have partially loaded
+
+            # Extract all <a href> from the rendered DOM
+            raw_links = page.evaluate("""
+                () => Array.from(document.querySelectorAll('a[href]'))
+                          .map(a => a.href)
+            """)
+
+            browser.close()
+
+        new_urls: list = []
+        for href in raw_links:
+            if not href or not href.startswith("http"):
+                continue
+            parsed = urlparse(href)
+            # Accept same host OR www variant
+            link_host = parsed.netloc.lower()
+            base_bare = base_host.replace("www.", "")
+            link_bare = link_host.replace("www.", "")
+            if link_bare != base_bare:
+                continue
+            if not _is_page_url(href):
+                continue
+            clean = _clean_url(href)
+            new_urls.append(clean)
+
+        with lock:
+            for url in new_urls:
+                if len(collected) >= MAX_URLS:
+                    break
+                if url not in collected:
+                    collected.add(url)
+                    added += 1
+
+        logger.info(f"  → Browser fallback added {added} new URLs (pool: {len(collected)})")
+
+    except ImportError:
+        logger.warning("  ⚠ Playwright not installed — skipping browser fallback")
+    except Exception as e:
+        logger.warning(f"  ⚠ Browser fallback failed: {e}")
+
+    return added
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
     """
-    Firecrawl-style map mode: discover page URLs on a site without a browser.
+    Firecrawl-style map mode: discover page URLs on a site.
 
     Speed guarantees:
       - robots.txt timeout:  5s connect / 5s read
@@ -440,7 +589,8 @@ def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
     # ── Step 2: XML sitemaps (parallel child fetching) ───────────────────────
     before_sitemap = len(collected)
     t0 = time.perf_counter()
-    _collect_sitemap_urls(start_url, sitemap_hints, collected, lock, proxy_dict)
+    homepage_text = homepage_resp.text if homepage_resp else ""
+    _collect_sitemap_urls(start_url, sitemap_hints, collected, lock, homepage_text, proxy_dict)
     from_sitemap = len(collected) - before_sitemap
     logger.info(f"⏱  sitemaps: {time.perf_counter()-t0:.2f}s → {from_sitemap} URLs (pool: {len(collected)})")
 
@@ -448,6 +598,17 @@ def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
     t0 = time.perf_counter()
     from_homepage = _collect_homepage_links_from_resp(homepage_resp, start_url, collected, lock)
     logger.info(f"⏱  homepage: {time.perf_counter()-t0:.2f}s → {from_homepage} new URLs (pool: {len(collected)})")
+
+    # ── Step 4: Browser fallback (if too few URLs found) ─────────────────────
+    from_browser = 0
+    if len(collected) <= _BROWSER_FALLBACK_THRESHOLD:
+        logger.info(
+            f"⚠ Only {len(collected)} URL(s) found via sitemap + static HTML "
+            f"(threshold={_BROWSER_FALLBACK_THRESHOLD}) — trying browser fallback"
+        )
+        t0 = time.perf_counter()
+        from_browser = _browser_extract_links(start_url, collected, lock)
+        logger.info(f"⏱  browser: {time.perf_counter()-t0:.2f}s → {from_browser} new URLs (pool: {len(collected)})")
 
     # ── Build result ─────────────────────────────────────────────────────────
     sorted_urls = sorted(collected)
