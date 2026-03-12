@@ -325,6 +325,9 @@ class PageCrawler:
                 "html_file": html_path,
                 "screenshot": screenshot_path,
                 "markdown_file": str(md_path) if md_path else None,
+                "seo_json": seo_json_path,
+                "seo_md": seo_md_path,
+                "seo_xlsx": seo_xlsx_path,
                 "links": links,
                 "status_code": page.evaluate("() => window.performance.getEntries()[0].responseStatus") or 200,
             }
@@ -638,12 +641,17 @@ class PageCrawler:
         """Crawl a single page with fallback browsers"""
         logger.info(f"Crawling [{count}]: {url}")
         
-        WebSocketManager.send_update(client_id, websocket_manager, {
-            "type": "progress",
-            "status": "starting",
-            "url": url,
-            "count": count
-        })
+        if client_id:
+            publish_event(
+                crawl_id=client_id,
+                payload={
+                    "type": "progress",
+                    "status": "starting",
+                    "url": url,
+                    "count": count
+                }
+            )
+
         
         # Try Chromium first (ALWAYS without proxy as per requirements)
         result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type="none")

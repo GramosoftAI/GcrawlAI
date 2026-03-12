@@ -313,6 +313,14 @@ def _run_background_crawl_task(client_id: str, **kwargs):
             )
             cur.execute(
                 """
+                INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx)
+                VALUES (%s, 'page_processed', %s, 'Scraped Page', %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (crawl_id, url) DO NOTHING
+                """,
+                (client_id, summary.get("start_url", ""), summary.get("markdown_file"), summary.get("html_file"), summary.get("screenshot"), summary.get("seo_json"), summary.get("seo_md"), summary.get("seo_xlsx"))
+            )
+            cur.execute(
+                """
                 INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file)
                 VALUES (%s, 'crawl_completed', '', 'Crawl Completed', %s)
                 ON CONFLICT (crawl_id, url) DO NOTHING
@@ -323,6 +331,36 @@ def _run_background_crawl_task(client_id: str, **kwargs):
             cur.close()
     except Exception as e:
         logger.error(f"Failed to persist BG crawl completion for {client_id}: {e}")
+        
+    try:
+        from web_crawler.redis_events import publish_event
+        # Publish page_processed for the single page so frontend grabs SEO/HTML/Screenshot
+        publish_event(
+            crawl_id=client_id,
+            payload={
+                "type": "page_processed",
+                "page": 1,
+                "url": summary.get("start_url", ""),
+                "title": "Scraped Page",
+                "markdown_file": summary.get("markdown_file"),
+                "html_file": summary.get("html_file"),
+                "screenshot": summary.get("screenshot"),
+                "seo_json": summary.get("seo_json"),
+                "seo_md": summary.get("seo_md"),
+                "seo_xlsx": summary.get("seo_xlsx")
+            }
+        )
+        
+        # Then publish completion as before
+        publish_event(
+            crawl_id=client_id,
+            payload={
+                "type": "crawl_completed",
+                "summary": summary
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish Redis event for BG crawl completion for {client_id}: {e}")
 
 @app.post("/crawler", response_model=CrawlResponse)
 def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
@@ -1060,6 +1098,11 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                         "summary": {
                             "start_url": url,
                             "markdown_file": markdown_file,
+                            "html_file": html_file,
+                            "screenshot": screenshot,
+                            "seo_json": seo_json,
+                            "seo_md": seo_md,
+                            "seo_xlsx": seo_xlsx,
                             "status": "completed",
                             "links_file_path": payload.get("links_file_path"),
                             "summary_file_path": payload.get("summary_file_path")
@@ -1143,7 +1186,14 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                             # For events with no URL (e.g. crawl_completed), use empty string
                             # as a sentinel so the unique constraint can still de-duplicate.
                             event_url = payload.get("url") or ""
-                            md_file = payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None)
+                            summary = payload.get("summary", {}) if event_type == "crawl_completed" else {}
+                            md_file = payload.get("markdown_file") or summary.get("markdown_file") or None
+                            html_file = payload.get("html_file") or summary.get("html_file") or None
+                            screenshot = payload.get("screenshot") or summary.get("screenshot") or None
+                            seo_json = payload.get("seo_json") or summary.get("seo_json") or None
+                            seo_md = payload.get("seo_md") or summary.get("seo_md") or None
+                            seo_xlsx = payload.get("seo_xlsx") or summary.get("seo_xlsx") or None
+                            
                             cur_ev.execute(
                                 """
                                 INSERT INTO crawl_events 
@@ -1165,11 +1215,11 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                                     event_url,
                                     payload.get("title"),
                                     md_file,
-                                    payload.get("html_file"),
-                                    payload.get("screenshot"),
-                                    payload.get("seo_json"),
-                                    payload.get("seo_md"),
-                                    payload.get("seo_xlsx")
+                                    html_file,
+                                    screenshot,
+                                    seo_json,
+                                    seo_md,
+                                    seo_xlsx
                                 )
                             )
                             conn_ev.commit()

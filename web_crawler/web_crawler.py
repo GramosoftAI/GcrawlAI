@@ -386,7 +386,12 @@ class WebCrawler:
                 "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
-                "markdown_file": result.get("markdown_file", "None") if (result and "error" not in result) else "None",
+                "markdown_file": result.get("markdown_file", None) if (result and "error" not in result) else None,
+                "html_file": result.get("html_file", None) if (result and "error" not in result) else None,
+                "screenshot": result.get("screenshot", None) if (result and "error" not in result) else None,
+                "seo_json": result.get("seo_json", None) if (result and "error" not in result) else None,
+                "seo_md": result.get("seo_md", None) if (result and "error" not in result) else None,
+                "seo_xlsx": result.get("seo_xlsx", None) if (result and "error" not in result) else None,
                 "links_file_path": str(self.config.links_file),
                 "summary_file_path": str(self.config.summary_file),
             }
