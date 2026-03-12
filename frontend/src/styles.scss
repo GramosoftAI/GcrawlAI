@@ -15,10 +15,10 @@ $my-app-theme: mat.define-light-theme((color: (primary: $my-app-primary,
 
 :root {
     --font-family: 'Inter', system-ui, sans-serif;
-    --primary: #21D496;
-    --primary-hover: #1cb882;
+    --primary: #054A91;
+    --primary-hover: #054A91;
     --primary-font: "Montserrat";
-    --primary-gradient: linear-gradient(135deg, #21D496 0%, #02a157 100%);
+    --primary-gradient: linear-gradient(135deg, #054A91 0%, #054A91 100%);
     --danger: #ff595e;
     --transition: all 0.2s ease;
     --bg-color: #ffffff;
@@ -44,6 +44,8 @@ body.dark-theme {
     --tab-hover: rgba(255, 255, 255, 0.1);
     --tab-active-bg: #1a1a1a;
     --input-bg: transparent;
+    --primary: #21D496;
+    --primary-gradient: linear-gradient(135deg, #21D496 0%, #02a157 100%);
 
     /* Override Bootstrap variables */
     --bs-body-bg: #0a0a0a;
@@ -162,11 +164,11 @@ button {
 }
 
 .txt-green {
-    color: #21D496 !important;
+    color: #054A91 !important;
 }
 
 .btn-bg-primary {
-    background-color: #21D496 !important;
+    background: var(--primary-gradient);
     padding: 2px 14px !important;
     border-radius: 6px !important;
     margin-left: 12px !important;
@@ -174,7 +176,7 @@ button {
 
 .btn-bg-primary-light {
     background-color: transparent !important;
-    border: 1px solid #21D496;
+    border: 1px solid #054A91;
     padding: 2px 14px !important;
     border-radius: 6px !important;
     margin-left: 12px !important;
@@ -248,5 +250,5 @@ button {
 }
 
 .owl-carousel .owl-item {
-  width: 320px !important;
+    width: 320px !important;
 }

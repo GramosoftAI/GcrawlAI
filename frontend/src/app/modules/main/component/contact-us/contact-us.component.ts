@@ -27,18 +27,18 @@ export class ContactUsComponent implements OnInit, OnDestroy {
       email: ['', [Validators.required, Validators.email]],
       mobile: ['', [Validators.required]],
       company: ['', [Validators.required]],
-      country: ['India'], // Initially set to 'India'
+      country: ['India'],
       message: ['', [Validators.required, Validators.minLength(10)]]
     });
   }
 
   ngOnInit(): void {
-    // Ensure the country is properly set to India initially if the user doesn't interact with it
     setTimeout(() => {
       if (!this.contactForm.get('country')?.value) {
         this.contactForm.patchValue({ country: 'India' }, { emitEvent: false });
       }
     }, 100);
+    this.contactForm.get('country')?.disable()
   }
 
   onCountryChange(event: any) {
@@ -62,7 +62,7 @@ export class ContactUsComponent implements OnInit, OnDestroy {
       return;
     }
     this.isSubmitting = true;
-    const payload = { ...this.contactForm.value };
+    const payload = { ...this.contactForm.getRawValue() };
 
     // Extract the phone number from the ngx-intl-tel-input object
     if (payload.mobile && typeof payload.mobile === 'object') {

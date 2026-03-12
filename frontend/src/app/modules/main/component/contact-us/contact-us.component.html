@@ -132,12 +132,17 @@
                             <!-- Submit -->
                             <div class="col-12 mt-2">
                                 <div class="d-flex justify-content-start">
-                                    <button type="submit" class="btn-submit" [disabled]="isSubmitting">
+                                    <button type="submit" class="btn-submit" [disabled]="isSubmitting"
+                                        [class.is-loading]="isSubmitting">
                                         <span *ngIf="!isSubmitting">Send Message</span>
-                                        <span *ngIf="isSubmitting">Sending...</span>
+                                        <div *ngIf="isSubmitting" class="spinner-border spinner-border-sm mx-auto"
+                                            role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
                                     </button>
-                                    <button routerLink="/app/" type="submit" class="btn-cancel ms-3">
-                                        <span *ngIf="!isSubmitting">Back</span>
+                                    <button routerLink="/app/" type="button" class="btn-cancel ms-3"
+                                        [disabled]="isSubmitting">
+                                        <span>Back</span>
                                     </button>
                                 </div>
                             </div>

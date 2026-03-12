@@ -34,7 +34,7 @@
 .contact-highlight {
     width: 44px;
     height: 4px;
-    background: var(--primary-gradient, linear-gradient(135deg, #21D496 0%, #02a157 100%));
+    background: var(--primary-gradient, linear-gradient(135deg, #054A91 0%, #054A91 100%));
     border-radius: 4px;
     margin-top: 12px;
 }
@@ -79,7 +79,7 @@
 .info-content a {
     display: block;
     font-size: 12px;
-    color: var(--primary, #21D496);
+    color: var(--primary, #054A91);
     font-weight: 600;
     transition: opacity 0.2s;
 
@@ -139,7 +139,7 @@
 
     &:focus {
         outline: none;
-        border-color: var(--primary, #21D496);
+        border-color: var(--primary, #054A91);
         box-shadow: 0 0 0 3px rgba(33, 212, 150, 0.15);
     }
 
@@ -162,7 +162,7 @@ textarea.field-input {
 
 /* ── Submit Button ── */
 .btn-submit {
-    background: var(--primary-gradient, linear-gradient(135deg, #21D496 0%, #02a157 100%));
+    background: var(--primary-gradient, linear-gradient(135deg, #054A91 0%, #054A91 100%));
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -185,6 +185,43 @@ textarea.field-input {
     &:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+    }
+
+    &.is-loading {
+        background: linear-gradient(135deg, #04386e 0%, #032b55 100%);
+        box-shadow: none;
+    }
+}
+
+.btn-mini-logo {
+    height: 18px;
+    width: auto;
+    margin-left: 8px;
+    filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
+    animation: spin-fast 0.6s linear infinite;
+}
+
+@keyframes pulse-glow-btn {
+    0% {
+        box-shadow: 0 0 0 0 rgba(5, 74, 145, 0.5);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(5, 74, 145, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(5, 74, 145, 0);
+    }
+}
+
+@keyframes spin-fast {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
     }
 }
 
@@ -258,7 +295,7 @@ textarea.field-input {
 
             &:focus {
                 outline: none !important;
-                border-color: var(--primary, #21D496) !important;
+                border-color: var(--primary, #054A91) !important;
                 box-shadow: 0 0 0 3px rgba(33, 212, 150, 0.15) !important;
             }
         }
