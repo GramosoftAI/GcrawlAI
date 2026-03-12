@@ -212,6 +212,7 @@ export class HomesearchresultComponent implements OnInit {
   }
 
   Onsubmit() {
+    debugger
     this.ensureHttps();
     this.crawlform.markAllAsTouched();
     if (this.crawlform.invalid) {
@@ -333,7 +334,7 @@ export class HomesearchresultComponent implements OnInit {
     this.crawlID = crawlId;
     this.socketService.connect(crawlId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data: any) => {
-        // console.log('Socket Raw Data:', JSON.stringify(data));
+        console.log('Socket Raw Data:', JSON.stringify(data));
 
         if (data?.type === 'page_processed') {
           const pagePaths: any = { page: data.page };

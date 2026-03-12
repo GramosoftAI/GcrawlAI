@@ -87,9 +87,9 @@
           <span *ngIf="!isLoading">{{ activeTab === 'signup' ? 'Create Account' : 'Log In' }}</span>
           <span *ngIf="isLoading">Please wait...</span>
         </button>
-        <div class="d-flex justify-content-start w-100 mt-1" (click)="forgot()">
+        <!-- <div class="d-flex justify-content-start w-100 mt-1" (click)="forgot()">
           Forgot password
-        </div>
+        </div> -->
       </form>
 
       <form *ngIf="Isforgot" [formGroup]="passwordForm" (ngSubmit)="changePassword()">

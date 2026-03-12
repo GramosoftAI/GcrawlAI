@@ -24,6 +24,7 @@ export class ReportPageComponent implements OnChanges {
   userdetails: any;
   @Input() blocks: any[] = [];
   @Input() formsvalue: any;
+  @Input() isCompleted: boolean = false;
   parsedBlocks: any[] = [];
   reportForm: FormGroup;
   activeSeoTab: string = 'xlsx';

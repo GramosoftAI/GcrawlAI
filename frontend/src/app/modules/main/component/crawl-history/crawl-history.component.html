@@ -1,5 +1,5 @@
 <section class="mt-5 carousel-card" *ngIf="historyData && historyData.length > 0">
-    <p class="text-start fw-400 fs-16 mb-2">Recent Searches</p>
+    <p class="text-start fw-600 fs-16 mb-2">Recent Searches</p>
     <owl-carousel-o [options]="customOptions">
         <ng-template carouselSlide *ngFor="let item of historyData">
             <div class="history-card pb-2 mx-1 mb-2 h-100">

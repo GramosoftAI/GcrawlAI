@@ -10,21 +10,52 @@
   top: -17px !important;
 }
 
-.nav-pills .nav-link.active {
-  color: var(--text-color) !important;
-  background: var(--card-bg-color) !important;
+.nav-pills {
+  position: relative;
+  z-index: 1;
+}
+
+.nav-pills .nav-link {
+  position: relative;
+  z-index: 2;
+  color: var(--text-color-secondary) !important;
+  font-size: 13px !important;
+  font-weight: 500;
   border-radius: 20px;
+  transition: color 0.3s ease, transform 0.2s ease;
+  background: transparent !important;
+}
+
+.nav-pills .nav-link.active {
+  color: #fff !important;
+  transform: scale(1.05);
+  /* slightly scale up the active one */
+}
+
+/* Pseudo element that acts as the sliding background for the active pill */
+.nav-pills .nav-link::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--primary-gradient);
+  border-radius: 20px;
+  z-index: -1;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1), box-shadow 0.3s ease;
+}
+
+.nav-pills .nav-link.active::before {
+  opacity: 1;
+  transform: scale(1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border: 1px solid;
 }
 
 .nav-pills .nav-item {
-  padding: 5px 18px;
-}
-
-.nav-link {
-  color: var(--text-color-secondary) !important;
-  font-size: 12px !important;
+  padding: 5px 6px;
 }
 
 .scroll-tabs {
@@ -45,8 +76,50 @@
   max-height: 425px;
   overflow-y: auto;
   width: 100%;
-  // max-width: 878px;
   background: var(--card-bg);
+
+  &.logged-out {
+    max-height: 425px !important;
+    overflow: hidden !important;
+  }
+
+  &.crawl-mode {
+    max-height: none;
+    overflow-y: visible;
+
+    .report-container {
+
+      >pre,
+      .content,
+      .editor-body,
+      .seo-content,
+      .screenshot-wrapper,
+      .xlsx-grid-wrapper .table-responsive {
+        max-height: 600px;
+        overflow-y: auto;
+
+        /* Keep a custom scrollbar for better aesthetics */
+        &::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+
+        &::-webkit-scrollbar-track {
+          background: var(--grid-line-color);
+          border-radius: 4px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+          background: var(--text-color-secondary);
+          border-radius: 4px;
+        }
+
+        &::-webkit-scrollbar-thumb:hover {
+          background: var(--text-color);
+        }
+      }
+    }
+  }
 }
 
 pre {
@@ -57,7 +130,42 @@ pre {
 .report-container {
   display: grid;
   gap: 15px;
-  padding: 12px;
+  height: 400px;
+  overflow: auto;
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.tab-pane.fade {
+  display: none;
+  opacity: 0;
+}
+
+.tab-pane.fade.active.show {
+  display: block;
+  animation: slideFadeIn 0.4s cubic-bezier(0.165, 0.84, 0.44, 1) forwards;
+}
+
+@keyframes slideFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+    /* A nice slide from the right */
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .title {
@@ -496,6 +604,11 @@ table tbody tr td {
   color: darkorange;
 }
 
+.completed-text {
+  font-size: 11px;
+  color: green;
+}
+
 @keyframes dots {
   0% {
     content: '';
@@ -525,4 +638,13 @@ table tbody tr td {
 
 .owl-carousel .owl-item {
   width: 320px !important;
+}
+
+.success-gif {
+    width: 26px;
+    height: 26px;
+    margin-left: -8px;
+    object-fit: cover;
+    margin-bottom: 1px;
+
 }
