@@ -121,6 +121,19 @@ class WebCrawler:
         self.all_links: Set[str] = set()
         self.pages_data: List[Dict] = []
 
+    def _effective_proxy_mode(self) -> str:
+        mode = (self.config.proxy_mode or "auto").strip().lower()
+        if mode in {"basic", "stealth", "enhanced", "auto"}:
+            return mode
+        return "auto"
+
+    def _initial_proxy_type(self) -> str:
+        """
+        In auto mode, start with basic and escalate later only if needed.
+        """
+        mode = self._effective_proxy_mode()
+        return "basic" if mode == "auto" else mode
+
     def crawl(
         self,
         start_url: str,
@@ -169,13 +182,22 @@ class WebCrawler:
             if map_result["total"] <= 1:
                 logger.info("  → Map discovery failed or returned only 1 URL. Retrying with proxy...")
                 p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
-                    "stealth" if self.config.proxy_mode == "stealth" else "basic"
+                    self._initial_proxy_type()
                 )
                 if p_dict:
                     map_result = map_website(start_url, proxy_dict=p_dict)
                 else:
                     logger.warning("  ⚠ No proxy configured for fallback.")
             
+            if (
+                map_result["total"] <= 1
+                and self._effective_proxy_mode() == "auto"
+            ):
+                logger.info("Auto mode escalation: retrying map discovery with enhanced proxy.")
+                p_dict_enhanced = self.page_crawler.proxy_manager.get_requests_proxies("enhanced")
+                if p_dict_enhanced:
+                    map_result = map_website(start_url, proxy_dict=p_dict_enhanced)
+
             elapsed = perf_counter() - start_perf
 
             discovered_urls = map_result["urls"]
@@ -336,7 +358,7 @@ class WebCrawler:
             logger.info("🔹 Single-page crawl mode")
 
             p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
-                "stealth" if self.config.proxy_mode == "stealth" else "basic"
+                self._initial_proxy_type()
             )
             # Auto-resolve canonical URL (follows redirects: naukri.com → www.naukri.com)
             canonical_url = resolve_canonical_url(start_url, proxies=p_dict)
@@ -351,7 +373,7 @@ class WebCrawler:
                 client_id=client_id,
                 websocket_manager=websocket_manager,
                 crawl_mode=crawl_mode,
-                proxy_type="stealth" if self.config.proxy_mode == "stealth" else "basic"
+                proxy_type=self._effective_proxy_mode()
             )
 
             if result and "error" not in result:
@@ -411,7 +433,7 @@ class WebCrawler:
 
             try:
                 # Initial attempt
-                proxy_type = "stealth" if self.config.proxy_mode == "stealth" else "basic"
+                proxy_type = self._effective_proxy_mode()
                 result = self.page_crawler.crawl_page(
                     url,
                     page_no,

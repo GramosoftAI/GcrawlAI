@@ -97,8 +97,12 @@ def _origin(url: str) -> str:
 
 
 def _same_host(url: str, base_url: str) -> bool:
-    """True if url belongs to the EXACT same host as base_url (no subdomains)."""
-    return urlparse(url).netloc.lower() == urlparse(base_url).netloc.lower()
+    """True if url belongs to the SAME host as base_url (ignoring www. prefix)."""
+    url_host = urlparse(url).netloc.lower()
+    base_host = urlparse(base_url).netloc.lower()
+    if url_host.startswith("www."): url_host = url_host[4:]
+    if base_host.startswith("www."): base_host = base_host[4:]
+    return url_host == base_host
 
 
 def _clean_url(url: str) -> str:
@@ -217,10 +221,13 @@ def _fetch_and_extract_urls(
                  logger.info(f"  📄 {sitemap_url} is HTML — extracting links...")
                  soup = BeautifulSoup(resp.text, "lxml")
                  base_host = urlparse(base_url).netloc.lower()
+                 if base_host.startswith("www."): base_host = base_host[4:]
                  for anchor in soup.find_all("a", href=True):
                      href = anchor["href"].strip()
                      abs_url = urljoin(sitemap_url, href)
-                     if urlparse(abs_url).netloc.lower() == base_host and _is_page_url(abs_url):
+                     url_host = urlparse(abs_url).netloc.lower()
+                     if url_host.startswith("www."): url_host = url_host[4:]
+                     if url_host == base_host and _is_page_url(abs_url):
                          page_urls.append(_clean_url(abs_url))
         else:
              success = False
@@ -349,6 +356,7 @@ def _parse_homepage_html(
     """
     soup = BeautifulSoup(resp.text, "lxml")
     base_host = urlparse(base_url).netloc.lower()
+    if base_host.startswith("www."): base_host = base_host[4:]
     seen_paths: Set[str] = set()
     new_urls: List[str] = []
 
@@ -362,7 +370,9 @@ def _parse_homepage_html(
             continue
 
         parsed = urlparse(abs_url)
-        if parsed.netloc.lower() != base_host:
+        url_host = parsed.netloc.lower()
+        if url_host.startswith("www."): url_host = url_host[4:]
+        if url_host != base_host:
             continue  # external domain / subdomain
 
         if not _is_page_url(abs_url):

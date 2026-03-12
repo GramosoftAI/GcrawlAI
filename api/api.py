@@ -242,6 +242,7 @@ class CrawlRequest(BaseModel):
     enable_html: bool = False
     enable_ss: bool = False
     enable_seo: bool = False
+    proxy: Optional[Literal["basic", "stealth", "enhanced", "auto"]] = None
     user_id: Optional[int] = None
 
 class CrawlResponse(BaseModel):
@@ -394,6 +395,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             headless=True,
             use_stealth=True
         )
+        if payload.proxy:
+            config.proxy_mode = payload.proxy
 
         # ---------- SINGLE PAGE ----------
         if payload.crawl_mode == "single":
@@ -447,6 +450,13 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                     "use_stealth": config.use_stealth,
                     "output_dir": str(config.output_dir),  # ✅ convert Path → str
                     "proxy": config.proxy,
+                    "basic_proxies": config.basic_proxies,
+                    "stealth_proxies": config.stealth_proxies,
+                    "enhanced_proxies": config.enhanced_proxies,
+                    "proxy_mode": config.proxy_mode,
+                    "proxy_server": config.proxy_server,
+                    "proxy_username": config.proxy_username,
+                    "proxy_password": config.proxy_password,
                 },
                 crawl_mode="all",
                 enable_md=payload.enable_md,
@@ -1381,4 +1391,3 @@ def report_issue(payload: ReportIssueRequest):
     except Exception as e:
         logger.error(f"Error creating issue report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to submit issue report: {str(e)}")
-

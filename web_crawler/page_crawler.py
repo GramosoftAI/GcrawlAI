@@ -187,8 +187,33 @@ class PageCrawler:
         self.proxy_manager = ProxyManager(
             proxies=config.proxy,
             basic_proxies=config.basic_proxies,
-            stealth_proxies=config.stealth_proxies
+            stealth_proxies=config.stealth_proxies,
+            enhanced_proxies=config.enhanced_proxies,
         )
+
+    @staticmethod
+    def _is_likely_proxy_failure(result: Optional[Dict]) -> bool:
+        """
+        Heuristic used for auto mode escalation (basic -> enhanced).
+        """
+        if not result:
+            return True
+
+        status_code = result.get("status_code")
+        if status_code in {401, 403, 407, 429, 502, 503, 504}:
+            return True
+
+        err = str(result.get("error", "")).lower()
+        proxy_markers = [
+            "proxy",
+            "forbidden",
+            "access denied",
+            "too many requests",
+            "captcha",
+            "rate limit",
+            "cloudflare",
+        ]
+        return any(marker in err for marker in proxy_markers)
 
     def _resolve_playwright_proxy(self, proxy_type: str = "basic") -> Optional[Dict]:
         """
@@ -415,8 +440,8 @@ class PageCrawler:
                     context_kwargs["proxy"] = proxy_settings
 
                 # Define nav_timeout and search mobile persona
-                nav_timeout = 90_000 if proxy_type == "stealth" else 60_000
-                if "google.com/search" in url and proxy_type == "stealth":
+                nav_timeout = 90_000 if proxy_type in {"stealth", "enhanced"} else 60_000
+                if "google.com/search" in url and proxy_type in {"stealth", "enhanced"}:
                     mobile_ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
                     context_kwargs["user_agent"] = mobile_ua
                     context_kwargs["viewport"] = {"width": 390, "height": 844}
@@ -559,7 +584,7 @@ class PageCrawler:
                         page.route("**/*", self.browser_utils.block_resources)
                     
                     logger.info(f"Navigating to {url} (Camoufox)...")
-                    nav_timeout = 90_000 if proxy_type == "stealth" else 60_000
+                    nav_timeout = 90_000 if proxy_type in {"stealth", "enhanced"} else 60_000
                     response = page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
                     logger.info(f"Response status: {response.status if response else 'None'}")
                     
@@ -660,16 +685,49 @@ class PageCrawler:
             logger.info(f"Chromium (no proxy) success: {url}")
             return result
     
+        requested_proxy_type = (proxy_type or "basic").strip().lower()
+        if requested_proxy_type not in {"basic", "stealth", "enhanced", "auto"}:
+            requested_proxy_type = "basic"
+
+        first_proxy_type = "basic" if requested_proxy_type == "auto" else requested_proxy_type
+
         # Fallback to Camoufox (WITH proxy as per requirements)
-        logger.info(f"Chromium failed, trying Camoufox fallback with {proxy_type} proxy for: {url}")
-        result = self.crawl_with_camoufox(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type)
+        logger.info(f"Chromium failed, trying Camoufox fallback with {first_proxy_type} proxy for: {url}")
+        result = self.crawl_with_camoufox(
+            url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, first_proxy_type
+        )
         
         if result and "error" not in result:
             logger.info(f"Camoufox success: {url}")
             return result
+
+        failure_recorded = False
+
+        # Firecrawl-style auto mode escalation:
+        # if basic likely failed due to proxy inadequacy, retry with enhanced.
+        if requested_proxy_type == "auto" and self._is_likely_proxy_failure(result):
+            logger.info(f"Auto proxy escalation: retrying Camoufox with enhanced proxy for: {url}")
+            retry = self.crawl_with_camoufox(
+                url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, "enhanced"
+            )
+            if retry and "error" not in retry:
+                logger.info(f"Camoufox enhanced success: {url}")
+                return retry
+            if retry:
+                result = retry
         else:
             logger.error(f"All browsers failed for: {url}")
             # Record the failure in the DB so operators can review it
+            _record_failed_page(
+                url=url,
+                crawl_id=client_id,
+                crawl_mode=crawl_mode,
+                page_number=count,
+            )
+            failure_recorded = True
+
+        if requested_proxy_type == "auto" and not failure_recorded:
+            logger.error(f"All browsers failed even after auto proxy escalation for: {url}")
             _record_failed_page(
                 url=url,
                 crawl_id=client_id,

@@ -40,7 +40,8 @@ class CrawlConfig:
     # New Firecrawl-like multi-tier proxy settings
     basic_proxies: Optional[Union[str, list]] = None
     stealth_proxies: Optional[Union[str, list]] = None
-    proxy_mode: str = "auto" # "auto", "basic", "stealth"
+    enhanced_proxies: Optional[Union[str, list]] = None
+    proxy_mode: str = "auto"  # "auto", "basic", "stealth", "enhanced"
 
     def __post_init__(self):
         self.proxy_server = self._clean_env(self.proxy_server or os.getenv("PROXY_SERVER"))
@@ -56,8 +57,19 @@ class CrawlConfig:
         
         if self.stealth_proxies is None:
             self.stealth_proxies = os.getenv("STEALTH_PROXIES")
+
+        if self.enhanced_proxies is None:
+            self.enhanced_proxies = os.getenv("ENHANCED_PROXIES")
+
+        # Backward-compatible alias: if enhanced pool is not explicitly set,
+        # reuse stealth pool.
+        if self.enhanced_proxies is None:
+            self.enhanced_proxies = self.stealth_proxies
         
-        self.proxy_mode = os.getenv("PROXY_MODE", self.proxy_mode).lower()
+        raw_proxy_mode = self.proxy_mode
+        if raw_proxy_mode is None or str(raw_proxy_mode).strip().lower() == "auto":
+            raw_proxy_mode = os.getenv("PROXY_MODE", raw_proxy_mode)
+        self.proxy_mode = self._normalize_proxy_mode(raw_proxy_mode)
 
         # If legacy CRAWL_PROXY is not set, derive requests-compatible proxy from BYOP env.
         if self.proxy is None and self.proxy_server:
@@ -98,6 +110,16 @@ class CrawlConfig:
             auth = f"{username}:{password}@"
 
         return f"{scheme}://{auth}{host}{port}"
+
+    @staticmethod
+    def _normalize_proxy_mode(value: Optional[str]) -> str:
+        """
+        Normalize proxy mode to supported values.
+        Unknown values are treated as "auto" to preserve resiliency.
+        """
+        allowed = {"auto", "basic", "stealth", "enhanced"}
+        mode = (value or "auto").strip().lower()
+        return mode if mode in allowed else "auto"
 
     def get_playwright_proxy(self) -> Optional[dict]:
         """
