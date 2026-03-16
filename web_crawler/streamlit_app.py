@@ -29,6 +29,8 @@ def init_session_state():
         st.session_state.is_crawling = False
     if "urls_seen" not in st.session_state:
         st.session_state.urls_seen = set()
+    if "search_results" not in st.session_state:
+        st.session_state.search_results = None
 
 init_session_state()
 
@@ -67,62 +69,97 @@ def websocket_listener(crawl_id: str, message_queue: queue.Queue):
 
 # ================= UI: SIDEBAR CONFIG =================
 with st.sidebar:
-    st.header("⚙️ Crawl Settings")
-    crawl_mode = st.selectbox("Crawl Mode", ["single", "all", "links"], help="Select 'single' for one page or 'all' to spider the site.")
-    
-    st.subheader("Data Extraction")
-    enable_md = st.toggle("Enable Markdown", value=True)
-    enable_html = st.toggle("Enable HTML", value=False)
-    enable_ss = st.toggle("Enable Screenshot", value=False)
-    enable_seo = st.toggle("Enable SEO", value=False)
-    
+    action_type = st.selectbox("Action", ["Crawl", "Search"])
+    st.divider()
+
+    if action_type == "Crawl":
+        st.header("⚙️ Crawl Settings")
+        crawl_mode = st.selectbox("Crawl Mode", ["single", "all", "links"], help="Select 'single' for one page or 'all' to spider the site.")
+        
+        st.subheader("Data Extraction")
+        enable_md = st.toggle("Enable Markdown", value=True)
+        enable_html = st.toggle("Enable HTML", value=False)
+        enable_ss = st.toggle("Enable Screenshot", value=False)
+        enable_seo = st.toggle("Enable SEO", value=False)
+    else:
+        st.header("🔍 Search Settings")
+        search_limit = st.slider("Result Limit", min_value=1, max_value=25, value=5)
+        
     if st.button("🗑️ Clear History", use_container_width=True):
         reset_crawl()
+        st.session_state.search_results = None
         st.rerun()
 
 # ================= UI: MAIN AREA =================
-st.title("🕷️ Live Web Crawler")
-st.markdown("Enter a URL to begin streaming scraped content in real-time.")
+if action_type == "Crawl":
+    st.title("🕷️ Live Web Crawler")
+    st.markdown("Enter a URL to begin streaming scraped content in real-time.")
 
-# --- Input Form ---
-with st.form("crawl_form"):
-    url = st.text_input("Website URL", placeholder="https://example.com")
-    submitted = st.form_submit_button("Start Crawl", type="primary")
+    # --- Input Form ---
+    with st.form("crawl_form"):
+        url = st.text_input("Website URL", placeholder="https://example.com")
+        submitted = st.form_submit_button("Start Crawl", type="primary")
 
-if submitted:
-    if not url:
-        st.error("URL is required to begin.")
-    else:
-        reset_crawl() # Clear previous runs
-        
-        with st.spinner("Initializing crawler..."):
-            resp = requests.post(
-                f"{API_BASE}/crawler",
-                json={
-                    "url": url, 
-                    "crawl_mode": crawl_mode,
-                    "enable_md": enable_md,
-                    "enable_html": enable_html,
-                    "enable_ss": enable_ss,
-                    "enable_seo": enable_seo
-                },
-                timeout=300,
-            )
-
-            if resp.status_code != 200:
-                st.error(f"Error starting crawl: {resp.text}")
-            else:
-                data = resp.json()
-                st.session_state.crawl_id = data["crawl_id"]
-                st.session_state.is_crawling = True
-
-                # Start WebSocket listener
-                ws_thread = threading.Thread(
-                    target=websocket_listener,
-                    args=(st.session_state.crawl_id, st.session_state.messages),
-                    daemon=True,
+    if submitted:
+        if not url:
+            st.error("URL is required to begin.")
+        else:
+            reset_crawl() # Clear previous runs
+            
+            with st.spinner("Initializing crawler..."):
+                resp = requests.post(
+                    f"{API_BASE}/crawler",
+                    json={
+                        "url": url, 
+                        "crawl_mode": crawl_mode,
+                        "enable_md": enable_md,
+                        "enable_html": enable_html,
+                        "enable_ss": enable_ss,
+                        "enable_seo": enable_seo
+                    },
+                    timeout=300,
                 )
-                ws_thread.start()
+
+                if resp.status_code != 200:
+                    st.error(f"Error starting crawl: {resp.text}")
+                else:
+                    data = resp.json()
+                    st.session_state.crawl_id = data["crawl_id"]
+                    st.session_state.is_crawling = True
+
+                    # Start WebSocket listener
+                    ws_thread = threading.Thread(
+                        target=websocket_listener,
+                        args=(st.session_state.crawl_id, st.session_state.messages),
+                        daemon=True,
+                    )
+                    ws_thread.start()
+
+elif action_type == "Search":
+    st.title("🔍 Web Search")
+    st.markdown("Enter a search query to find relevant content.")
+
+    with st.form("search_form"):
+        query = st.text_input("Search Query", placeholder="What do you want to find?")
+        search_submitted = st.form_submit_button("Search", type="primary")
+
+    if search_submitted:
+        if not query:
+            st.error("Query is required to search.")
+        else:
+            with st.spinner("Searching..."):
+                try:
+                    resp = requests.post(
+                        f"{API_BASE}/search",
+                        json={"query": query, "limit": search_limit},
+                        timeout=60,
+                    )
+                    if resp.status_code != 200:
+                        st.error(f"Error searching: {resp.text}")
+                    else:
+                        st.session_state.search_results = resp.json()
+                except Exception as e:
+                    st.error(f"Request failed: {e}")
 
 # ================= PROCESS QUEUE =================
 # Pull messages from WS queue and persist them
@@ -159,7 +196,7 @@ while not st.session_state.messages.empty():
         st.session_state.is_crawling = False
 
 # ================= RENDER RESULTS =================
-if st.session_state.crawl_id:
+if action_type == "Crawl" and st.session_state.crawl_id:
     st.divider()
     
     # Header & Metrics
@@ -210,8 +247,26 @@ if st.session_state.crawl_id:
                 if not has_seo:
                     st.write("SEO generation was not enabled.")
 
+elif action_type == "Search" and st.session_state.search_results:
+    st.divider()
+    
+    data = st.session_state.search_results
+    st.subheader("📄 Search Results")
+    st.success(f"Found {data.get('count', 0)} results for '{data.get('query', '')}'.")
+    
+    for item in data.get("results", []):
+        with st.container():
+            title = item.get("title") or "No Title"
+            url = item.get("url") or "#"
+            desc = item.get("description") or "No Description"
+            
+            st.markdown(f"### [{title}]({url})")
+            st.markdown(f"**URL:** [{url}]({url})")
+            st.write(desc)
+            st.divider()
+
 # ================= AUTO-REFRESH LOGIC =================
 # Only refresh the app continuously if a crawl is actively happening
-if st.session_state.is_crawling:
+if action_type == "Crawl" and st.session_state.is_crawling:
     time.sleep(1) # Slightly longer sleep prevents aggressive UI flickering
     st.rerun()

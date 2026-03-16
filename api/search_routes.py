@@ -24,6 +24,7 @@ class SearchRequest(BaseModel):
 
 
 class SearchResult(BaseModel):
+    position: Optional[int] = None
     url: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
