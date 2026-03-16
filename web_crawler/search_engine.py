@@ -80,6 +80,8 @@ def execute_search_router(query: str, limit: int) -> List[Dict[str, str]]:
         logger.info(f"✅ [SEARCH] DuckDuckGo search successful. Found results.")
     return filter_and_deduplicate(results, limit)
 
+
+
 def filter_and_deduplicate(results: List[Dict[str, str]], limit: int) -> List[Dict[str, str]]:
     seen_urls = set()
     filtered = []
