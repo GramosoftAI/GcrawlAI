@@ -11,32 +11,51 @@ def searxng_search(query: str, limit: int) -> List[Dict[str, str]]:
     if not url:
         return []
         
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        response = httpx.get(
-            url,
-            params={"q": query, "format": "json"},
-            headers=headers,
-            timeout=10.0
-        )
-        if response.status_code == 200:
-            results = response.json().get("results", [])
-            # Format to match duckduckgo: url, title, body
-            formatted = []
-            for r in results[:limit]:
-                formatted.append({
-                    "url": r.get("url"),
-                    "title": r.get("title"),
-                    "description": r.get("content", "")
-                })
-            return formatted
-    except Exception as e:
-        logger.warning(f"SearXNG engine at {url} failed: {e}")
-    return []
+    all_results = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    
+    # Attempt to fetch multiple pages if needed (each page typically has 10-20 results)
+    # We'll try up to 10 pages to reach the limit
+    for pageno in range(1, 11):
+        try:
+            response = httpx.get(
+                url,
+                params={"q": query, "format": "json", "pageno": pageno},
+                headers=headers,
+                timeout=15.0
+            )
+            if response.status_code == 200:
+                page_data = response.json()
+                page_results = page_data.get("results", [])
+                
+                if not page_results:
+                    break
+                    
+                all_results.extend(page_results)
+                
+                # Stop if we hit the limit early
+                if len(all_results) >= limit:
+                    break
+            else:
+                logger.warning(f"SearXNG pageno {pageno} failed with status {response.status_code}")
+                break
+        except Exception as e:
+            logger.warning(f"SearXNG engine at {url} page {pageno} failed: {e}")
+            break
+            
+    # Format to match internal structure
+    formatted = []
+    for r in all_results[:limit]:
+        formatted.append({
+            "url": r.get("url"),
+            "title": r.get("title"),
+            "description": r.get("content", "")
+        })
+    return formatted
 
 def ddg_search(query: str, limit: int) -> List[Dict[str, str]]:
     try:

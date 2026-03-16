@@ -1,4 +1,4 @@
-﻿"""
+"""
 Search Engine Routes
 
 Provides an API endpoint for searching using the unified search router.
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/search", tags=["Search"])
 
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Search query text")
-    limit: int = Field(5, ge=1, le=25, description="Number of results to return")
+    limit: int = Field(10, ge=1,le = 100, description="Number of results to return")
 
 
 class SearchResult(BaseModel):
