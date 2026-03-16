@@ -344,18 +344,41 @@
   box-shadow: 0 2px 8px rgba(33, 212, 150, 0.3);
 }
 
-/* Loading Spinner */
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: #fff;
-  animation: spin 1s ease-in-out infinite;
+/* Loading Aesthetics */
+.btn-primary.is-loading {
+  background: var(--primary-gradient);
+  box-shadow: none;
+  /* Let inner spinner handle it */
 }
 
-@keyframes spin {
-  to {
+.btn-mini-logo {
+  height: 18px;
+  width: auto;
+  margin-left: 8px;
+  filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
+  animation: spin-fast 0.6s linear infinite;
+}
+
+@keyframes pulse-glow-btn {
+  0% {
+    box-shadow: 0 0 0 0 rgba(33, 212, 150, 0.5);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(33, 212, 150, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(33, 212, 150, 0);
+  }
+}
+
+@keyframes spin-fast {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
     transform: rotate(360deg);
   }
 }

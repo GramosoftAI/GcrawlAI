@@ -9,7 +9,7 @@
             <div class="d-flex align-items-center">
                 <!-- Outside buttons (Always visible) -->
                 <button (click)="themeService.toggleTheme()" type="button" class="btn-outline me-5 me-lg-3">
-                    <img class="fav-icons cursor" routerLink="/"
+                    <img class="fav-icons cursor"
                         [src]="isDarkTheme() ? '/assets/image/dark-mode.png' : '/assets/image/light-mode.png'" alt="">
                 </button>
 
@@ -29,7 +29,7 @@
                 <div class="d-none d-lg-flex align-items-center">
                     <div *ngIf="isLoggedIn" class="dropdown me-3">
                         <button class="btn-outline" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            {{ user?.user?.name }}
+                            {{ user?.user?.name }} <img src="/assets/image/logout.png" alt="" class="logout-img">
                         </button>
                         <ul class="dropdown-menu">
                             <li><span class="dropdown-item cursor" (click)="logout()">Logout</span></li>

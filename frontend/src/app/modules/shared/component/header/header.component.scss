@@ -154,3 +154,25 @@
   width: 100%;
   z-index: 1000;
 }
+
+.logout-img {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+}
+
+:host-context(body.dark-theme) {
+
+  .gh-icon,
+  .logout-img {
+    filter: invert(1);
+  }
+}
+
+:host-context(body.light-theme) {
+
+  .gh-icon,
+  .logout-img {
+    filter: none;
+  }
+}

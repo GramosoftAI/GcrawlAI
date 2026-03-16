@@ -1,4 +1,8 @@
 <div *ngIf="showLoader | async" class="overlay">
-    <div class="loader">
+    <div class="loader-container">
+        <div class="glow-ring"></div>
+        <div class="glow-ring"></div>
+        <img [src]="themeService.currentTheme() === 'dark' ? '/assets/image/GcrawlWhiteLogo.svg' : '/assets/image/Logo.svg'"
+            class="loader-logo" alt="Loading...">
     </div>
 </div>
