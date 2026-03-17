@@ -44,7 +44,6 @@ def normalize_url(url: str) -> str:
 
     normalized = parsed._replace(
         fragment="",
-        query="",
         path=path
     )
 

@@ -93,6 +93,7 @@ from api.auth_routes import (
     CurrentUserResponse,
 )
 from api.contact_routes import router as contact_router
+from api.search_routes import router as search_router
 
 # ================= LOGGING =================
 
@@ -117,6 +118,10 @@ app.include_router(contact_router)  # POST /contact — Contact Us form
 
 security = HTTPBearer()
 auth_manager: Optional[AuthManager] = None
+
+# ── Routers ──
+app.include_router(contact_router)
+app.include_router(search_router)
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -242,6 +247,7 @@ class CrawlRequest(BaseModel):
     enable_html: bool = False
     enable_ss: bool = False
     enable_seo: bool = False
+    proxy: Optional[Literal["basic", "stealth", "enhanced", "auto"]] = None
     user_id: Optional[int] = None
 
 class CrawlResponse(BaseModel):
@@ -297,6 +303,70 @@ def root():
     return {"status": "running"}
 
 # ================= CRAWLER ENDPOINT =================
+def _run_background_crawl_task(client_id: str, **kwargs):
+    """Wrapper to run synchronous crawls (single, links) and persist their completion to DB."""
+    # Run the actual crawl
+    summary = crawl_main(**kwargs)
+    
+    # Persist the completion to the database directly
+    # This prevents WebSockets from hanging if they connect AFTER the short crawl completes
+    try:
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE crawl_jobs SET updated_at = %s, links_file_path = %s, summary_file_path = %s WHERE crawl_id = %s",
+                (datetime.now(), summary.get("links_file_path"), summary.get("summary_file_path"), client_id)
+            )
+            cur.execute(
+                """
+                INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx)
+                VALUES (%s, 'page_processed', %s, 'Scraped Page', %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (crawl_id, url) DO NOTHING
+                """,
+                (client_id, summary.get("start_url", ""), summary.get("markdown_file"), summary.get("html_file"), summary.get("screenshot"), summary.get("seo_json"), summary.get("seo_md"), summary.get("seo_xlsx"))
+            )
+            cur.execute(
+                """
+                INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file)
+                VALUES (%s, 'crawl_completed', '', 'Crawl Completed', %s)
+                ON CONFLICT (crawl_id, url) DO NOTHING
+                """,
+                (client_id, summary.get("markdown_file"))
+            )
+            conn.commit()
+            cur.close()
+    except Exception as e:
+        logger.error(f"Failed to persist BG crawl completion for {client_id}: {e}")
+        
+    try:
+        from web_crawler.redis_events import publish_event
+        # Publish page_processed for the single page so frontend grabs SEO/HTML/Screenshot
+        publish_event(
+            crawl_id=client_id,
+            payload={
+                "type": "page_processed",
+                "page": 1,
+                "url": summary.get("start_url", ""),
+                "title": "Scraped Page",
+                "markdown_file": summary.get("markdown_file"),
+                "html_file": summary.get("html_file"),
+                "screenshot": summary.get("screenshot"),
+                "seo_json": summary.get("seo_json"),
+                "seo_md": summary.get("seo_md"),
+                "seo_xlsx": summary.get("seo_xlsx")
+            }
+        )
+        
+        # Then publish completion as before
+        publish_event(
+            crawl_id=client_id,
+            payload={
+                "type": "crawl_completed",
+                "summary": summary
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish Redis event for BG crawl completion for {client_id}: {e}")
 
 @app.post("/crawler", response_model=CrawlResponse)
 def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
@@ -330,13 +400,16 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             headless=True,
             use_stealth=True
         )
+        if payload.proxy:
+            config.proxy_mode = payload.proxy
 
         # ---------- SINGLE PAGE ----------
         if payload.crawl_mode == "single":
             crawl_id = uuid.uuid4().hex
 
             background_tasks.add_task(
-                crawl_main,
+                _run_background_crawl_task,
+                client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="single",
                 enable_links=True,
@@ -344,8 +417,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
-                config=config,
-                client_id=crawl_id
+                config=config
             )
 
             markdown_path = ""
@@ -356,7 +428,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             crawl_id = uuid.uuid4().hex
 
             background_tasks.add_task(
-                crawl_main,
+                _run_background_crawl_task,
+                client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="links",
                 enable_links=True,
@@ -364,8 +437,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
-                config=config,
-                client_id=crawl_id
+                config=config
             )
 
             markdown_path = ""
@@ -382,6 +454,14 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                     "headless": config.headless,
                     "use_stealth": config.use_stealth,
                     "output_dir": str(config.output_dir),  # ✅ convert Path → str
+                    "proxy": config.proxy,
+                    "basic_proxies": config.basic_proxies,
+                    "stealth_proxies": config.stealth_proxies,
+                    "enhanced_proxies": config.enhanced_proxies,
+                    "proxy_mode": config.proxy_mode,
+                    "proxy_server": config.proxy_server,
+                    "proxy_username": config.proxy_username,
+                    "proxy_password": config.proxy_password,
                 },
                 crawl_mode="all",
                 enable_md=payload.enable_md,
@@ -563,14 +643,15 @@ def get_markdown(file_path: str):
     """
     Return markdown content + metadata as JSON
     """
-
     try:
         md_path = Path(file_path).resolve()
         filename = md_path.name
         filename_parts = filename.split(".")
         formatted_title = filename_parts[0].replace("_", " ").title()
-
-        clean_title = formatted_title[2:]  # strip first 2 characters
+        if formatted_title == "Links":
+            clean_title = formatted_title
+        else:
+            clean_title = formatted_title[2:]  # strip first 2 characters
 
         if not md_path.exists() or not md_path.is_file():
             raise HTTPException(status_code=404, detail="File not found")
@@ -1065,6 +1146,11 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                         "summary": {
                             "start_url": url,
                             "markdown_file": markdown_file,
+                            "html_file": html_file,
+                            "screenshot": screenshot,
+                            "seo_json": seo_json,
+                            "seo_md": seo_md,
+                            "seo_xlsx": seo_xlsx,
                             "status": "completed",
                             "links_file_path": payload.get("links_file_path"),
                             "summary_file_path": payload.get("summary_file_path")
@@ -1129,38 +1215,55 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                         except Exception as e:
                             logger.error(f"Error updating completion timestamp: {e}")
 
-                    # Store event in crawl_events (respecting user request for 'all' mode)
-                    if event_type == "crawl_completed" and crawl_mode == "all":
-                        # User wants to avoid storing completion message for 'all' mode in crawl_events table
-                        logger.info(f"Skipping crawl_events storage for 'all' mode completion: {crawl_id}")
-                    else:
-                        conn_ev = get_db_connection()
-                        cur_ev = conn_ev.cursor()
-                        
-                        # Note: ON CONFLICT handles duplicates for file paths as requested
-                        cur_ev.execute(
-                            """
-                            INSERT INTO crawl_events 
-                            (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                            ON CONFLICT (crawl_id, markdown_file) DO NOTHING
-                            """,
-                            (
-                                crawl_id, 
-                                event_type, 
-                                payload.get("url"), 
-                                payload.get("title"),
-                                payload.get("markdown_file") or (payload.get("summary", {}).get("markdown_file") if event_type == "crawl_completed" else None),
-                                payload.get("html_file"), 
-                                payload.get("screenshot"),
-                                payload.get("seo_json"), 
-                                payload.get("seo_md"), 
-                                payload.get("seo_xlsx")
+                    # Persist event to crawl_events for replay on reconnect
+                    try:
+                        with get_pooled_connection() as conn_ev:
+                            cur_ev = conn_ev.cursor()
+                            # Use INSERT ... ON CONFLICT (crawl_id, url) DO UPDATE
+                            # This matches the unique_crawl_url constraint on the table.
+                            # For events with no URL (e.g. crawl_completed), use empty string
+                            # as a sentinel so the unique constraint can still de-duplicate.
+                            event_url = payload.get("url") or ""
+                            summary = payload.get("summary", {}) if event_type == "crawl_completed" else {}
+                            md_file = payload.get("markdown_file") or summary.get("markdown_file") or None
+                            html_file = payload.get("html_file") or summary.get("html_file") or None
+                            screenshot = payload.get("screenshot") or summary.get("screenshot") or None
+                            seo_json = payload.get("seo_json") or summary.get("seo_json") or None
+                            seo_md = payload.get("seo_md") or summary.get("seo_md") or None
+                            seo_xlsx = payload.get("seo_xlsx") or summary.get("seo_xlsx") or None
+                            
+                            cur_ev.execute(
+                                """
+                                INSERT INTO crawl_events 
+                                (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx) 
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (crawl_id, url) DO UPDATE SET
+                                    event_type   = EXCLUDED.event_type,
+                                    title        = EXCLUDED.title,
+                                    markdown_file = EXCLUDED.markdown_file,
+                                    html_file    = EXCLUDED.html_file,
+                                    screenshot   = EXCLUDED.screenshot,
+                                    seo_json     = EXCLUDED.seo_json,
+                                    seo_md       = EXCLUDED.seo_md,
+                                    seo_xlsx     = EXCLUDED.seo_xlsx
+                                """,
+                                (
+                                    crawl_id,
+                                    event_type,
+                                    event_url,
+                                    payload.get("title"),
+                                    md_file,
+                                    html_file,
+                                    screenshot,
+                                    seo_json,
+                                    seo_md,
+                                    seo_xlsx
+                                )
                             )
-                        )
-                        conn_ev.commit()
-                        cur_ev.close()
-                        conn_ev.close()
+                            conn_ev.commit()
+                            cur_ev.close()
+                    except Exception as ev_err:
+                        logger.error(f"Error persisting event to crawl_events: {ev_err}")
 
                 if event_type == "crawl_completed":
                     logger.info(f"🔌 Closing WebSocket for crawl_id={crawl_id}")
@@ -1317,4 +1420,3 @@ def report_issue(payload: ReportIssueRequest):
     except Exception as e:
         logger.error(f"Error creating issue report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to submit issue report: {str(e)}")
-

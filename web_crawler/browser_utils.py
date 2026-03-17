@@ -140,7 +140,8 @@ class BrowserUtils:
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
                 "Sec-Fetch-Site": "none",
-                "Sec-Fetch-User": "?1"
+                "Sec-Fetch-User": "?1",
+                "sec-ch-ua-platform": '"Windows"'
             })
 
         except Exception as e:

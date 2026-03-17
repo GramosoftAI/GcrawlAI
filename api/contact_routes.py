@@ -35,7 +35,7 @@ router = APIRouter(prefix="/contact", tags=["Contact Us"])
 # ─────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────
-CONTACT_RECIPIENT = "jeevae@gramosoft.in"
+CONTACT_RECIPIENT = "ganesha@gramosoft.in"
 
 
 # ─────────────────────────────────────────────
