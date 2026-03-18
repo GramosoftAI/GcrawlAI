@@ -205,13 +205,14 @@
     }
   }
 
-  .search-input {
-    padding-right: 45px !important;
+  .search-input-wrapper.with-format-dropdown .query-input {
+    padding-right: 120px;
     /* specific space for the icon-only-dropdown */
   }
 }
 
-.search-input {
+.search-input,
+.limit-input {
   flex: 1;
   min-width: 0;
   /* critical: allows input to shrink */
@@ -222,11 +223,22 @@
   border: none;
   outline: none;
   width: 100%;
-  padding-right: 120px;
   /* space for the format dropdown */
 }
 
-.search-input::placeholder {
+.limit-input {
+  flex: 0 0 120px;
+  width: 120px;
+  min-width: 120px;
+  padding-right: 0;
+}
+
+.search-input {
+  width: 100%;
+}
+
+.search-input::placeholder,
+.limit-input::placeholder {
   color: var(--text-muted);
   opacity: 0.6;
 }

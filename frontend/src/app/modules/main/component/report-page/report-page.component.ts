@@ -50,6 +50,7 @@ export class ReportPageComponent implements OnChanges {
   }
 
   ngOnInit(): void {
+    debugger
     this.userdetails = this.localService.getUserDetails();
     this.token = this.localService.getAccessToken();
     this.formValues = this.localService.getformDetails();
@@ -82,6 +83,7 @@ export class ReportPageComponent implements OnChanges {
   }
 
   submitReport() {
+    debugger
     const formValue = this.reportForm.getRawValue();
     let issues = [...formValue.issue_related_to];
     if (formValue.other_issue &&
@@ -114,6 +116,7 @@ export class ReportPageComponent implements OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges) {
+    debugger
     this.formsvalue = this.formsvalue
     this.localService.setformDetails(this.formsvalue)
 

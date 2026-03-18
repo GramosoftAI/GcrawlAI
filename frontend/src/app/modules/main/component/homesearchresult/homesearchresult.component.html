@@ -18,16 +18,21 @@
       [class.initial-state]="!markdownBlocks || !markdownBlocks.length">
 
       <!-- URL INPUT + FORMAT DROPDOWN in top-right -->
-      <div class="search-input-wrapper">
+      <div class="search-input-wrapper"
+        [class.with-format-dropdown]="crawlform.get('button')?.value !== 'links' && crawlform.get('button')?.value !== 'search'">
         <i class="bi bi-globe2"></i>
-        <span class="https-prefix">https://</span>
-        <input type="text" formControlName="url" class="search-input" placeholder="example.com" autocomplete="off"
-          (input)="stripProtocol($event)" />
-
+        <span class="https-prefix" *ngIf="crawlform.get('button')?.value !== 'search'">https://</span>
+        <input type="text" formControlName="url" class="search-input query-input"
+          [placeholder]="crawlform.get('button')?.value === 'search' ? 'Enter search query' : 'example.com'"
+          autocomplete="off" (input)="stripProtocol($event)" />
+        <input type="number" *ngIf="crawlform.get('button')?.value === 'search'" formControlName="limit"
+          class="limit-input border-start ms-2 border-1 bg-transparent" min="1" max="100" step="1"
+          placeholder="Limit (1-100)" matTooltip="Number of results (Max 100)" />
         <!-- Format multi-select dropdown -->
-        <div class="dropdown format-dropdown">
+        <div class="dropdown format-dropdown"
+          *ngIf="crawlform.get('button')?.value !== 'links' && crawlform.get('button')?.value !== 'search'">
           <button class="format-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
-            (click)="$event.stopPropagation()" [disabled]="crawlform.get('button')?.value === 'links' || isLoading">
+            (click)="$event.stopPropagation()" [disabled]="isLoading">
             {{ formatLabel }}
           </button>
           <ul class="dropdown-menu dropdown-menu-end format-menu" (click)="$event.stopPropagation()">
@@ -90,22 +95,19 @@
             [class.active]="crawlform.get('button')?.value === 'scrape'" (click)="setButton('scrape')">
             <i class="bi bi-grid"></i> Scrape
           </button>
-          <!-- <button type="button" class="tab-btn" disabled>
+          <button [disabled]="isLoading" [matTooltip]="searchTooltipcontent" type="button" class="tab-btn"
+            [class.active]="crawlform.get('button')?.value === 'search'" (click)="setButton('search')">
             <i class="bi bi-search"></i> Search
-          </button> -->
-          <!-- <button type="button" class="tab-btn" disabled>
-            <i class="bi bi-robot"></i> Agent
-            <span class="badge-new">New</span>
-          </button> -->
+          </button>
           <button [disabled]="isLoading" [matTooltip]="crawlTooltipcontent" type="button" class="tab-btn"
             [class.active]="crawlform.get('button')?.value === 'crawl'" (click)="setButton('crawl')">
             <i class="bi bi-bug"></i> Crawl
           </button>
 
-          <button [disabled]="isLoading" [matTooltip]="linksTooltipcontent" type="button" class="tab-btn"
-            [class.active]="crawlform.get('button')?.value === 'links'" (click)="setButton('links')">
-            <i class="bi bi-map"></i> Links
-          </button>
+            <button [disabled]="isLoading" [matTooltip]="linksTooltipcontent" type="button" class="tab-btn"
+              [class.active]="crawlform.get('button')?.value === 'links'" (click)="setButton('links')">
+              <i class="bi bi-map"></i> Links
+            </button>
         </div>
 
         <button type="submit" class="btn-primary" [disabled]="isLoading" [class.is-loading]="isLoading">

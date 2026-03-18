@@ -127,7 +127,7 @@
 
       <div class="tab-pane fade p-2" id="pills-screenshot" [class.show]="activeTab === 'pills-screenshot'"
         [class.active]="activeTab === 'pills-screenshot'">
-        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4" [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}">
           <div class="d-flex justify-content-end">
             <button *ngIf="token && block.screenshot" class="btn-bg-primary-light txt-red ms-5"
               (click)="download(block.screenshot, i, 'png')">
@@ -168,7 +168,7 @@
               {{ i + 1 }}. {{ block?.title }}
             </h3>
           </div>
-          <pre class="content">{{ block?.raw }}</pre>
+          <pre [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}" class="content">{{ block?.raw }}</pre>
         </div>
       </div>
 
@@ -260,7 +260,7 @@
               <span class="dot green"></span>
               <!-- <span class="file-name">index.html</span> -->
             </div>
-            <code class="editor-body text-start">{{block.rawHtml}}</code>
+            <pre [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}" class="editor-body text-start">{{block.rawHtml}}</pre>
           </div>
           <div *ngIf="!block.rawHtml" class="text-muted p-4 text-center">
             No raw HTML available for this page.
@@ -270,12 +270,12 @@
 
       <div class="tab-pane fade p-2" id="pills-json" [class.show]="activeTab === 'pills-json'"
         [class.active]="activeTab === 'pills-json'">
-        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4" [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}">
           <div class="d-flex justify-content-between flex-wrap gap-2">
             <h3 class="title">
               {{ i + 1 }}. {{ block?.title }} JSON
             </h3>
-            <button *ngIf="token && block.seo?.json"
+            <button *ngIf="block.seo?.json"
               class="btn-bg-primary-light txt-red fs-12 p-1 px-2 d-flex align-items-center justify-content-center"
               (click)="copyToClipboard(block.seo.json, 'json_' + i)">
               <i class="fa" [ngClass]="copiedItem === 'json_' + i ? 'fa-check text-success' : 'fa-copy'"
@@ -356,11 +356,11 @@
           </div>
 
           <!-- Crawl Mode: Standard Table (Headers on top, values below) -->
-          <div class="xlsx-grid-wrapper report-container mb-4"
+          <div class="xlsx-grid-wrapper report-container mb-4" [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}"
             *ngIf="isCrawlMode() && consolidatedXlsxTable.headers.length > 0">
 
             <div class="table-responsive rounded border shadow-sm p-3"
-              [ngStyle]="{ maxHeight: token ? '600px' : 'auto' }" style="overflow-x: auto;">
+              [ngStyle]="{ maxHeight: token ? '600px' : 'auto', overflow: token ? 'auto' : 'hidden' }" style="overflow-x: auto;">
               <table class="table table-hover table-bordered mb-0 fs-13 w-100">
 
                 <thead class="bg-light sticky-top" style="z-index: 2;">
