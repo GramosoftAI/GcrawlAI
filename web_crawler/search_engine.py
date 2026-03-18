@@ -6,11 +6,49 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Global cache to avoid hitting GeoIP API on every single search
+_LOCALE_DATA = None
+
+def get_detected_locale() -> dict:
+    """Detects locale, city, and region based on IP."""
+    global _LOCALE_DATA
+    if _LOCALE_DATA:
+        return _LOCALE_DATA
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.get("https://ipapi.co/json/", timeout=5.0).json()
+            locale = resp.get("languages", "en-US").split(",")[0]
+            city = resp.get("city", "")
+            region = resp.get("region", "")
+            
+            _LOCALE_DATA = {
+                "locale": locale,
+                "city": city,
+                "region": region
+            }
+            logger.info(f"🔍 [SEARCH] Auto-detected: {locale} ({city}, {region})")
+            return _LOCALE_DATA
+    except Exception as e:
+        logger.warning(f"⚠️ [SEARCH] Location auto-detection failed ({e}). Defaulting to en-US.")
+        return {"locale": "en-US", "city": "", "region": ""}
+
+
 def searxng_search(query: str, limit: int) -> List[Dict[str, str]]:
     url = os.getenv("SEARXNG_ENDPOINT")
     if not url:
         return []
         
+    location_data = get_detected_locale()
+    locale = location_data["locale"]
+    city = location_data["city"]
+    
+    # Refine query with city name for better local results
+    refined_query = query
+    if city and city.lower() not in query.lower():
+        refined_query = f"{query} in {city}"
+        logger.info(f"📍 [SEARCH] Refined query for local results: \"{refined_query}\"")
+
     all_results = []
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -22,12 +60,13 @@ def searxng_search(query: str, limit: int) -> List[Dict[str, str]]:
     # We'll try up to 10 pages to reach the limit
     for pageno in range(1, 11):
         try:
-            response = httpx.get(
-                url,
-                params={"q": query, "format": "json", "pageno": pageno},
-                headers=headers,
-                timeout=15.0
-            )
+            with httpx.Client() as client:
+                response = client.get(
+                    url,
+                    params={"q": refined_query, "format": "json", "pageno": pageno, "language": locale},
+                    headers=headers,
+                    timeout=5.0
+                )
             if response.status_code == 200:
                 page_data = response.json()
                 page_results = page_data.get("results", [])
@@ -59,9 +98,17 @@ def searxng_search(query: str, limit: int) -> List[Dict[str, str]]:
 
 def ddg_search(query: str, limit: int) -> List[Dict[str, str]]:
     try:
+        location_data = get_detected_locale()
+        city = location_data["city"]
+        
+        # Refine query for DDG fallback too
+        refined_query = query
+        if city and city.lower() not in query.lower():
+            refined_query = f"{query} in {city}"
+
         ddgs = DDGS()
         # Text returns list of dict with 'href', 'title', 'body'
-        results = list(ddgs.text(query, max_results=limit))
+        results = list(ddgs.text(refined_query, max_results=limit))
         
         formatted = []
         for r in results:
