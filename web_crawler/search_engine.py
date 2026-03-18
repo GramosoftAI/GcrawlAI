@@ -2,44 +2,53 @@ import os
 import httpx
 import logging
 from ddgs import DDGS
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Global cache to avoid hitting GeoIP API on every single search
 _LOCALE_DATA = None
 
-def get_detected_locale() -> dict:
-    """Detects locale, city, and region based on IP."""
+def get_detected_locale(ip: Optional[str] = None) -> dict:
+    """Detects locale, city, and region based on IP. If IP is None, detects server IP."""
     global _LOCALE_DATA
-    if _LOCALE_DATA:
+    # If we have an IP, we don't use the global cache since each user has a different IP
+    if not ip and _LOCALE_DATA:
         return _LOCALE_DATA
     
     try:
+        url = "https://ipapi.co/json/"
+        if ip:
+            url = f"https://ipapi.co/{ip}/json/"
+            
         with httpx.Client() as client:
-            resp = client.get("https://ipapi.co/json/", timeout=5.0).json()
-            locale = resp.get("languages", "en-US").split(",")[0]
+            resp = client.get(url, timeout=5.0).json()
+            locale = resp.get("languages", "en-US").split(",")[0] if resp.get("languages") else "en-US"
             city = resp.get("city", "")
             region = resp.get("region", "")
             
-            _LOCALE_DATA = {
+            data = {
                 "locale": locale,
                 "city": city,
                 "region": region
             }
-            logger.info(f"🔍 [SEARCH] Auto-detected: {locale} ({city}, {region})")
-            return _LOCALE_DATA
+            
+            if not ip:
+                _LOCALE_DATA = data
+                
+            logger.info(f"🔍 [SEARCH] Detected for {ip or 'server'}: {locale} ({city}, {region})")
+            return data
     except Exception as e:
-        logger.warning(f"⚠️ [SEARCH] Location auto-detection failed ({e}). Defaulting to en-US.")
+        logger.warning(f"⚠️ [SEARCH] Location detection failed for {ip or 'server'} ({e}). Defaulting to en-US.")
         return {"locale": "en-US", "city": "", "region": ""}
 
 
-def searxng_search(query: str, limit: int) -> List[Dict[str, str]]:
+def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
     url = os.getenv("SEARXNG_ENDPOINT")
     if not url:
         return []
         
-    location_data = get_detected_locale()
+    location_data = get_detected_locale(ip)
     locale = location_data["locale"]
     city = location_data["city"]
     
@@ -96,9 +105,9 @@ def searxng_search(query: str, limit: int) -> List[Dict[str, str]]:
         })
     return formatted
 
-def ddg_search(query: str, limit: int) -> List[Dict[str, str]]:
+def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
     try:
-        location_data = get_detected_locale()
+        location_data = get_detected_locale(ip)
         city = location_data["city"]
         
         # Refine query for DDG fallback too
@@ -122,7 +131,7 @@ def ddg_search(query: str, limit: int) -> List[Dict[str, str]]:
         logger.warning(f"DuckDuckGo engine failed: {e}")
     return []
 
-def execute_search_router(query: str, limit: int) -> List[Dict[str, str]]:
+def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
     """
     Implements a fallback router for search engines.
     1. SearXNG (Primary)
@@ -134,14 +143,14 @@ def execute_search_router(query: str, limit: int) -> List[Dict[str, str]]:
     # 1. Primary: SearXNG
     if os.getenv("SEARXNG_ENDPOINT"):
         logger.info(f"🔍 [SEARCH] Attempting search with primary engine: SearXNG")
-        results = searxng_search(query, search_limit)
+        results = searxng_search(query, search_limit, ip)
         if results:
             logger.info(f"✅ [SEARCH] SearXNG search successful. Found results.")
             return filter_and_deduplicate(results, limit)
             
     # 2. Fallback: DuckDuckGo
     logger.info(f"🦆 [SEARCH] Attempting search with fallback engine: DuckDuckGo (DDGS)")
-    results = ddg_search(query, search_limit)
+    results = ddg_search(query, search_limit, ip)
     if results:
         logger.info(f"✅ [SEARCH] DuckDuckGo search successful. Found results.")
     return filter_and_deduplicate(results, limit)
