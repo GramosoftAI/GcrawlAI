@@ -6,41 +6,71 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Global cache to avoid hitting GeoIP API on every single search
-_LOCALE_DATA = None
+# Cache to avoid hitting GeoIP APIs on every search
+_SERVER_LOCALE_CACHE = None
+_USER_LOCALE_CACHE: Dict[str, Any] = {}
 
 def get_detected_locale(ip: Optional[str] = None) -> dict:
     """Detects locale, city, and region based on IP. If IP is None, detects server IP."""
-    global _LOCALE_DATA
-    # If we have an IP, we don't use the global cache since each user has a different IP
-    if not ip and _LOCALE_DATA:
-        return _LOCALE_DATA
+    global _SERVER_LOCALE_CACHE, _USER_LOCALE_CACHE
     
-    try:
-        url = "https://ipapi.co/json/"
-        if ip:
-            url = f"https://ipapi.co/{ip}/json/"
-            
-        with httpx.Client() as client:
-            resp = client.get(url, timeout=5.0).json()
-            locale = resp.get("languages", "en-US").split(",")[0] if resp.get("languages") else "en-US"
-            city = resp.get("city", "")
-            region = resp.get("region", "")
-            
-            data = {
-                "locale": locale,
-                "city": city,
-                "region": region
-            }
-            
-            if not ip:
-                _LOCALE_DATA = data
+    # Check cache first
+    if not ip and _SERVER_LOCALE_CACHE:
+        return _SERVER_LOCALE_CACHE
+    if ip and ip in _USER_LOCALE_CACHE:
+        return _USER_LOCALE_CACHE[ip]
+
+    # List of providers to try
+    providers = [
+        # Provider 1: ipapi.co (detailed, including languages)
+        {"url": f"https://ipapi.co/{ip + '/' if ip else ''}json/", "type": "ipapi"},
+        # Provider 2: ip-api.com (reliable fallback)
+        {"url": f"http://ip-api.com/json/{ip or ''}", "type": "ip-api"}
+    ]
+
+    for provider in providers:
+        try:
+            with httpx.Client() as client:
+                response = client.get(provider["url"], timeout=3.0)
                 
-            logger.info(f"🔍 [SEARCH] Detected for {ip or 'server'}: {locale} ({city}, {region})")
-            return data
-    except Exception as e:
-        logger.warning(f"⚠️ [SEARCH] Location detection failed for {ip or 'server'} ({e}). Defaulting to en-US.")
-        return {"locale": "en-US", "city": "", "region": ""}
+                if response.status_code != 200:
+                    logger.warning(f"⚠️ [SEARCH] {provider['type']} failed with status {response.status_code}")
+                    continue
+                    
+                resp = response.json()
+                
+                # Check for error status in JSON body (common for 429/blocked)
+                if resp.get("status") == "fail" or resp.get("error"):
+                    continue
+
+                if provider["type"] == "ipapi":
+                    data = {
+                        "locale": resp.get("languages", "en-US").split(",")[0] if resp.get("languages") else "en-US",
+                        "city": resp.get("city", ""),
+                        "region": resp.get("region", "")
+                    }
+                else:  # ip-api.com
+                    data = {
+                        "locale": "en-US", # ip-api doesn't provide language code in free tier
+                        "city": resp.get("city", ""),
+                        "region": resp.get("regionName", resp.get("region", ""))
+                    }
+
+                # Update cache
+                if ip:
+                    _USER_LOCALE_CACHE[ip] = data
+                else:
+                    _SERVER_LOCALE_CACHE = data
+                
+                logger.info(f"🔍 [SEARCH] Detected via {provider['type']} for {ip or 'server'}: {data['city']}, {data['region']}")
+                return data
+                
+        except Exception as e:
+            logger.debug(f"Provider {provider['type']} error: {e}")
+            continue
+
+    # Final fallback if all providers fail
+    return {"locale": "en-US", "city": "", "region": ""}
 
 
 def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
