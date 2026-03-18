@@ -22,7 +22,7 @@ export class CrawlHistoryComponent implements OnInit, OnChanges {
   @Output() reportClicked = new EventEmitter<any>();
 
   customOptions: OwlOptions = {
-    loop: true,
+    loop: false,
     mouseDrag: true,
     touchDrag: true,
     pullDrag: true,
@@ -92,7 +92,6 @@ export class CrawlHistoryComponent implements OnInit, OnChanges {
   }
 
   getMode(mode: string): string {
-    debugger
     if (mode === 'all') return 'Crawl';
     if (mode === 'single') return 'Scrape';
     if (mode === 'links') return 'Link';
@@ -100,7 +99,6 @@ export class CrawlHistoryComponent implements OnInit, OnChanges {
   }
 
   getFormats(item: any): string {
-    debugger
     const formats = [];
     if (item.markdown) formats.push('Markdown');
     if (item.html) formats.push('HTML');

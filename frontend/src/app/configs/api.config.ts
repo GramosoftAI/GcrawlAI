@@ -10,5 +10,6 @@ export const URLS = Object({
     report_Issue: `${environment.apiUrl}/report-issue`,
     markdown_Details: `${environment.apiUrl}/crawl/get/content`,
     user_history: `${environment.apiUrl}/crawler/paths`,
-    userhistory_path_id: `${environment.apiUrl}/crawls/user`
+    userhistory_path_id: `${environment.apiUrl}/crawls/user`,
+    search: `${environment.apiUrl}/search`
 });

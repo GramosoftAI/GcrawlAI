@@ -31,6 +31,7 @@ export class HomesearchresultComponent implements OnInit {
   isLogin: any;
   formValues: any;
   unSubscribe$ = new Subject();
+  searchTooltipcontent = 'Search the web using a text query.'
   crawlform: FormGroup;
   socketMessages: string[] = [];
   pendingErrors: Set<string> = new Set();
@@ -78,7 +79,8 @@ export class HomesearchresultComponent implements OnInit {
       enable_summary: [false],
       enable_brand: [false],
       enable_image: [false],
-      button: ['scrape', [Validators.required]]
+      button: ['scrape', [Validators.required]],
+      limit: [10, [Validators.min(1), Validators.max(100)]],
     });
 
     this.isBrowser = isPlatformBrowser(this.platformId);
@@ -141,7 +143,17 @@ export class HomesearchresultComponent implements OnInit {
     this.crawlform.patchValue({
       button: value
     });
-
+    const urlControl = this.crawlform.get('url');
+    const limitControl = this.crawlform.get('limit');
+    if (value === 'search') {
+      urlControl?.setValidators([Validators.required]);
+      limitControl?.setValidators([Validators.required, Validators.min(1), Validators.max(100)]);
+    } else {
+      urlControl?.setValidators([Validators.required, Validators.pattern('https?://.+')]);
+      limitControl?.setValidators([Validators.min(1), Validators.max(100)]);
+    }
+    urlControl?.updateValueAndValidity();
+    limitControl?.updateValueAndValidity();
     if (value === 'links') {
       this.crawlform.patchValue({
         enable_md: false,
@@ -154,10 +166,23 @@ export class HomesearchresultComponent implements OnInit {
         enable_brand: false,
         enable_image: false
       });
+    } else if (value === 'search') {
+      this.crawlform.patchValue({
+        enable_links: false,
+        enable_md: false,
+        enable_html: false,
+        enable_ss: false,
+        enable_seo: false,
+        enable_json: true,
+        enable_summary: false,
+        enable_brand: false,
+        enable_image: false
+      });
     } else {
       this.crawlform.patchValue({
         enable_links: false,
-        enable_md: true
+        enable_md: true,
+        enable_json: false
       });
     }
 
@@ -213,15 +238,34 @@ export class HomesearchresultComponent implements OnInit {
 
   Onsubmit() {
     debugger
-    this.ensureHttps();
+    const isSearch = this.crawlform.get('button')?.value === 'search';
+    if (!isSearch) {
+      this.ensureHttps();
+    }
     this.crawlform.markAllAsTouched();
+    const urlControl = this.crawlform.get('url');
+    const buttonControl = this.crawlform.get('button');
+
+    // Bypass full form validation for search mode and just check the search query explicitly
+    if (isSearch) {
+      if (!urlControl?.value || !urlControl?.value.trim()) {
+        this.toastr.error('Please enter a search query');
+        return;
+      }
+      const limitControl = this.crawlform.get('limit');
+      if (limitControl?.invalid) {
+        this.toastr.error('Search limit must be between 1 and 100');
+        return;
+      }
+      this.searchStart();
+      return;
+    }
     if (this.crawlform.invalid) {
-      const { url, button } = this.crawlform.controls;
-      if (url?.invalid) {
+      if (urlControl?.invalid) {
         this.toastr.error('Please enter website URL');
         return;
       }
-      if (button?.invalid) {
+      if (buttonControl?.invalid) {
         this.toastr.error('Please select crawl mode');
         return;
       }
@@ -247,6 +291,7 @@ export class HomesearchresultComponent implements OnInit {
 
   /** Strip any protocol the user typed — the static prefix handles it */
   stripProtocol(event: Event) {
+    if (this.crawlform.get('button')?.value === 'search') return;
     const input = event.target as HTMLInputElement;
     const cleaned = input.value.replace(/^(https?:\/\/)+/i, '');
     if (cleaned !== input.value) {
@@ -262,7 +307,62 @@ export class HomesearchresultComponent implements OnInit {
     ctrl.setValue('https://' + raw, { emitEvent: false });
   }
 
+searchStart() {
+    this.scrape = false;
+    this.isLoading = true;
+    this.scrapReset();
+    this.localService.clearcrawlID();
+    this.mode = 'search';
+    const normalizedLimit = this.getNormalizedSearchLimit();
+    this.crawlform.patchValue({
+      crawl_mode: 'search',
+      user_id: this.localService.getUserDetails()?.user?.user_id || null,
+      limit: normalizedLimit
+    });
+    const payload = { 
+      query: this.crawlform.get('url')?.value?.trim(),
+      limit: normalizedLimit
+    };
 
+    this.apiService.post(URLS.search, payload).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res: any) => {
+        this.formdata = this.crawlform.value;
+        this.localService.setformDetails(this.formdata);
+        this.scrape = true;
+        
+        let content = res.data ? res.data : res;
+        
+        // Return only the 'results' array if it exists.
+        if (content && content.results) {
+           content = content.results;
+        }
+
+        if (typeof content === 'object') {
+           content = JSON.stringify(content, null, 2);
+        }
+
+        const newBlock: any = { seo_json: content, page: 0, title: payload.query };
+        this.markdownBlocks = [newBlock];
+        this.crawlCompleted = true;
+        this.isLoading = false;
+        this.cd.detectChanges();
+      },
+      error: (err: any) => {
+        this.toastr.error(err?.error?.detail || 'Search failed');
+        this.isLoading = false;
+        this.cd.detectChanges();
+      }
+    });
+  }
+
+  private getNormalizedSearchLimit(): number {
+    const rawValue = Number(this.crawlform.get('limit')?.value);
+    if (!Number.isFinite(rawValue)) {
+      return 10;
+    }
+
+    return Math.min(100, Math.max(1, Math.floor(rawValue)));
+  }
 
   scrapStart() {
     debugger
