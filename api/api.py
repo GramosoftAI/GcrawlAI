@@ -1527,3 +1527,4 @@ def report_issue(payload: ReportIssueRequest):
     except Exception as e:
         logger.error(f"Error creating issue report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to submit issue report: {str(e)}")
+
