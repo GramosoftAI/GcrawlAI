@@ -317,6 +317,51 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_crawl_artifacts_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS crawl_artifacts (
+            artifact_id VARCHAR(64) PRIMARY KEY,
+            crawl_id VARCHAR(64) NOT NULL,
+            page_url TEXT NOT NULL DEFAULT '',
+            artifact_type VARCHAR(50) NOT NULL,
+            content_kind VARCHAR(20) NOT NULL DEFAULT 'text',
+            title TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_crawl_artifact_job
+                FOREIGN KEY (crawl_id)
+                REFERENCES crawl_jobs (crawl_id)
+                ON DELETE CASCADE,
+            CONSTRAINT unique_crawl_artifact
+                UNIQUE (crawl_id, page_url, artifact_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_crawl_artifacts_crawl_id
+            ON crawl_artifacts(crawl_id);
+        CREATE INDEX IF NOT EXISTS idx_crawl_artifacts_page_url
+            ON crawl_artifacts(crawl_id, page_url);
+        """
+
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            logger.info("✓ crawl_artifacts table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create crawl_artifacts table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     
     def create_failed_crawl_pages_table(self) -> bool:
         """
@@ -360,6 +405,78 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_agent_jobs_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id SERIAL PRIMARY KEY,
+            job_id VARCHAR(64) UNIQUE NOT NULL,
+            prompt TEXT NOT NULL,
+            urls TEXT[],
+            schema_json JSONB,
+            strict_constrain BOOLEAN DEFAULT FALSE,
+            model VARCHAR(50),
+            max_credits INTEGER,
+            status VARCHAR(20) NOT NULL,
+            credits_used INTEGER DEFAULT 0,
+            result_json JSONB,
+            error TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_jobs_job_id ON jobs(job_id);
+        CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+        """
+
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(create_table_query)
+            conn.commit()
+            cursor.close()
+            logger.info("✓ jobs table created successfully (or already exists)")
+            return True
+        except Exception as e:
+            logger.error(f"✗ Failed to create jobs table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
+    def create_agent_job_logs_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS job_logs (
+            id SERIAL PRIMARY KEY,
+            job_id VARCHAR(64) NOT NULL,
+            step VARCHAR(100) NOT NULL,
+            message TEXT NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_job_logs_job
+                FOREIGN KEY (job_id)
+                REFERENCES jobs (job_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id);
+        """
+
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(create_table_query)
+            conn.commit()
+            cursor.close()
+            logger.info("✓ job_logs table created successfully (or already exists)")
+            return True
+        except Exception as e:
+            logger.error(f"✗ Failed to create job_logs table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
     def create_reported_issues_table(self) -> bool:
         """
         Create reported_issues table if it doesn't exist.
@@ -417,11 +534,16 @@ class DatabaseSetup:
         otps_created = self.create_signup_otps_table()
         crawl_jobs_created = self.create_crawl_jobs_table()
         crawl_events_created = self.create_crawl_events_table()
+        crawl_artifacts_created = self.create_crawl_artifacts_table()
         failed_pages_created = self.create_failed_crawl_pages_table()
         reported_issues_created = self.create_reported_issues_table()
+        agent_jobs_created = self.create_agent_jobs_table()
+        agent_job_logs_created = self.create_agent_job_logs_table()
 
         if all([users_created, otps_created, crawl_jobs_created, crawl_events_created,
-                failed_pages_created, reported_issues_created]):
+                crawl_artifacts_created,
+                failed_pages_created, reported_issues_created,
+                agent_jobs_created, agent_job_logs_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:
