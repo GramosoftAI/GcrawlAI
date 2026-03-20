@@ -1,0 +1,48 @@
+<div class="agent-card">
+  <h2>Submit an Agent Job</h2>
+  <p class="card-subtitle">Provide a prompt and optional URLs or schema to drive structured extraction.</p>
+
+  <form [formGroup]="form" (ngSubmit)="submit()">
+    <label>
+      Prompt
+      <textarea formControlName="prompt" rows="4" placeholder="Describe the data you want to extract"></textarea>
+    </label>
+
+    <label>
+      URLs (optional)
+      <textarea formControlName="urls" rows="3" placeholder="Paste one URL per line or comma-separated"></textarea>
+    </label>
+
+    <label>
+      JSON Schema (optional)
+      <textarea formControlName="schema" rows="5" placeholder='{ "type": "object", "properties": { ... } }'></textarea>
+    </label>
+
+    <div class="row">
+      <label class="checkbox">
+        <input type="checkbox" formControlName="strictConstrainToURLs" />
+        Strictly constrain to provided URLs
+      </label>
+
+      <label>
+        Model Tier
+        <select formControlName="model">
+          <option value="spark-1-mini">spark-1-mini</option>
+          <option value="spark-1-pro">spark-1-pro</option>
+        </select>
+      </label>
+
+      <label>
+        Max Credits
+        <input type="number" formControlName="maxCredits" min="1" />
+      </label>
+    </div>
+
+    <div class="actions">
+      <button type="submit" [disabled]="isSubmitting">
+        {{ isSubmitting ? 'Starting...' : 'Start Agent Job' }}
+      </button>
+      <span class="error" *ngIf="errorMessage">{{ errorMessage }}</span>
+    </div>
+  </form>
+</div>

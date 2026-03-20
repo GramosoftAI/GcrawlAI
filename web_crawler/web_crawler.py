@@ -4,6 +4,7 @@ Main web crawler orchestration
 
 import json
 import logging
+import base64
 import pytz
 import urllib.request
 from collections import deque
@@ -16,14 +17,54 @@ import threading
 from threading import Semaphore, Thread
 from web_crawler.config import CrawlConfig
 from web_crawler.file_manager import FileManager
-from web_crawler.page_crawler import PageCrawler
+from web_crawler.page_crawler import PageCrawler, _get_db_conn
 from web_crawler.seo_report import CrawlReportWriter
 from web_crawler.utils import normalize_url
 from web_crawler.map_crawler import map_website
 from web_crawler.search_engine import execute_search_router
 from urllib.parse import urlparse, parse_qs
+from web_crawler.artifact_store import ensure_crawl_job, upsert_crawl_artifact
 
 logger = logging.getLogger(__name__)
+
+
+def _store_crawl_artifact(
+    crawl_id: Optional[str],
+    artifact_type: str,
+    content,
+    *,
+    content_kind: str = "text",
+    page_url: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Optional[str]:
+    if not crawl_id or content is None:
+        return None
+
+    conn = None
+    try:
+        conn = _get_db_conn()
+        artifact_ref = upsert_crawl_artifact(
+            conn,
+            crawl_id=crawl_id,
+            page_url=page_url,
+            artifact_type=artifact_type,
+            content=content,
+            content_kind=content_kind,
+            title=title,
+        )
+        conn.commit()
+        return artifact_ref
+    except Exception as exc:
+        logger.warning(
+            f"Could not persist aggregate crawl artifact '{artifact_type}' for crawl_id={crawl_id}: {exc}"
+        )
+        return None
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # Search engine domains that should be routed through the search API
@@ -144,10 +185,39 @@ class WebCrawler:
         enable_links: bool = True,
         enable_seo: bool = False,
         client_id: Optional[str] = None,
+        user_id: Optional[int] = None,
         websocket_manager=None,
         crawl_mode: str = "all"
     ) -> Dict:
         """Main crawl orchestration"""
+
+        if client_id:
+            conn = None
+            try:
+                conn = _get_db_conn()
+                ensure_crawl_job(
+                    conn,
+                    crawl_id=client_id,
+                    url=start_url,
+                    crawl_mode=crawl_mode,
+                    enable_seo=enable_seo,
+                    enable_html=enable_html,
+                    enable_ss=enable_ss,
+                    enable_md=enable_md,
+                    task_id=client_id if crawl_mode == "all" else None,
+                    user_id=user_id,
+                )
+                conn.commit()
+            except Exception as exc:
+                logger.warning(
+                    f"Could not ensure crawl_jobs row for crawl_id={client_id} before crawl start: {exc}"
+                )
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
 
         max_pages = 1 if crawl_mode == "single" else self.config.max_pages
 
@@ -202,10 +272,15 @@ class WebCrawler:
 
             discovered_urls = map_result["urls"]
 
-            # Persist to links.txt (same path the rest of the system uses)
+            links_artifact_ref = None
             if enable_links:
-                with open(self.config.links_file, "w", encoding="utf-8") as f:
-                    f.write("\n".join(discovered_urls))
+                links_artifact_ref = _store_crawl_artifact(
+                    client_id,
+                    "links",
+                    "\n".join(discovered_urls),
+                    content_kind="text",
+                    title="Links",
+                )
 
             summary = {
                 "start_url": start_url,
@@ -220,12 +295,16 @@ class WebCrawler:
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
                 "markdown_file": "None",
-                "links_file_path": str(self.config.links_file),
-                "summary_file_path": str(self.config.summary_file),
             }
-
-            with open(self.config.summary_file, "w", encoding="utf-8") as f:
-                json.dump(summary, f, indent=2)
+            summary["links_file_path"] = links_artifact_ref
+            summary_artifact_ref = _store_crawl_artifact(
+                client_id,
+                "summary",
+                summary,
+                content_kind="json",
+                title="Summary",
+            )
+            summary["summary_file_path"] = summary_artifact_ref
 
             logger.info("✅ Map crawl finished")
             logger.info(json.dumps(summary, indent=2))
@@ -251,36 +330,61 @@ class WebCrawler:
                 md_path = None
                 html_path = None
                 screenshot_path = None
+                seo_json_ref = None
+                seo_md_ref = None
+                seo_xlsx_ref = None
+                links_artifact_ref = None
                 
                 if enable_md:
-                    md_path = self.config.md_dir / f"search_{query[:50].replace(' ', '_')}.md"
-                    md_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(md_path, "w", encoding="utf-8") as f:
-                        f.write(md_content)
+                    md_path = _store_crawl_artifact(
+                        client_id,
+                        "markdown",
+                        md_content,
+                        content_kind="text",
+                        page_url=start_url,
+                        title=f"Search Results: {query}",
+                    )
                     logger.info(f"📄 Search markdown saved: {md_path}")
                 
                 if enable_html:
-                    html_path = self.config.html_dir / f"search_{query[:50].replace(' ', '_')}.html"
-                    html_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(html_path, "w", encoding="utf-8") as f:
-                        f.write(html_content)
+                    html_path = _store_crawl_artifact(
+                        client_id,
+                        "html",
+                        html_content,
+                        content_kind="text",
+                        page_url=start_url,
+                        title=f"Search Results: {query}",
+                    )
                 
                 if enable_links:
-                    with open(self.config.links_file, "w", encoding="utf-8") as f:
-                        f.write("\n".join(result_links))
+                    links_artifact_ref = _store_crawl_artifact(
+                        client_id,
+                        "links",
+                        "\n".join(result_links),
+                        content_kind="text",
+                        title="Links",
+                    )
                 
                 # Screenshot: render the HTML in a headless browser
                 if enable_ss:
                     try:
                         from playwright.sync_api import sync_playwright
-                        screenshot_path = self.config.screenshot_dir / f"search_{query[:50].replace(' ', '_')}.png"
-                        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
                         with sync_playwright() as p:
                             browser = p.chromium.launch(headless=True)
                             page = browser.new_page(viewport={"width": 1280, "height": 800})
                             page.set_content(html_content)
                             page.wait_for_timeout(500)
-                            page.screenshot(path=str(screenshot_path), full_page=True)
+                            screenshot_b64 = base64.b64encode(
+                                page.screenshot(full_page=True)
+                            ).decode("utf-8")
+                            screenshot_path = _store_crawl_artifact(
+                                client_id,
+                                "screenshot",
+                                screenshot_b64,
+                                content_kind="binary",
+                                page_url=start_url,
+                                title=f"Search Results: {query}",
+                            )
                             browser.close()
                         logger.info(f"📸 Search screenshot saved: {screenshot_path}")
                     except Exception as e:
@@ -309,10 +413,34 @@ class WebCrawler:
                         }
                         
                         writer = CrawlReportWriter(self.config.output_dir)
-                        domain = urlparse(start_url).netloc
-                        writer.save_json(domain, [seo_result], result_links)
-                        writer.save_markdown(domain, [seo_result], result_links)
-                        writer.save_excel(domain, [seo_result])
+                        seo_json_ref = _store_crawl_artifact(
+                            client_id,
+                            "seo_json",
+                            writer.render_json([seo_result], result_links),
+                            content_kind="text",
+                            page_url=start_url,
+                            title=f"Search SEO: {query}",
+                        )
+                        seo_md_ref = _store_crawl_artifact(
+                            client_id,
+                            "seo_md",
+                            writer.render_markdown(
+                                urlparse(start_url).netloc,
+                                [seo_result],
+                                result_links,
+                            ),
+                            content_kind="text",
+                            page_url=start_url,
+                            title=f"Search SEO: {query}",
+                        )
+                        seo_xlsx_ref = _store_crawl_artifact(
+                            client_id,
+                            "seo_xlsx",
+                            writer.render_excel_base64([seo_result]),
+                            content_kind="binary",
+                            page_url=start_url,
+                            title=f"Search SEO: {query}",
+                        )
                         logger.info(f"📊 Search SEO report saved")
                     except Exception as e:
                         logger.warning(f"SEO report generation failed: {e}")
@@ -320,9 +448,12 @@ class WebCrawler:
                 result = {
                     "url": start_url,
                     "canonical": start_url,
-                    "markdown_file": str(md_path) if md_path else None,
-                    "html_file": str(html_path) if html_path else None,
-                    "screenshot": str(screenshot_path) if screenshot_path else None,
+                    "markdown_file": md_path,
+                    "html_file": html_path,
+                    "screenshot": screenshot_path,
+                    "seo_json": seo_json_ref,
+                    "seo_md": seo_md_ref,
+                    "seo_xlsx": seo_xlsx_ref,
                     "links": result_links,
                     "status_code": 200,
                 }
@@ -339,13 +470,22 @@ class WebCrawler:
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": "search",
                 "search_query": query,
-                "markdown_file": result.get("markdown_file", "None"),
-                "links_file_path": str(self.config.links_file),
-                "summary_file_path": str(self.config.summary_file),
+                "markdown_file": result.get("markdown_file", None),
+                "html_file": result.get("html_file", None),
+                "screenshot": result.get("screenshot", None),
+                "seo_json": result.get("seo_json", None),
+                "seo_md": result.get("seo_md", None),
+                "seo_xlsx": result.get("seo_xlsx", None),
             }
-            
-            with open(self.config.summary_file, "w", encoding="utf-8") as f:
-                json.dump(summary, f, indent=2)
+            summary["links_file_path"] = links_artifact_ref
+            summary_artifact_ref = _store_crawl_artifact(
+                client_id,
+                "summary",
+                summary,
+                content_kind="json",
+                title="Summary",
+            )
+            summary["summary_file_path"] = summary_artifact_ref
             
             logger.info("✅ Search crawl finished")
             logger.info(json.dumps(summary, indent=2))
@@ -380,25 +520,15 @@ class WebCrawler:
                 successful_pages = 1
 
             elapsed = perf_counter() - start_perf
-            
-            if result:
-                if enable_seo:
-                    try:
-                        writer = CrawlReportWriter(self.config.output_dir)
-                        domain = urlparse(start_url).netloc
-                        
-                        # For single page, links are just from that page
-                        page_links = result.get("links", [])
-                        
-                        writer.save_json(domain, [result], page_links)
-                        writer.save_markdown(domain, [result], page_links)
-                        writer.save_excel(domain, [result])
-                    except Exception as e:
-                        logger.error(f"Failed to save SEO report: {e}")
-
-                if enable_links and "links" in result:
-                    with open(self.config.links_file, "w", encoding="utf-8") as f:
-                        f.write("\n".join(sorted(result["links"])))
+            links_artifact_ref = None
+            if result and enable_links and "links" in result:
+                links_artifact_ref = _store_crawl_artifact(
+                    client_id,
+                    "links",
+                    "\n".join(sorted(result["links"])),
+                    content_kind="text",
+                    title="Links",
+                )
             
             summary = {
                 "start_url": start_url,
@@ -414,12 +544,16 @@ class WebCrawler:
                 "seo_json": result.get("seo_json", None) if (result and "error" not in result) else None,
                 "seo_md": result.get("seo_md", None) if (result and "error" not in result) else None,
                 "seo_xlsx": result.get("seo_xlsx", None) if (result and "error" not in result) else None,
-                "links_file_path": str(self.config.links_file),
-                "summary_file_path": str(self.config.summary_file),
             }
-
-            with open(self.config.summary_file, "w", encoding="utf-8") as f:
-                json.dump(summary, f, indent=2)
+            summary["links_file_path"] = links_artifact_ref
+            summary_artifact_ref = _store_crawl_artifact(
+                client_id,
+                "summary",
+                summary,
+                content_kind="json",
+                title="Summary",
+            )
+            summary["summary_file_path"] = summary_artifact_ref
 
             logger.info("✅ Single-page crawl finished")
             logger.info(json.dumps(summary, indent=2))
@@ -524,29 +658,54 @@ class WebCrawler:
         # =========================================================
         # SAVE OUTPUTS
         # =========================================================
+        links_artifact_ref = None
         if enable_links:
-            with open(self.config.links_file, "w", encoding="utf-8") as f:
-                f.write("\n".join(sorted(self.all_links)))
+            links_artifact_ref = _store_crawl_artifact(
+                client_id,
+                "links",
+                "\n".join(sorted(self.all_links)),
+                content_kind="text",
+                title="Links",
+            )
 
         if enable_json:
-            with open(self.config.json_file, "w", encoding="utf-8") as f:
-                json.dump(self.pages_data, f, indent=2)
+            _store_crawl_artifact(
+                client_id,
+                "pages_json",
+                self.pages_data,
+                content_kind="json",
+                title="Pages JSON",
+            )
 
-        if enable_seo:
+        if enable_seo and self.pages_data:
             try:
                 writer = CrawlReportWriter(self.config.output_dir)
-                domain = urlparse(start_url).netloc
-                
-                # Match seo.py structure: expects (domain, seo_data, links)
-                # But CrawlReportWriter.save_outputs matches seo.py logic if we update it
-                # For now, let's use the existing writer methods but ensure data is correct
-                
-                # We need to pass the list of all links found
                 all_links_list = sorted(list(self.all_links))
-                
-                writer.save_json(domain, self.pages_data, all_links_list)
-                writer.save_markdown(domain, self.pages_data, all_links_list)
-                writer.save_excel(domain, self.pages_data)
+                _store_crawl_artifact(
+                    client_id,
+                    "aggregate_seo_json",
+                    writer.render_json(self.pages_data, all_links_list),
+                    content_kind="text",
+                    title="SEO JSON",
+                )
+                _store_crawl_artifact(
+                    client_id,
+                    "aggregate_seo_md",
+                    writer.render_markdown(
+                        urlparse(start_url).netloc,
+                        self.pages_data,
+                        all_links_list,
+                    ),
+                    content_kind="text",
+                    title="SEO Markdown",
+                )
+                _store_crawl_artifact(
+                    client_id,
+                    "aggregate_seo_xlsx",
+                    writer.render_excel_base64(self.pages_data),
+                    content_kind="binary",
+                    title="SEO XLSX",
+                )
             except Exception as e:
                 logger.error(f"Failed to save SEO report: {e}")
 
@@ -563,12 +722,16 @@ class WebCrawler:
             "total_links_found": len(self.all_links),
             "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
-            "links_file_path": str(self.config.links_file),
-            "summary_file_path": str(self.config.summary_file),
         }
-
-        with open(self.config.summary_file, "w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2)
+        summary["links_file_path"] = links_artifact_ref
+        summary_artifact_ref = _store_crawl_artifact(
+            client_id,
+            "summary",
+            summary,
+            content_kind="json",
+            title="Summary",
+        )
+        summary["summary_file_path"] = summary_artifact_ref
 
         logger.info("✅ Crawl finished")
         logger.info(json.dumps(summary, indent=2))
