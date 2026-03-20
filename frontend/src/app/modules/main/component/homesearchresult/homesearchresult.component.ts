@@ -337,7 +337,7 @@ export class HomesearchresultComponent implements OnInit {
           if (linksPath && this.formdata?.enable_links && !this.visitedPaths.has(linksPath)) {
             this.getContent(linksPath, 'links');
           }
-          if (mdPath && this.formdata?.enable_md && !this.visitedPaths.has(mdPath)) {
+          if (mdPath && this.formdata?.enable_md && mdPath.toLowerCase().endsWith('.md') && !this.visitedPaths.has(mdPath)) {
             this.getContent(mdPath, 'markdown');
           }
           if (jsonSummaryPath && this.formdata?.enable_summary && !this.visitedPaths.has(jsonSummaryPath)) {

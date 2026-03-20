@@ -120,20 +120,6 @@ When the application starts:
 | `API_ENV` | No | Environment (development/production) |
 | `DEBUG` | No | Debug mode (true/false) |
 
-#### Agent Configuration
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LLM_PROVIDER` | No | Primary LLM provider (`openai` or `anthropic`) |
-| `OPENAI_API_KEY` | Yes (if OpenAI used) | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Yes (for fallback) | Anthropic API key |
-| `PLANNER_MODEL` | No | Planning model (default: `gpt-4o`) |
-| `EXTRACTION_MODEL` | No | Extraction model (default: `gpt-4o-mini`) |
-| `FALLBACK_MODEL` | No | Fallback model (default: `claude-3-5-sonnet`) |
-| `SEARCH_PROVIDER` | No | Search provider (`duckduckgo`, `tavily`, `serpapi`) |
-| `TAVILY_API_KEY` | No | Tavily API key |
-| `SERPAPI_API_KEY` | No | SerpAPI API key |
-| `AGENT_DEFAULT_MAX_CREDITS` | No | Default maxCredits cap |
-
 ### 6. Generating Secure Keys
 
 #### Generate JWT Secret Key

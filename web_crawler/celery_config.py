@@ -13,7 +13,7 @@ celery_app = Celery(
     'web_crawler',
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['web_crawler.celery_tasks', 'agent.celery_tasks']  # Import tasks modules
+    include=['web_crawler.celery_tasks']  # Import tasks module
 )
 
 # Celery configuration
@@ -51,7 +51,6 @@ celery_app.conf.update(
         'celery_tasks.crawl_website': {'queue': 'crawl_queue'},
         'celery_tasks.crawl_single_page': {'queue': 'page_queue'},
         'celery_tasks.crawl_links': {'queue': 'page_queue'},
-        'agent_tasks.run_agent_job': {'queue': 'agent_queue'},
     },
     
     # Concurrency
@@ -72,10 +71,6 @@ celery_app.conf.task_queues = {
     'page_queue': {
         'exchange': 'page',
         'routing_key': 'page',
-    },
-    'agent_queue': {
-        'exchange': 'agent',
-        'routing_key': 'agent',
     },
 }
 
