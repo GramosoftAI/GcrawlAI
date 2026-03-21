@@ -4,6 +4,8 @@ import logging
 from ddgs import DDGS
 from typing import List, Dict, Any, Optional
 
+from web_crawler.search_engines.google_search import scrape_google
+
 logger = logging.getLogger(__name__)
 
 # Cache to avoid hitting GeoIP APIs on every search
@@ -164,21 +166,29 @@ def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[st
 def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
     """
     Implements a fallback router for search engines.
-    1. SearXNG (Primary)
-    2. DuckDuckGo (Fallback)
+    1. Google (Primary) - Uses Playwright for scraping
+    2. SearXNG (Secondary)
+    3. DuckDuckGo (Fallback)
     """
     # Double the limit to allow for deduplication / filtering
     search_limit = max(10, limit * 2)
-    
-    # 1. Primary: SearXNG
+
+    # 1. Primary: Google
+    logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Google")
+    results = scrape_google(query, search_limit, ip, headless=True)
+    if results:
+        logger.info(f"✅ [SEARCH] Google search successful. Found results.")
+        return filter_and_deduplicate(results, limit)
+
+    # 2. Secondary: SearXNG
     if os.getenv("SEARXNG_ENDPOINT"):
-        logger.info(f"🔍 [SEARCH] Attempting search with primary engine: SearXNG")
+        logger.info(f"🔍 [SEARCH] Attempting search with secondary engine: SearXNG")
         results = searxng_search(query, search_limit, ip)
         if results:
             logger.info(f"✅ [SEARCH] SearXNG search successful. Found results.")
             return filter_and_deduplicate(results, limit)
-            
-    # 2. Fallback: DuckDuckGo
+
+    # 3. Fallback: DuckDuckGo
     logger.info(f"🦆 [SEARCH] Attempting search with fallback engine: DuckDuckGo (DDGS)")
     results = ddg_search(query, search_limit, ip)
     if results:
