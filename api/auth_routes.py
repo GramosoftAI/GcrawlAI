@@ -552,10 +552,13 @@ async def get_current_user_info(
 
 if __name__ == "__main__":
     """Run the FastAPI application"""
+    import os
+    # Use environment variable to control reload (default to False for production)
+    reload_mode = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
     uvicorn.run(
         "auth_routes:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=reload_mode,
         log_level="info"
     )

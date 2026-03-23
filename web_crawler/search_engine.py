@@ -170,12 +170,12 @@ def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> L
     2. SearXNG (Secondary)
     3. DuckDuckGo (Fallback)
     """
-    # Double the limit to allow for deduplication / filtering
-    search_limit = max(10, limit * 2)
+    # Request slightly more than limit to account for deduplication (30% buffer)
+    search_limit = int(limit * 1.3) + 1
 
     # 1. Primary: Google
     logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Google")
-    results = scrape_google(query, search_limit, ip, headless=True)
+    results = scrape_google(query, search_limit, ip, headless=True, fast_mode=True)
     if results:
         logger.info(f"✅ [SEARCH] Google search successful. Found results.")
         return filter_and_deduplicate(results, limit)
