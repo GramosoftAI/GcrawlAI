@@ -4,7 +4,7 @@ import logging
 from ddgs import DDGS
 from typing import List, Dict, Any, Optional
 
-from web_crawler.search_engines.google_search import scrape_google
+from web_crawler.google_search import scrape_google
 
 logger = logging.getLogger(__name__)
 
