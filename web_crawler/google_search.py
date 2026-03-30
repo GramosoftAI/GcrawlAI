@@ -4,7 +4,7 @@ from typing import Dict, Any
 from web_crawler.retriever import DynamicFetcher, StealthyFetcher
 
 
-def build_google_search_url(query: str, num: int = 30) -> str:
+def build_google_search_url(query: str, num: int = 10) -> str:
     """Build Google search URL from query."""
     base_url = "https://www.google.com/search"
     import urllib.parse
@@ -89,7 +89,7 @@ def search(
         Dictionary with search results
     """
     # Request more results than limit to account for deduplication and internal links
-    request_num = max(30, limit + 10)
+    request_num = max(10, limit)
     # Build the search URL
     url = build_google_search_url(query, num=request_num)
     print(f"Searching: {query}")

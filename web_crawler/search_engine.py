@@ -83,13 +83,6 @@ def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dic
         
     location_data = get_detected_locale(ip)
     locale = location_data["locale"]
-    city = location_data["city"]
-    
-    # Refine query with city name for better local results
-    refined_query = query
-    if city and city.lower() not in query.lower():
-        refined_query = f"{query} in {city}"
-        logger.info(f"📍 [SEARCH] Refined query for local results: \"{refined_query}\"")
 
     all_results = []
     headers = {
@@ -105,7 +98,7 @@ def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dic
             with httpx.Client() as client:
                 response = client.get(
                     url,
-                    params={"q": refined_query, "format": "json", "pageno": pageno, "language": locale},
+                    params={"q": query, "format": "json", "pageno": pageno, "language": locale},
                     headers=headers,
                     timeout=5.0
                 )
