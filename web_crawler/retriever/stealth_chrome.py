@@ -1,30 +1,23 @@
-"""
-Stealthy Fetcher using Patchright (Playwright fork with patched browser leaks).
-Provides StealthyFetcher (sync) and AsyncStealthyFetcher (async) classes.
-Includes Cloudflare Turnstile solver and anti-bot evasion techniques.
-"""
 import asyncio
 from random import randint, uniform
 from typing import Optional, Dict, Callable
 from patchright.sync_api import sync_playwright, Page
 from patchright.async_api import async_playwright as async_pw
 from patchright.async_api import Page as AsyncPage
-
 from .response import Response
+import time
+import requests
+import logging
 
+logger = logging.getLogger(__name__)
 
 class StealthyFetcher:
-    """
-    Synchronous stealthy browser automation using Patchright.
-    Patches navigator.webdriver, adds canvas noise, WebRTC blocking, WebGL spoofing.
-    Includes Cloudflare Turnstile solver.
-    """
 
     def __init__(
         self,
         headless: bool = False,
         user_agent: Optional[str] = None,
-        locale: str = "en-US",
+        locale: str = "en-IN",
         timezone_id: Optional[str] = None,
         proxy: Optional[Dict[str, str]] = None,
         viewport_width: int = 1920,
@@ -48,6 +41,113 @@ class StealthyFetcher:
         self.wait_until = wait_until
         self.timeout = timeout
         self.solve_cloudflare = solve_cloudflare
+        
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        self.capmonster_key = os.getenv("CAPMONSTER_API_KEY")
+        logger.info(f"[*] CapMonster API Key: {self.capmonster_key}")
+
+    def _is_google_captcha(self, page: Page) -> bool:
+        """Check if page is a Google reCAPTCHA challenge (/sorry/index)."""
+        if "/sorry/index" in page.url:
+            return True
+        return False
+
+    def _solve_google_captcha(self, page: Page) -> bool:
+        """Solve Google reCAPTCHA v2 using CapMonster API."""
+        print("Google CAPTCHA detected! Attempting to solve with CapMonster...")
+        
+        if not self.capmonster_key:
+            print("Error: CAPMONSTER_API_KEY environment variable not set. Cannot solve.")
+            return False
+
+        try:
+            # Wait for reCAPTCHA element
+            page.wait_for_selector(".g-recaptcha", state="attached", timeout=5000)
+            site_key = page.locator(".g-recaptcha").get_attribute("data-sitekey")
+            
+            if not site_key:
+                print("Could not find data-sitekey for CAPTCHA")
+                return False
+                
+            website_url = page.url
+            print(f"Found site_key: {site_key}. Sending to CapMonster...")
+
+            # Create Task
+            create_task_payload = {
+                "clientKey": self.capmonster_key,
+                "task": {
+                    "type": "NoCaptchaTaskProxyless",
+                    "websiteURL": website_url,
+                    "websiteKey": site_key
+                }
+            }
+            
+            resp = requests.post("https://api.capmonster.cloud/createTask", json=create_task_payload).json()
+            if resp.get("errorId") != 0:
+                print(f"CapMonster createTask failed: {resp}")
+                return False
+                
+            task_id = resp["taskId"]
+            print(f"CapMonster Task created (ID: {task_id}). Waiting for solution...")
+            
+            # Poll for result
+            solution = None
+            for _ in range(30):
+                time.sleep(1)
+                res = requests.post("https://api.capmonster.cloud/getTaskResult", json={
+                    "clientKey": self.capmonster_key,
+                    "taskId": task_id
+                }).json()
+                
+                if res.get("status") == "ready":
+                    solution = res.get("solution", {}).get("gRecaptchaResponse")
+                    break
+                elif res.get("status") == "processing":
+                    continue
+                else:
+                    print(f"CapMonster getTaskResult error: {res}")
+                    return False
+                    
+            if not solution:
+                print("CapMonster solving timed out.")
+                return False
+                
+            print("CapMonster returned solution token! Injecting into page...")
+            
+            # Inject token and submit
+            js_code = f"""
+                var form = document.forms[0];
+                if (form) {{
+                    var el = document.getElementById("g-recaptcha-response") || document.querySelector('[name="g-recaptcha-response"]');
+                    if (el) {{
+                        el.innerHTML = "{solution}";
+                        el.value = "{solution}";
+                    }} else {{
+                        var input = document.createElement("textarea");
+                        input.id = "g-recaptcha-response";
+                        input.name = "g-recaptcha-response";
+                        input.value = "{solution}";
+                        form.appendChild(input);
+                    }}
+                    form.submit();
+                }}
+            """
+            page.evaluate(js_code)
+            page.wait_for_load_state("networkidle", timeout=15000)
+            
+            # Verify if captcha was passed
+            if not self._is_google_captcha(page):
+                print("Successfully bypassed Google CAPTCHA!")
+                return True
+            else:
+                print("Failed: Still on CAPTCHA page after form submission.")
+                return False
+                
+        except Exception as e:
+            print(f"Error solving Google CAPTCHA: {e}")
+            return False
 
     def _is_cloudflare_challenge(self, page: Page) -> bool:
         """Check if page is a Cloudflare challenge."""
@@ -141,6 +241,7 @@ class StealthyFetcher:
                     # Launch Patchright browser with stealth args
                     browser = p.chromium.launch(
                         headless=self.headless,
+                        ignore_default_args=["--enable-automation"],
                         args=[
                             "--disable-blink-features=AutomationControlled",
                             "--disable-dev-shm-usage",
@@ -191,6 +292,11 @@ class StealthyFetcher:
                     if self.solve_cloudflare and self._is_cloudflare_challenge(page):
                         if not self._solve_cloudflare(page):
                             raise Exception("Cloudflare challenge could not be solved")
+                            
+                    # Check and solve Google Captcha
+                    if self._is_google_captcha(page):
+                        if not self._solve_google_captcha(page):
+                            raise Exception("Google CAPTCHA could not be solved")
 
                     # Wait for network idle
                     try:
@@ -249,7 +355,7 @@ class AsyncStealthyFetcher:
         self,
         headless: bool = False,
         user_agent: Optional[str] = None,
-        locale: str = "en-US",
+        locale: str = "en-IN",
         timezone_id: Optional[str] = None,
         proxy: Optional[Dict[str, str]] = None,
         viewport_width: int = 1920,
@@ -273,6 +379,11 @@ class AsyncStealthyFetcher:
         self.wait_until = wait_until
         self.timeout = timeout
         self.solve_cloudflare = solve_cloudflare
+
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        self.capmonster_key = os.getenv("CAPMONSTER_API_KEY")
 
     def _is_cloudflare_challenge(self, page: AsyncPage) -> bool:
         """Check if page is a Cloudflare challenge."""
@@ -351,6 +462,7 @@ class AsyncStealthyFetcher:
                 async with await async_pw() as p:
                     browser = await p.chromium.launch(
                         headless=self.headless,
+                        ignore_default_args=["--enable-automation"],
                         args=[
                             "--disable-blink-features=AutomationControlled",
                             "--disable-dev-shm-usage",

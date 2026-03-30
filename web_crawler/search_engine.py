@@ -1,5 +1,6 @@
 import os
 import httpx
+import asyncio
 import logging
 from ddgs import DDGS
 from typing import List, Dict, Any, Optional
@@ -163,22 +164,35 @@ def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[st
         logger.warning(f"DuckDuckGo engine failed: {e}")
     return []
 
-def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
+async def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
     """
     Implements a fallback router for search engines.
     1. Google (Primary) - Uses Playwright for scraping
     2. SearXNG (Secondary)
     3. DuckDuckGo (Fallback)
     """
+    import time
+    start_time = time.time()
+
+    def _finalize(res):
+        elapsed = time.time() - start_time
+        logger.info(f"⏱️ [SEARCH] Total execution time: {elapsed:.2f} seconds")
+        return filter_and_deduplicate(res, limit)
+
     # Request slightly more than limit to account for deduplication (30% buffer)
     search_limit = int(limit * 1.3) + 1
 
     # 1. Primary: Google
     logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Google")
-    results = scrape_google(query, search_limit, ip, headless=True, fast_mode=True)
-    if results:
-        logger.info(f"✅ [SEARCH] Google search successful. Found results.")
-        return filter_and_deduplicate(results, limit)
+    try:
+        results = await scrape_google(query, search_limit, ip, headless=True, fast_mode=False)
+        if results:
+            logger.info(f"✅ [SEARCH] Google search successful. Found results.")
+            return _finalize(results)
+    except Exception as e:
+        logger.error(f"❌ [SEARCH] Google search failed with error: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(f"Stacktrace: {traceback.format_exc()}")
 
     # 2. Secondary: SearXNG
     if os.getenv("SEARXNG_ENDPOINT"):
@@ -186,14 +200,15 @@ def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> L
         results = searxng_search(query, search_limit, ip)
         if results:
             logger.info(f"✅ [SEARCH] SearXNG search successful. Found results.")
-            return filter_and_deduplicate(results, limit)
+            return _finalize(results)
 
     # 3. Fallback: DuckDuckGo
     logger.info(f"🦆 [SEARCH] Attempting search with fallback engine: DuckDuckGo (DDGS)")
     results = ddg_search(query, search_limit, ip)
     if results:
         logger.info(f"✅ [SEARCH] DuckDuckGo search successful. Found results.")
-    return filter_and_deduplicate(results, limit)
+        
+    return _finalize(results or [])
 
 
 

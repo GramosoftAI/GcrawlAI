@@ -38,7 +38,7 @@ class SearchResponse(BaseModel):
 
 
 @router.post("", response_model=SearchResponse)
-def search(search_req: SearchRequest, request: Request) -> SearchResponse:
+async def search(search_req: SearchRequest, request: Request) -> SearchResponse:
     """Perform a search using engine fallback configured in `web_crawler.search_engine`."""
     # Extract client IP with fallback logic
     # 1. Check X-Forwarded-For (standard for multi-hop proxies)
@@ -51,7 +51,7 @@ def search(search_req: SearchRequest, request: Request) -> SearchResponse:
         client_ip = request.headers.get("x-real-ip") or (request.client.host if request.client else None)
 
     try:
-        results: List[Dict[str, str]] = execute_search_router(search_req.query, search_req.limit, client_ip)
+        results: List[Dict[str, str]] = await execute_search_router(search_req.query, search_req.limit, client_ip)
     except Exception as exc:
         logger.exception("Search route failed")
         raise HTTPException(status_code=500, detail=f"Search failed: {exc}") from exc

@@ -1,28 +1,19 @@
-"""
-Google Search Scraper - Takes a search query, fetches results using headless Chromium,
-and returns structured JSON output.
-
-Usage:
-    python google_search.py "turf in iyyapanthagnal"
-    python google_search.py "best restaurants near me" --stealth
-    python google_search.py "python tutorials" --output results.json
-"""
-import sys
 import json
 import argparse
-import urllib.parse
-from typing import Dict, Any, List, Optional
-from .retriever import DynamicFetcher, StealthyFetcher
+from typing import Dict, Any
+from web_crawler.retriever import DynamicFetcher, StealthyFetcher
 
 
-def build_google_search_url(query: str) -> str:
+def build_google_search_url(query: str, num: int = 30) -> str:
     """Build Google search URL from query."""
     base_url = "https://www.google.com/search"
-    params = urllib.parse.urlencode({"q": query})
+    import urllib.parse
+    params = urllib.parse.urlencode({"q": query, "num": num})
     return f"{base_url}?{params}"
 
 
-def extract_search_results(response) -> Dict[str, Any]:
+
+def extract_search_results(response, limit: int = 20) -> Dict[str, Any]:
     """
     Extract structured search results from Google SERP.
     Returns organized data in dict format.
@@ -33,66 +24,34 @@ def extract_search_results(response) -> Dict[str, Any]:
         "results": [],
     }
 
-    # Target Google's organic search result containers
-    # Multiple selectors to catch different SERP layouts
-    selectors = [
-        "div[data-ved]",      # Classic organic results
-        "div[data-hve]",      # Alternative result marker
-        "div.g",              # Legacy .g class for results
-        "div[data-test-id]",  # Modern test IDs
-        "div[jsname]",        # JS-powered result containers
-    ]
-
-    result_containers = []
-    for selector in selectors:
-        found = response.select(selector)
-        if found:
-            result_containers.extend(found)
-
-    for container in result_containers:
-        # Look for the main link within the result container
-        link = container.select_one("a[href]")
-        if not link:
-            continue
-
+    # Google's organic results - use broad selector to catch all links
+    # Look for anchor tags within the main content area
+    for link in response.select("a[href]"):
         href = link.get("href")
+        title = link.get_text(strip=True)
 
-        # Filter valid search result links
-        if not href or not href.startswith("http"):
-            continue
-        if "google." in href or "/search?" in href or "/url?" in href:
-            continue
+        # Filter for actual search results (not Google navigation)
+        if href and href.startswith("http") and len(title) > 3:
+            # Skip Google's own links
+            if "google." in href or "/search?" in href or "/url?" in href:
+                continue
 
-        # Extract title from h3 tag (Google's title container)
-        title_tag = container.select_one("h3")
-        title = title_tag.get_text(strip=True) if title_tag else link.get_text(strip=True)
+            # Find parent container for snippet
+            parent = link.find_parent("div")
+            snippet = ""
+            if parent:
+                # Look for snippet text in parent
+                for div in parent.find_all(["div", "span"]):
+                    text = div.get_text(strip=True)
+                    if text and len(text) > 10:
+                        snippet = text
+                        break
 
-        # Clean title - remove URL artifacts that may be scraped
-        if "›" in title:
-            title = title.split("›")[0].strip()
-        if "http" in title:
-            title = title.split("http")[0].strip()
-
-        if len(title) < 3:
-            continue
-
-        # Extract snippet from the result container
-        snippet = ""
-        # Google snippets are typically in divs with specific classes or data attributes
-        # Try to find snippet text (exclude title, URLs, and nav text)
-        for div in container.find_all(["div", "span"]):
-            text = div.get_text(strip=True)
-            if text and len(text) > 10:
-                # Skip title duplicates, URL-like text, and navigation artifacts
-                if text != title and "http" not in text and "›" not in text:
-                    snippet = text
-                    break
-
-        results["results"].append({
-            "title": title,
-            "url": href,
-            "snippet": snippet,
-        })
+            results["results"].append({
+                "title": title,
+                "url": href,
+                "snippet": snippet,
+            })
 
     # Deduplicate results by URL
     seen = set()
@@ -102,41 +61,111 @@ def extract_search_results(response) -> Dict[str, Any]:
             seen.add(r["url"])
             unique_results.append(r)
 
-    results["results"] = unique_results  # Return all found results, limit handled by caller
+    results["results"] = unique_results[:limit]  # Limit to requested number
 
     return results
 
 
 def search(
     query: str,
+    limit: int = 20,
     use_stealth: bool = True,
     headless: bool = False,
-    output_file: str = None,
+    output_file: str = True,
+    proxy_url: str = None,
 ) -> Dict[str, Any]:
     """
     Perform Google search and return results as JSON-serializable dict.
 
     Args:
         query: Search query (e.g., "turf in iyyapanthagnal")
+        limit: Number of results to fetch
         use_stealth: Use StealthyFetcher to bypass bot detection
         headless: Run browser in headless mode
         output_file: Optional file path to save JSON output
+        proxy_url: Optional proxy URL to bypass IP blocking
 
     Returns:
         Dictionary with search results
     """
+    # Request more results than limit to account for deduplication and internal links
+    request_num = max(30, limit + 10)
     # Build the search URL
-    url = build_google_search_url(query)
+    url = build_google_search_url(query, num=request_num)
     print(f"Searching: {query}")
     print(f"URL: {url}")
 
     # Choose fetcher
     fetcher_class = StealthyFetcher if use_stealth else DynamicFetcher
-    fetcher = fetcher_class(
-        headless=headless,
-        block_resources=True,  # Speed up by blocking images/fonts
-        solve_cloudflare=use_stealth,
-    )
+    
+    # Load environment variables
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    # Auto-configure proxy from .env if not provided
+    if not proxy_url:
+        evomi_server = os.getenv("EVOMI_PROXY_SERVER")
+        evomi_user = os.getenv("EVOMI_PROXY_USERNAME")
+        evomi_pass = os.getenv("EVOMI_PROXY_PASSWORD")
+        if evomi_server and evomi_user and evomi_pass:
+            import random
+            session_id = random.randint(10000, 999999)
+            # Format: http://user:pass@host:port?session=12345
+            server_no_scheme = evomi_server.split("://")[-1]
+            scheme = evomi_server.split("://")[0] if "://" in evomi_server else "http"
+            proxy_url = f"{scheme}://{evomi_user}:{evomi_pass}@{server_no_scheme}?session={session_id}"
+            print(f"[*] Using proxy: {proxy_url}")
+
+    proxy_config = None
+    if proxy_url:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(proxy_url)
+        if parsed.username and parsed.password:
+            # Preserve query string (like ?session=...) in the server URL for Playwright proxy
+            server_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+            if parsed.query:
+                server_url += f"?{parsed.query}"
+            
+            proxy_config = {
+                "server": server_url,
+                "username": parsed.username,
+                "password": parsed.password,
+            }
+        else:
+            proxy_config = {"server": proxy_url}
+            
+    # Use a modern, randomized User-Agent to prevent headless detection
+    import random
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0"
+    ]
+    random_ua = random.choice(user_agents)
+    
+    if proxy_url:
+        import requests
+        try:
+            proxies = {"http": proxy_url, "https": proxy_url}
+            ip_test = requests.get("https://api.ipify.org?format=json", proxies=proxies, timeout=10)
+            print(f"[*] Proxy Exit IP for this run: {ip_test.json()['ip']}")
+        except Exception as e:
+            print(f"[*] Could not verify proxy IP: {e}")
+            
+    fetcher_kwargs = {
+        "headless": headless,
+        "block_resources": False,  # Speed up by blocking images/fonts
+        "proxy": proxy_config,
+        "timeout": 60000, # Increased timeout for slow residential proxies
+        "user_agent": random_ua,
+    }
+    if use_stealth:
+        fetcher_kwargs["solve_cloudflare"] = True
+        
+    fetcher = fetcher_class(**fetcher_kwargs)
 
     # Fetch the page
     print("Fetching with headless Chromium...")
@@ -152,7 +181,7 @@ def search(
     print(f"Success! Status: {response.status}")
 
     # Extract structured results
-    results = extract_search_results(response)
+    results = extract_search_results(response, limit=limit)
     results["query"] = query
     results["final_url"] = response.url
     results["status"] = response.status
@@ -166,79 +195,38 @@ def search(
     return results
 
 
-def scrape_google(
-    query: str,
-    limit: int = 10,
-    ip: Optional[str] = None,
-    headless: bool = True,
-    fast_mode: bool = True,
-) -> List[Dict[str, str]]:
-    """
-    Scrape Google search results - compatibility function for search_engine.py router.
-    Implements pagination to fetch multiple pages when limit > 10.
-
-    Args:
-        query: Search query
-        limit: Number of results to return
-        ip: Client IP for locale detection (unused currently, kept for API compatibility)
-        headless: Run browser in headless mode
-        fast_mode: Use stealth mode with Cloudflare solving enabled
-
-    Returns:
-        List of search results with url, title, description
-    """
-    all_results = []
-    start = 0
-    num_per_page = 10
-
-    # Calculate how many pages we need to fetch
-    # Google typically shows 10 organic results per page
-    while len(all_results) < limit:
-        # Build the search URL with pagination (start parameter)
-        base_url = "https://www.google.com/search"
-        params = {"q": query, "num": 10}
-        if start > 0:
-            params["start"] = start
-        url = f"{base_url}?{urllib.parse.urlencode(params)}"
-
-        # Use stealth fetcher for Cloudflare bypass
-        fetcher = StealthyFetcher(
-            headless=headless,
-            block_resources=True,
-            solve_cloudflare=fast_mode,
+async def scrape_google(query: str, limit: int, ip: str = None, headless: bool = True, fast_mode: bool = True) -> list:
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    loop = asyncio.get_event_loop()
+    
+    def run_search():
+        return search(query=query, limit=limit, use_stealth=not fast_mode, headless=headless, output_file=None)
+        
+    try:
+        # Enforce a 30-second hard deadline so fallback engines can take over
+        search_results = await asyncio.wait_for(
+            loop.run_in_executor(None, run_search),
+            timeout=30.0
         )
-
-        try:
-            response = fetcher.fetch(url)
-
-            if not response.ok:
-                break
-
-            # Extract structured results
-            raw_results = extract_search_results(response)
-
-            # Format to match search engine interface
-            for r in raw_results.get("results", []):
-                formatted = {
-                    "url": r.get("url"),
-                    "title": r.get("title"),
-                    "description": r.get("snippet"),
-                }
-                # Avoid duplicates
-                if not any(f["url"] == formatted["url"] for f in all_results):
-                    all_results.append(formatted)
-
-            # Check if we got no results on this page (no more pages available)
-            if len(raw_results.get("results", [])) == 0:
-                break
-
-        except Exception as e:
-            break
-
-        # Move to next page
-        start += num_per_page
-
-    return all_results[:limit]
+    except asyncio.TimeoutError:
+        logger.warning("⚠️ [GOOGLE] Hard deadline of 30s exceeded — skipping to fallback.")
+        return []
+    except Exception as e:
+        logger.error(f"❌ [GOOGLE] Search failed: {e}")
+        return []
+    
+    formatted = []
+    if "results" in search_results:
+        for r in search_results["results"][:limit]:
+            formatted.append({
+                "url": r.get("url"),
+                "title": r.get("title"),
+                "description": r.get("snippet", "")
+            })
+    return formatted
 
 
 def main():
@@ -270,14 +258,21 @@ def main():
         action="store_true",
         help="Only output JSON (no progress messages)"
     )
+    parser.add_argument(
+        "--proxy", "-p",
+        type=str,
+        help="Proxy URL (e.g., http://user:pass@host:port) to bypass IP blocking"
+    )
 
     args = parser.parse_args()
 
     results = search(
         query=args.query,
+        limit=20, # Default limit for CLI
         use_stealth=not args.no_stealth,
         headless=not args.headful,
         output_file=args.output,
+        proxy_url=args.proxy,
     )
 
     # Print JSON output
