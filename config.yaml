@@ -14,6 +14,10 @@ security:
   password_reset_token_expire_hours: "${PASSWORD_RESET_TOKEN_EXPIRE_HOURS:24}"
   encryption_key: "${ENCRYPTION_KEY}"
 
+# ==================== 3rd Party Services ====================
+services:
+  enhanced_proxies: "${ENHANCED_PROXIES}"
+
 # ==================== Email Configuration ====================
 email:
   host: "${EMAIL_HOST:smtp.example.com}"

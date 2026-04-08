@@ -184,6 +184,7 @@ class WebCrawler:
         enable_json: bool = True,
         enable_links: bool = True,
         enable_seo: bool = False,
+        enable_images: bool = False,
         client_id: Optional[str] = None,
         user_id: Optional[int] = None,
         websocket_manager=None,
@@ -204,6 +205,7 @@ class WebCrawler:
                     enable_html=enable_html,
                     enable_ss=enable_ss,
                     enable_md=enable_md,
+                    enable_images=enable_images,
                     task_id=client_id if crawl_mode == "all" else None,
                     user_id=user_id,
                 )
@@ -510,6 +512,7 @@ class WebCrawler:
                 enable_html=enable_html,
                 enable_ss=enable_ss,
                 enable_seo=enable_seo,
+                enable_images=enable_images,
                 client_id=client_id,
                 websocket_manager=websocket_manager,
                 crawl_mode=crawl_mode,
@@ -544,6 +547,7 @@ class WebCrawler:
                 "seo_json": result.get("seo_json", None) if (result and "error" not in result) else None,
                 "seo_md": result.get("seo_md", None) if (result and "error" not in result) else None,
                 "seo_xlsx": result.get("seo_xlsx", None) if (result and "error" not in result) else None,
+                "images": result.get("images", None) if (result and "error" not in result) else None,
             }
             summary["links_file_path"] = links_artifact_ref
             summary_artifact_ref = _store_crawl_artifact(
@@ -575,6 +579,7 @@ class WebCrawler:
                     enable_html,
                     enable_ss,
                     enable_seo,
+                    enable_images,
                     client_id,
                     websocket_manager,
                     crawl_mode=crawl_mode,

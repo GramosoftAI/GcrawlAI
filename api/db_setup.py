@@ -230,6 +230,7 @@ class DatabaseSetup:
             user_id INTEGER,
             links_file_path TEXT,
             summary_file_path TEXT,
+            Images BOOLEAN DEFAULT FALSE,
             CONSTRAINT fk_crawl_jobs_user
                 FOREIGN KEY (user_id)
                 REFERENCES users (user_id)
@@ -270,6 +271,7 @@ class DatabaseSetup:
             seo_json TEXT,
             seo_md TEXT,
             seo_xlsx TEXT,
+            images TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_crawl_job
                 FOREIGN KEY (crawl_id)
@@ -278,6 +280,18 @@ class DatabaseSetup:
             CONSTRAINT unique_crawl_url
                 UNIQUE (crawl_id, url)
         );
+
+        -- Migrate existing tables: add images column if it doesn't exist
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'crawl_events' AND column_name = 'images'
+            ) THEN
+                ALTER TABLE crawl_events ADD COLUMN images TEXT;
+            END IF;
+        END;
+        $$;
 
         -- Migrate existing tables: drop old constraint if it exists, add new one
         DO $$

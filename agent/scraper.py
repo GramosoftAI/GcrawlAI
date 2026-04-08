@@ -48,7 +48,7 @@ class AgentScraper:
         last_error = None
         for attempt in range(self.settings.scrape_retries + 1):
             try:
-                context = await browser.new_context(user_agent=user_agent)
+                context = await browser.new_context(user_agent=user_agent,locale="en-US",timezone_id="America/New_York")
                 page = await context.new_page()
                 response = await page.goto(
                     url,

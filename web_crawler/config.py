@@ -26,6 +26,7 @@ class CrawlConfig:
     bypass_cloudflare: bool = True
 
     output_dir: str = "crawl_output-api"
+    # camoufox_path: Optional[str] = "/mnt/c/Users/ganes/AppData/Local/camoufox/camoufox/Cache/camoufox.exe"
     camoufox_path: Optional[str] = r"C:\Users\ganes\AppData\Local\camoufox\camoufox\Cache\camoufox.exe"
 
     # Optional proxy URL or list of URLs for rotation

@@ -72,6 +72,11 @@ class ContentProcessor:
     """Process and extract content from pages"""
     
     @staticmethod
+    def cleanup_html(html: str, base_url: str):
+        """Clean HTML and extract images/links using the cleanup_html utility."""
+        return cleanup_html(html, base_url)
+
+    @staticmethod
     def extract_links(soup: BeautifulSoup, base_url: str) -> List[str]:
         """
         Extract valid internal links from the page.

@@ -31,6 +31,7 @@ def ensure_crawl_job(
     enable_html: bool = False,
     enable_ss: bool = False,
     enable_md: bool = False,
+    enable_images: bool = False,
     task_id: Optional[str] = None,
     user_id: Optional[int] = None,
 ) -> None:
@@ -38,8 +39,8 @@ def ensure_crawl_job(
     cur.execute(
         """
         INSERT INTO crawl_jobs
-            (crawl_id, url, crawl_mode, created_at, updated_at, task_id, SEO, HTML, Screenshot, Markdown, user_id)
-        VALUES (%s, %s, %s, CURRENT_TIMESTAMP, NULL, %s, %s, %s, %s, %s, %s)
+            (crawl_id, url, crawl_mode, created_at, updated_at, task_id, SEO, HTML, Screenshot, Markdown, Images, user_id)
+        VALUES (%s, %s, %s, CURRENT_TIMESTAMP, NULL, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (crawl_id) DO NOTHING
         """,
         (
@@ -51,6 +52,7 @@ def ensure_crawl_job(
             enable_html,
             enable_ss,
             enable_md,
+            enable_images,
             user_id,
         ),
     )

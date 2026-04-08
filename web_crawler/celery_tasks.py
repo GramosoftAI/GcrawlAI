@@ -40,6 +40,7 @@ def crawl_website(
     enable_json: bool = False,
     enable_links: bool = True,
     enable_seo: bool = False,
+    enable_images: bool = False,
     user_id: Optional[int] = None,
     crawl_mode: str = "all",
 ) -> Dict:
@@ -84,6 +85,7 @@ def crawl_website(
             enable_json=enable_json,
             enable_links=True,
             enable_seo=enable_seo,
+            enable_images=enable_images,
             client_id=task_id,  # Use task_id as client_id
             user_id=user_id,
             websocket_manager=None,  # No WebSocket in Celery
