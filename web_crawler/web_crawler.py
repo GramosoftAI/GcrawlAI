@@ -143,11 +143,41 @@ class WebCrawler:
         enable_json: bool = True,
         enable_links: bool = True,
         enable_seo: bool = False,
+        enable_images: bool = False,
         client_id: Optional[str] = None,
         websocket_manager=None,
         crawl_mode: str = "all"
     ) -> Dict:
         """Main crawl orchestration"""
+
+        if client_id:
+            conn = None
+            try:
+                conn = _get_db_conn()
+                ensure_crawl_job(
+                    conn,
+                    crawl_id=client_id,
+                    url=start_url,
+                    crawl_mode=crawl_mode,
+                    enable_seo=enable_seo,
+                    enable_html=enable_html,
+                    enable_ss=enable_ss,
+                    enable_md=enable_md,
+                    enable_images=enable_images,
+                    task_id=client_id if crawl_mode == "all" else None,
+                    user_id=user_id,
+                )
+                conn.commit()
+            except Exception as exc:
+                logger.warning(
+                    f"Could not ensure crawl_jobs row for crawl_id={client_id} before crawl start: {exc}"
+                )
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
 
         max_pages = 1 if crawl_mode == "single" else self.config.max_pages
 
@@ -370,6 +400,7 @@ class WebCrawler:
                 enable_html=enable_html,
                 enable_ss=enable_ss,
                 enable_seo=enable_seo,
+                enable_images=enable_images,
                 client_id=client_id,
                 websocket_manager=websocket_manager,
                 crawl_mode=crawl_mode,
@@ -414,12 +445,17 @@ class WebCrawler:
                 "seo_json": result.get("seo_json", None) if (result and "error" not in result) else None,
                 "seo_md": result.get("seo_md", None) if (result and "error" not in result) else None,
                 "seo_xlsx": result.get("seo_xlsx", None) if (result and "error" not in result) else None,
-                "links_file_path": str(self.config.links_file),
-                "summary_file_path": str(self.config.summary_file),
+                "images": result.get("images", None) if (result and "error" not in result) else None,
             }
-
-            with open(self.config.summary_file, "w", encoding="utf-8") as f:
-                json.dump(summary, f, indent=2)
+            summary["links_file_path"] = links_artifact_ref
+            summary_artifact_ref = _store_crawl_artifact(
+                client_id,
+                "summary",
+                summary,
+                content_kind="json",
+                title="Summary",
+            )
+            summary["summary_file_path"] = summary_artifact_ref
 
             logger.info("✅ Single-page crawl finished")
             logger.info(json.dumps(summary, indent=2))
@@ -441,6 +477,7 @@ class WebCrawler:
                     enable_html,
                     enable_ss,
                     enable_seo,
+                    enable_images,
                     client_id,
                     websocket_manager,
                     crawl_mode=crawl_mode,

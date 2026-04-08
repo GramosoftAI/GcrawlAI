@@ -63,6 +63,7 @@ pandas==2.3.3
 pillow==12.1.0
 platformdirs==4.5.1
 playwright==1.57.0
+patchright==1.58.2
 playwright-stealth==2.0.2
 prometheus_client==0.24.1
 prompt_toolkit==3.0.52

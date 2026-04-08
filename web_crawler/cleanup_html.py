@@ -25,23 +25,30 @@ _BOILERPLATE_TAGS = (
     # NOTE: "figure" intentionally excluded — it wraps real content images
 )
 
-# class / id substrings that indicate non-content elements. (From Firecrawl excludeNonMainTags)
-_NOISE_PATTERNS = (
+# class / id substrings that indicate cookie banners, popups, and consent overlays.
+# These should usually ALWAYS be removed to ensure clean output.
+_COOKIE_POP_PATTERNS = (
+    "cookie-banner", "cookie-consent", "gdpr-banner", "cookie", "#cookie", ".cookie",
+    "popup-overlay", "modal-overlay", "modal", "popup", "overlay", ".modal", ".popup",
+    "cmp-", "consent", "banner", "notification-banner", "announcement-bar",
+    "advertisement", "advert", "ad-unit", "ad-banner", "ad", "ads", "promo-banner",
+    "newsletter-signup", "subscribe-popup", "lang-selector", "language",
+    "social", "social-media", "social-links", "share", "#share",
+)
+
+# class / id substrings that indicate structural boilerplate (nav, header, footer, etc.)
+# These are typically only removed when only_main_content=True.
+_STRUCTURAL_NOISE_PATTERNS = (
     "navbar", "navigation", "site-nav", "main-nav", "top-nav", "nav",
     "site-header", "page-header", "header", "#header", ".header", "top",
     "site-footer", "page-footer", "footer", "#footer", ".footer", "bottom",
     "sidebar", "side-bar", "side", "aside", "#sidebar", ".sidebar",
-    "cookie-banner", "cookie-consent", "gdpr-banner", "cookie", "#cookie",
-    "popup-overlay", "modal-overlay", "modal", "popup", "overlay",
-    "announcement-bar", "breadcrumbs", "breadcrumb", "#breadcrumbs",
-    "advertisement", "advert", "ad-unit", "ad-banner", "ad", "ads", "promo-banner",
-    "newsletter-signup", "subscribe-popup", "lang-selector", "language",
-    "social", "social-media", "social-links", "share", "#share",
+    "breadcrumbs", "breadcrumb", "#breadcrumbs",
     "menu", "widget", "#widget",
     "skip-link", "skipnav", "skip-to-content",
 )
 
-# Elements that should be preserved even if they match noise patterns (From Firecrawl forceIncludeMainTags)
+# Elements that should be preserved even if they match noise patterns
 _FORCE_INCLUDE_PATTERNS = (
     "#main", "main-content", ".swoogo-cols", ".swoogo-text", ".swoogo-table-div",
     ".swoogo-space", ".swoogo-alert", ".swoogo-sponsors", ".swoogo-title",
@@ -87,37 +94,54 @@ def extract_from_script_tags(soup):
     return "\n\n".join(script_content)
 
 
-def _remove_noise_by_class_id(soup: BeautifulSoup) -> None:
+def _remove_elements_by_patterns(soup: BeautifulSoup, patterns: tuple) -> None:
     """
-    Remove elements whose class or id contains any of the noise pattern keywords.
-
-    Two-pass approach:
-      1. Collect all matching tags into a list (snapshot of the tree)
-      2. Decompose them — safe because children of already-decomposed
-         parents are skipped via the `tag.parent` check.
+    Remove elements whose class or id matches the given patterns.
+    Supports:
+        - ".classname" for exact class match
+        - "#idname" for exact ID match
+        - "substring" for partial match in class or ID
     """
     to_remove = []
     for tag in soup.find_all(True):
-        # Skip tags that were already decomposed by a parent in this loop
         if tag.parent is None:
             continue
-        try:
-            cls_str  = " ".join(tag.get("class") or []).lower()
-            id_str   = (tag.get("id") or "").lower()
-        except AttributeError:
-            # Tag is in a partially decomposed state — skip it
-            continue
+            
+        cls_list = tag.get("class") or []
+        cls_str  = " ".join(cls_list).lower()
+        id_str   = (tag.get("id") or "").lower()
         combined = f"{cls_str} {id_str}"
         
         # Check if it should be forced-included
         if any(pat in combined for pat in _FORCE_INCLUDE_PATTERNS):
             continue
 
-        if any(pat in combined for pat in _NOISE_PATTERNS):
+        matched = False
+        for pat in patterns:
+            if pat.startswith("."):
+                if pat[1:].lower() in cls_list:
+                    matched = True
+                    break
+            elif pat.startswith("#"):
+                if pat[1:].lower() == id_str:
+                    matched = True
+                    break
+            elif pat.lower() in combined:
+                # For very short patterns, ensure they aren't just accidental substrings
+                # e.g., "ad" shouldn't match "header"
+                if len(pat) <= 2:
+                    # Check for word boundaries for short patterns
+                    if re.search(r'\b' + re.escape(pat) + r'\b', combined):
+                        matched = True
+                        break
+                else:
+                    matched = True
+                    break
+        
+        if matched:
             to_remove.append(tag)
 
     for tag in to_remove:
-        # Guard: parent may have already been decomposed
         if tag.parent is not None:
             tag.decompose()
 
@@ -229,13 +253,13 @@ def cleanup_html(html_content: str, base_url: str, only_main_content: bool = Fal
         for tag in soup.find_all(tag_name):
             tag.decompose()
 
-    # Step 2: Remove noise (only if only_main_content is enabled)
+    # Step 2: Remove noise
+    # Always remove cookie banners, popups, and consent overlays
+    _remove_elements_by_patterns(soup, _COOKIE_POP_PATTERNS)
+
+    # Remove structural noise only if requested
     if only_main_content:
-        _remove_noise_by_class_id(soup)
-    else:
-        # Even in non-main-content mode, we still remove the absolute unneeded tags
-        # passed in _BOILERPLATE_TAGS already (script, style, etc.)
-        pass
+        _remove_elements_by_patterns(soup, _STRUCTURAL_NOISE_PATTERNS)
 
     # ── Step 3: Remove HTML comments ─────────────────────────────────────────
     for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):

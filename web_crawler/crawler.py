@@ -26,6 +26,7 @@ def main(
     enable_json: bool = False,
     enable_links: bool = True,
     enable_seo: bool = False,
+    enable_images: bool = False,
     client_id: Optional[str] = None,
     websocket_manager = None,
     crawl_mode: str = "all",
@@ -71,7 +72,9 @@ def main(
         enable_json=enable_json,
         enable_links=enable_links,
         enable_seo=enable_seo,
-        client_id=client_id,
+        enable_images=enable_images,
+        client_id=crawl_id,
+        user_id=user_id,
         websocket_manager=websocket_manager,
         crawl_mode=crawl_mode
     )
