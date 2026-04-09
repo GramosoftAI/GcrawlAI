@@ -28,6 +28,7 @@ def main(
     enable_seo: bool = False,
     enable_images: bool = False,
     client_id: Optional[str] = None,
+    user_id: Optional[int] = None,
     websocket_manager = None,
     crawl_mode: str = "all",
     config: Optional[CrawlConfig] = None

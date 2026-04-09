@@ -81,6 +81,7 @@ from api.auth_manager import AuthManager
 from web_crawler.crawler import main as crawl_main
 from web_crawler.config import CrawlConfig
 from web_crawler.celery_tasks import crawl_website, crawl_single_page, crawl_links
+from web_crawler.artifact_store import get_crawl_artifact, parse_artifact_ref
 from api.auth_routes import (
     SignupOTPRequest,
     VerifyOTPRequest,
@@ -94,6 +95,7 @@ from api.auth_routes import (
 )
 from api.contact_routes import router as contact_router
 from api.search_routes import router as search_router
+from api.agent_routes import router as agent_router
 
 # ================= LOGGING =================
 
@@ -118,6 +120,7 @@ auth_manager: Optional[AuthManager] = None
 # ── Routers ──
 app.include_router(contact_router)
 app.include_router(search_router)
+app.include_router(agent_router)
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -150,6 +153,11 @@ async def validation_exception_handler(request, exc):
 # ================= DB CONNECTION POOL =================
 
 _db_pool = None
+
+
+def _get_direct_db_connection():
+    """Open a short-lived direct connection for critical crawl job writes."""
+    return psycopg2.connect(**get_db_config())
 
 def _init_db_pool():
     """Initialize the database connection pool (call once at startup)"""
@@ -225,6 +233,11 @@ def get_pooled_connection(max_retries: int = 3):
 def get_db_connection():
     """Get a connection from the pool. Caller MUST return it via pool.putconn()."""
     return _db_pool.getconn()
+
+
+def _read_artifact_content(artifact_ref: str):
+    with get_pooled_connection() as conn:
+        return get_crawl_artifact(conn, artifact_ref)
 
 @app.on_event("startup")
 async def startup_event():
@@ -340,8 +353,11 @@ def _run_background_crawl_task(client_id: str, **kwargs):
     
     # Persist the completion to the database directly
     # This prevents WebSockets from hanging if they connect AFTER the short crawl completes
+    # If pages_crawled == 0, delete the job row entirely (nothing was scraped)
+    pages_crawled = summary.get("pages_crawled", 0)
     try:
-        with get_pooled_connection() as conn:
+        conn = _get_direct_db_connection()
+        try:
             cur = conn.cursor()
             # Always ensure the job stays in history, even if pages_crawled == 0
             cur.execute(
@@ -366,6 +382,8 @@ def _run_background_crawl_task(client_id: str, **kwargs):
             )
             conn.commit()
             cur.close()
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"Failed to persist BG crawl completion for {client_id}: {e}")
         
@@ -424,6 +442,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
 
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
+        celery_kwargs = None
+        sync_task_kwargs = None
 
         # ---------- CONFIG ----------
         config = CrawlConfig(
@@ -439,8 +459,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
         if payload.crawl_mode == "single":
             crawl_id = uuid.uuid4().hex
 
-            background_tasks.add_task(
-                _run_background_crawl_task,
+            sync_task_kwargs = dict(
                 client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="single",
@@ -461,8 +480,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
         elif payload.crawl_mode == "links":
             crawl_id = uuid.uuid4().hex
 
-            background_tasks.add_task(
-                _run_background_crawl_task,
+            sync_task_kwargs = dict(
                 client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="links",
@@ -482,9 +500,10 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
 
         # ---------- FULL SITE (CELERY) ----------
         else:
-            task = crawl_website.delay(
+            crawl_id = uuid.uuid4().hex
+            celery_kwargs = dict(
                 start_url=str(payload.url),
-                config_dict = {
+                config_dict={
                     "max_pages": config.max_pages,
                     "max_workers": config.max_workers,
                     "headless": config.headless,
@@ -507,14 +526,13 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_images=payload.enable_images,
                 user_id=payload.user_id,
             )
-
-            crawl_id = task.id
             markdown_path = ""
             status = "queued"
-            task_id = task.id
+            task_id = crawl_id
 
         # ---------- DB INSERT ----------
-        with get_pooled_connection() as conn:
+        conn = _get_direct_db_connection()
+        try:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -538,6 +556,13 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             )
             conn.commit()
             cur.close()
+        finally:
+            conn.close()
+
+        if celery_kwargs:
+            crawl_website.apply_async(kwargs=celery_kwargs, task_id=task_id)
+        elif sync_task_kwargs:
+            background_tasks.add_task(_run_background_crawl_task, **sync_task_kwargs)
 
         return {
             "status_code": 200,
@@ -589,14 +614,20 @@ def get_user_crawls(user_id: int):
             cur.execute(
                 """
                 SELECT 
-                    user_id, crawl_id, url, crawl_mode, 
-                    seo, html, 
-                    screenshot, markdown, 
-                    links_file_path, 
-                    created_at
-                FROM crawl_jobs
-                WHERE user_id = %s
-                ORDER BY created_at DESC
+                    cj.user_id, cj.crawl_id, cj.url, cj.crawl_mode, 
+                    cj.seo, cj.html, 
+                    cj.screenshot, cj.markdown, 
+                    cj.links_file_path, 
+                    cj.created_at
+                FROM crawl_jobs cj
+                WHERE cj.user_id = %s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM crawl_artifacts ca
+                      WHERE ca.crawl_id = cj.crawl_id
+                        AND ca.artifact_type = 'summary'
+                        AND (ca.content::jsonb ->> 'pages_crawled')::int = 0
+                  )
+                ORDER BY cj.created_at DESC
                 """,
                 (user_id,)
             )
