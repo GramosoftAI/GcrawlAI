@@ -47,20 +47,14 @@ def main(
     # Get base directory
     BASE_DIR = Path(__file__).resolve().parent
     
-    # Create unique crawl ID and directory
+    # Create a stable crawl-scoped logical output namespace.
     crawl_id = client_id if client_id else uuid.uuid4().hex
     crawl_dir = BASE_DIR / "crawl_output-api" / f"crawl_{crawl_id}"
-    crawl_dir.mkdir(parents=True, exist_ok=True)
     
-    # Update config with crawl-specific output directory
+    # Keep config paths crawl-scoped for legacy compatibility, but artifacts are
+    # persisted in Postgres rather than written to local disk.
     config.output_dir = str(crawl_dir)
     config.rebuild_paths()
-    
-    # Create subdirectories
-    (Path(config.output_dir) / "html").mkdir(parents=True, exist_ok=True)
-    (Path(config.output_dir) / "screenshots").mkdir(parents=True, exist_ok=True)
-    (Path(config.output_dir) / "markdown").mkdir(parents=True, exist_ok=True)
-    (Path(config.output_dir) / "seo").mkdir(parents=True, exist_ok=True)
     
     # Initialize and run crawler
     crawler = WebCrawler(config)
@@ -112,6 +106,29 @@ def main(
                 }
             )
     else:
+        # crawl_mode == "all"
+        # For search URLs intercepted during "all" mode, publish events so the
+        # frontend can display results.  Regular "all" crawls already publish
+        # page_processed events from within page_crawler via Redis.
+        if summary.get("crawl_mode") == "search" and client_id:
+            from web_crawler.redis_events import publish_event
+            # Publish page_processed so the frontend renders content blocks
+            publish_event(
+                crawl_id=client_id,
+                payload={
+                    "type": "page_processed",
+                    "page": 1,
+                    "url": summary.get("start_url", ""),
+                    "title": f"Search Results: {summary.get('search_query', '')}",
+                    "markdown_file": summary.get("markdown_file"),
+                    "html_file": summary.get("html_file"),
+                    "screenshot": summary.get("screenshot"),
+                    "seo_json": summary.get("seo_json"),
+                    "seo_md": summary.get("seo_md"),
+                    "seo_xlsx": summary.get("seo_xlsx"),
+                }
+            )
+
         summary["markdown_path"] = str(crawl_dir)
     
     # Add crawl metadata to summary

@@ -222,6 +222,9 @@ API Docs will be available at: http://localhost:8000/docs
 - `POST /crawler`: Start a new crawl job (single or all).
 - `GET /crawler/status/{task_id}`: Check Celery task status.
 - `GET /crawl/get/content`: Retrieve generated content.
+- `POST /v1/agent`: Start an agentic extraction job (async).
+- `GET /v1/agent/{job_id}`: Check agent job status/result.
+- `DELETE /v1/agent/{job_id}`: Cancel an agent job.
 - `POST /auth/signup/send-otp`: reliable email-based signup.
 - `POST /auth/signup/verify-otp`: reliable email-based signup.
 - `POST /auth/signin`: reliable email-based signin.
@@ -229,6 +232,26 @@ API Docs will be available at: http://localhost:8000/docs
 - `POST /auth/reset-password`: reliable email-based reset password.
 
 Full interactive API docs available at `http://localhost:8000/docs` when running locally.
+
+## 🤖 Agent API Setup
+
+To use the `/v1/agent` endpoints, configure LLM and search providers in `.env`:
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_openai_key
+ANTHROPIC_API_KEY=your_claude_key
+PLANNER_MODEL=gpt-4o
+EXTRACTION_MODEL=gpt-4o-mini
+FALLBACK_MODEL=claude-3-5-sonnet
+
+SEARCH_PROVIDER=duckduckgo
+TAVILY_API_KEY=
+SERPAPI_API_KEY=
+```
+
+Start Redis, the Celery worker, and the API server as usual. The agent job worker runs
+in the same Celery process (`agent_queue`).
 
 ---
 

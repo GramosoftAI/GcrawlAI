@@ -1,0 +1,24 @@
+<app-header></app-header>
+
+<section class="agent-shell">
+  <div class="agent-hero">
+    <div class="agent-hero__content">
+      <p class="agent-eyebrow">Agent API Console</p>
+      <h1>Autonomous Web Extraction</h1>
+      <p class="agent-subtitle">
+        Submit a prompt, monitor execution, and inspect structured results with credit-aware controls.
+      </p>
+    </div>
+  </div>
+
+  <nav class="agent-nav">
+    <a routerLink="submit" routerLinkActive="active">Submit Job</a>
+    <a routerLink="status" routerLinkActive="active">Job Status</a>
+    <a routerLink="result" routerLinkActive="active">Result Viewer</a>
+    <a routerLink="credits" routerLinkActive="active">Credits</a>
+  </nav>
+
+  <div class="agent-content">
+    <router-outlet></router-outlet>
+  </div>
+</section>
