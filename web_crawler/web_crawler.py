@@ -145,6 +145,7 @@ class WebCrawler:
         enable_seo: bool = False,
         enable_images: bool = False,
         client_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         websocket_manager=None,
         crawl_mode: str = "all"
     ) -> Dict:
