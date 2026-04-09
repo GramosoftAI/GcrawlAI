@@ -115,8 +115,9 @@
         <button disabled class="nav-link">Branding</button>
       </li>
 
-      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_image">
-        <button disabled class="nav-link">Images</button>
+      <li class="nav-item btn-primary" *ngIf="formsvalue?.enable_images">
+        <button class="nav-link" [class.active]="activeTab === 'pills-images'"
+          (click)="setActiveTab('pills-images')">Images</button>
       </li>
 
     </ul>
@@ -128,16 +129,16 @@
       <div class="tab-pane fade p-2" id="pills-screenshot" [class.show]="activeTab === 'pills-screenshot'"
         [class.active]="activeTab === 'pills-screenshot'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4" [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}">
-          <div class="d-flex justify-content-end">
-            <button *ngIf="token && block.screenshot" class="btn-bg-primary-light txt-red ms-5"
-              (click)="download(block.screenshot, i, 'png')">
-              Download PNG
-            </button>
-          </div>
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title mb-0" style="flex: 1; min-width: 0;">
               {{ i + 1 }}. {{ block?.title }} Screenshot
             </h3>
+            <div class="d-flex justify-content-end flex-shrink-0">
+              <button *ngIf="token && block.screenshot" class="btn-bg-primary-light txt-red ms-5"
+                (click)="download(block.screenshot, i, 'png')">
+                Download PNG
+              </button>
+            </div>
           </div>
           <div class="screenshot-wrapper text-center mt-3" *ngIf="block.screenshot">
             <img [src]="block.screenshot" class="img-fluid rounded border shadow-sm" [alt]="block.title">
@@ -151,22 +152,22 @@
       <div class="tab-pane fade p-2" id="pills-markdown" [class.show]="activeTab === 'pills-markdown'"
         [class.active]="activeTab === 'pills-markdown'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
-          <div class="d-flex justify-content-end gap-2">
-            <button *ngIf="token && block.raw"
-              class="btn-bg-primary-light txt-red d-flex align-items-center justify-content-center"
-              (click)="copyToClipboard(block.raw, 'md_' + i)">
-              <i class="fa" [ngClass]="copiedItem === 'md_' + i ? 'fa-check text-success' : 'fa-copy'"
-                style="margin-right: 5px;"></i>
-              {{ copiedItem === 'md_' + i ? 'Copied!' : 'Copy' }}
-            </button>
-            <button *ngIf="token" class="btn-bg-primary-light txt-red" (click)="download(block.raw, i)">
-              Download .md
-            </button>
-          </div>
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title md-title">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title md-title mb-0" style="flex: 1; min-width: 0;">
               {{ i + 1 }}. {{ block?.title }}
             </h3>
+            <div class="d-flex justify-content-end gap-2 flex-shrink-0">
+              <button *ngIf="token && block.raw"
+                class="btn-bg-primary-light txt-red d-flex align-items-center justify-content-center"
+                (click)="copyToClipboard(block.raw, 'md_' + i)">
+                <i class="fa" [ngClass]="copiedItem === 'md_' + i ? 'fa-check text-success' : 'fa-copy'"
+                  style="margin-right: 5px;"></i>
+                {{ copiedItem === 'md_' + i ? 'Copied!' : 'Copy' }}
+              </button>
+              <button *ngIf="token" class="btn-bg-primary-light txt-red" (click)="download(block.raw, i)">
+                Download .md
+              </button>
+            </div>
           </div>
           <pre [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}" class="content">{{ block?.raw }}</pre>
         </div>
@@ -175,17 +176,19 @@
       <div class="tab-pane fade p-2" id="pills-summary" [class.show]="activeTab === 'pills-summary'"
         [class.active]="activeTab === 'pills-summary'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title mb-0" style="flex: 1; min-width: 0;">
               {{ i + 1 }}. {{ block?.title }} Summary
             </h3>
-            <button *ngIf="token && block.summary"
-              class="btn-bg-primary-light txt-red d-flex align-items-center justify-content-center"
-              (click)="copyToClipboard(block.summary, 'summary_' + i)">
-              <i class="fa" [ngClass]="copiedItem === 'summary_' + i ? 'fa-check text-success' : 'fa-copy'"
-                style="margin-right: 5px;"></i>
-              {{ copiedItem === 'summary_' + i ? 'Copied!' : 'Copy' }}
-            </button>
+            <div class="flex-shrink-0">
+              <button *ngIf="token && block.summary"
+                class="btn-bg-primary-light txt-red d-flex align-items-center justify-content-center"
+                (click)="copyToClipboard(block.summary, 'summary_' + i)">
+                <i class="fa" [ngClass]="copiedItem === 'summary_' + i ? 'fa-check text-success' : 'fa-copy'"
+                  style="margin-right: 5px;"></i>
+                {{ copiedItem === 'summary_' + i ? 'Copied!' : 'Copy' }}
+              </button>
+            </div>
           </div>
           <div class="content text-wrap mt-3" *ngIf="block.summary">{{ block.summary }}</div>
           <div *ngIf="!block.summary" class="text-muted p-4 text-center">
@@ -197,13 +200,13 @@
       <div class="tab-pane fade p-2" id="pills-links" [class.show]="activeTab === 'pills-links'"
         [class.active]="activeTab === 'pills-links'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title d-flex align-items-center">
-              {{ i + 1 }}. {{ block?.title }}
-              <span *ngIf="block.linksCount" class="badge bg-danger ms-2 fs-11 fw-normal rounded-pill px-2">{{
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title d-flex align-items-center mb-0" style="flex: 1; min-width: 0;">
+              <span class="text-truncate">{{ i + 1 }}. {{ block?.title }}</span>
+              <span *ngIf="block.linksCount" class="badge bg-danger ms-2 fs-11 fw-normal rounded-pill px-2" style="flex-shrink: 0;">{{
                 block.linksCount }} Links</span>
             </h3>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-shrink-0">
               <button *ngIf="token && block.links"
                 class="btn-bg-primary-light txt-red fs-12 p-1 px-2 d-flex align-items-center justify-content-center"
                 (click)="copyToClipboard(block.links, 'links_' + i)">
@@ -241,17 +244,19 @@
           </button>
         </div>
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title mb-0" style="flex: 1; min-width: 0;">
               {{ i + 1 }}. {{ block?.title }} HTML
             </h3>
-            <button *ngIf="token && block.rawHtml"
-              class="btn-bg-primary-light txt-red fs-12 p-1 px-2 d-flex align-items-center justify-content-center"
-              (click)="copyToClipboard(block.rawHtml, 'html_' + i)">
-              <i class="fa" [ngClass]="copiedItem === 'html_' + i ? 'fa-check text-success' : 'fa-copy'"
-                style="margin-right: 5px;"></i>
-              {{ copiedItem === 'html_' + i ? 'Copied!' : 'Copy' }}
-            </button>
+            <div class="flex-shrink-0">
+              <button *ngIf="token && block.rawHtml"
+                class="btn-bg-primary-light txt-red fs-12 p-1 px-2 d-flex align-items-center justify-content-center"
+                (click)="copyToClipboard(block.rawHtml, 'html_' + i)">
+                <i class="fa" [ngClass]="copiedItem === 'html_' + i ? 'fa-check text-success' : 'fa-copy'"
+                  style="margin-right: 5px;"></i>
+                {{ copiedItem === 'html_' + i ? 'Copied!' : 'Copy' }}
+              </button>
+            </div>
           </div>
           <div class="code-editor-viewer overflow-auto" *ngIf="block.rawHtml">
             <div class="editor-header">
@@ -271,17 +276,19 @@
       <div class="tab-pane fade p-2" id="pills-json" [class.show]="activeTab === 'pills-json'"
         [class.active]="activeTab === 'pills-json'">
         <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4" [ngStyle]="{'overflow': token ? 'auto' : 'hidden'}">
-          <div class="d-flex justify-content-between flex-wrap gap-2">
-            <h3 class="title">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title mb-0" style="flex: 1; min-width: 0;">
               {{ i + 1 }}. {{ block?.title }} JSON
             </h3>
-            <button *ngIf="block.seo?.json"
-              class="btn-bg-primary-light txt-red fs-12 p-1 px-2 d-flex align-items-center justify-content-center"
-              (click)="copyToClipboard(block.seo.json, 'json_' + i)">
-              <i class="fa" [ngClass]="copiedItem === 'json_' + i ? 'fa-check text-success' : 'fa-copy'"
-                style="margin-right: 5px;"></i>
-              {{ copiedItem === 'json_' + i ? 'Copied!' : 'Copy' }}
-            </button>
+            <div class="flex-shrink-0">
+              <button *ngIf="block.seo?.json"
+                class="btn-bg-primary-light txt-red fs-12 p-1 px-2 d-flex align-items-center justify-content-center"
+                (click)="copyToClipboard(block.seo.json, 'json_' + i)">
+                <i class="fa" [ngClass]="copiedItem === 'json_' + i ? 'fa-check text-success' : 'fa-copy'"
+                  style="margin-right: 5px;"></i>
+                {{ copiedItem === 'json_' + i ? 'Copied!' : 'Copy' }}
+              </button>
+            </div>
           </div>
           <pre class="text-start mt-3">{{ block.seo.json }}</pre>
           <div class="content mt-3" *ngIf="block.seo?.json">
@@ -484,6 +491,75 @@
           </div>
         </ng-container>
 
+      </div>
+ 
+      <div class="tab-pane fade p-2" id="pills-images" [class.show]="activeTab === 'pills-images'"
+        [class.active]="activeTab === 'pills-images'">
+        <div class="d-flex justify-content-end gap-2 align-items-center">
+          <button *ngIf="token && parsedBlocks.length > 0" class="mb-2 btn-bg-primary-light txt-red"
+            (click)="downloadAllImages()">
+            Download All Images
+          </button>
+        </div>
+        <div *ngFor="let block of parsedBlocks; let i = index" class="report-container mb-4">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h3 class="title mb-0" style="flex: 1; min-width: 0;">
+              {{ i + 1 }}. {{ block?.title }} Images
+              <span *ngIf="block.images?.length" class="badge bg-danger ms-2 fs-11 fw-normal rounded-pill px-2" style="flex-shrink: 0;">
+                {{ block.images.length }} Images
+              </span>
+            </h3>
+            <div class="d-flex gap-2 flex-shrink-0">
+              <button *ngIf="token && block.images?.length" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+                (click)="toggleBlockImageViewMode(i)">
+                {{ (blockImageViewModes[i] || 'gallery') === 'gallery' ? 'View List' : 'View Gallery' }}
+              </button>
+              <button *ngIf="token && block.images?.length" class="btn-bg-primary-light txt-red fs-12 p-1 px-2"
+                (click)="downloadBlockImages(i)">
+                Download Page Images
+              </button>
+            </div>
+          </div>
+          <!-- Gallery View -->
+          <div class="row g-3 mt-2" *ngIf="block.images?.length && (blockImageViewModes[i] || 'gallery') === 'gallery'">
+            <div *ngFor="let img of block.images" class="col-6 col-md-4 col-lg-3">
+              <div class="image-gallery-item position-relative">
+                <a [href]="img.url" target="_blank" class="d-block" [title]="img.alt || 'Image'">
+                  <img [src]="img.url" class="img-fluid rounded border shadow-sm" [alt]="img.alt"
+                    style="height: 150px; width: 100%; object-fit: cover;">
+                </a>
+                <div *ngIf="img.alt" class="small text-muted mt-1 text-truncate" [title]="img.alt">
+                  {{ img.alt }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div class="mt-3" *ngIf="block.images?.length && (blockImageViewModes[i] || 'gallery') === 'list'">
+            <div class="code-editor-viewer overflow-auto">
+              <div class="editor-header">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+                <span class="file-name">Image Addresses</span>
+              </div>
+              <div class="editor-body text-start p-3 bg-light rounded-bottom" style="max-height: 300px; overflow-y: auto;">
+                <div *ngFor="let img of block.images; let j = index" class="d-flex justify-content-between align-items-center mb-1 pb-1 border-bottom border-light">
+                  <a [href]="img.url" target="_blank" class="text-break fs-12 text-primary text-decoration-none">
+                    {{ img.url }}
+                  </a>
+                  <button class="btn btn-sm p-0 px-2 ms-2 border" (click)="copyToClipboard(img.url, 'img_' + i + '_' + j)" title="Copy URL">
+                    <i class="fa" [ngClass]="copiedItem === 'img_' + i + '_' + j ? 'fa-check text-success' : 'fa-copy'"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div *ngIf="!block.images?.length" class="text-muted p-4 text-center">
+            No images extracted for this page.
+          </div>
+        </div>
       </div>
     </div>
 

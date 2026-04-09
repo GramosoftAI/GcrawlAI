@@ -32,7 +32,7 @@ export class QuoteSocketService {
 
   private createSocket(crawlId: string) {
     const token = this.localService.getAccessToken();
-    const baseUrl = environment.wsUrl || 'wss://gcrawl.gramopro.ai';
+    const baseUrl = environment.wsUrl || 'ws://127.0.0.1:8000';
     // Trying without trailing slash before query param
     const url = `${baseUrl}/ws/crawl/${crawlId}`;
 

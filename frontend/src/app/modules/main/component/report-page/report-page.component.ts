@@ -29,6 +29,7 @@ export class ReportPageComponent implements OnChanges {
   reportForm: FormGroup;
   activeSeoTab: string = 'xlsx';
   activeTab: string = 'pills-markdown';
+  blockImageViewModes: Record<number, 'gallery' | 'list'> = {};
   unSubscribe$ = new Subject();
   isFirstSelection: boolean = true;
   issueList = [
@@ -172,6 +173,8 @@ export class ReportPageComponent implements OnChanges {
       this.activeTab = 'pills-screenshot';
     } else if (this.formsvalue.enable_md) {
       this.activeTab = 'pills-markdown';
+    } else if (this.formsvalue.enable_images) {
+      this.activeTab = 'pills-images';
     } else if (this.formsvalue.enable_summary) {
       this.activeTab = 'pills-summary';
     } else if (this.formsvalue.enable_links) {
@@ -187,6 +190,31 @@ export class ReportPageComponent implements OnChanges {
 
   setActiveTab(tabId: string) {
     this.activeTab = tabId;
+  }
+
+  toggleBlockImageViewMode(index: number) {
+    const currentMode = this.blockImageViewModes[index] || 'gallery';
+    this.blockImageViewModes[index] = currentMode === 'gallery' ? 'list' : 'gallery';
+  }
+
+  downloadBlockImages(index: number) {
+    const block = this.parsedBlocks[index];
+    if (!block || !block.images || block.images.length === 0) {
+      this.toastr.info('No images to download for this page');
+      return;
+    }
+
+    const rawTitle = block.title ? block.title : block.url || 'report';
+    const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+
+    const urlList = block.images.map((img: any) => img.url).join('\n');
+    const blob = new Blob([urlList], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizedTitle}_images_list.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async parseBlock(block: any) {
@@ -206,6 +234,15 @@ export class ReportPageComponent implements OnChanges {
       }).join('\n');
     }
     const summaryContent = typeof block === 'string' ? null : block.summary || null;
+    let imagesContent = typeof block === 'string' ? null : block.images || null;
+
+    if (imagesContent && typeof imagesContent === 'string') {
+      try {
+        imagesContent = JSON.parse(imagesContent);
+      } catch (e) {
+        console.error('Error parsing images JSON:', e);
+      }
+    }
 
     // SEO sub-formats
     const seo_md = typeof block === 'string' ? null : block.seo_md || null;
@@ -298,6 +335,7 @@ export class ReportPageComponent implements OnChanges {
       links: linksContent,
       linksCount: linksCount,
       summary: summaryContent,
+      images: Array.isArray(imagesContent) ? imagesContent.map((img: any) => typeof img === 'string' ? { url: img, alt: '' } : img) : [],
       seo: {
         md: renderedSeoMd,
         raw_md: seo_md,
@@ -458,6 +496,32 @@ export class ReportPageComponent implements OnChanges {
     this.download(allHtml, 0, 'html', `${sanitizedTitle}_all_pages.html`);
   }
 
+  downloadAllImages() {
+    if (!this.parsedBlocks || this.parsedBlocks.length === 0) return;
+
+    const allImages = this.parsedBlocks
+      .filter(block => block.images && block.images.length > 0)
+      .flatMap(block => block.images);
+
+    if (allImages.length === 0) {
+      this.toastr.info('No images to download');
+      return;
+    }
+
+    const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
+    const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+
+    // Download as a list of URLs instead of a ZIP
+    const urlList = allImages.map((img: any) => img.url).join('\n');
+    const blob = new Blob([urlList], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizedTitle}_images_list.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   downloadAllSeoMd() {
     if (!this.parsedBlocks || this.parsedBlocks.length === 0) return;
     const allSeoMd = this.parsedBlocks
@@ -579,6 +643,18 @@ export class ReportPageComponent implements OnChanges {
       }
     }
 
+    // 7. Images
+    if (this.formsvalue?.enable_images) {
+      const allImages = this.parsedBlocks
+        .filter(block => block.images && block.images.length > 0)
+        .flatMap(block => block.images);
+
+      if (allImages.length > 0) {
+        const urlList = allImages.map((img: any) => img.url).join('\n');
+        folder.file('images_list.txt', urlList);
+      }
+    }
+
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -601,7 +677,8 @@ export class ReportPageComponent implements OnChanges {
       this.formsvalue?.enable_ss,
       this.formsvalue?.enable_seo,
       this.formsvalue?.enable_links,
-      this.formsvalue?.enable_summary
+      this.formsvalue?.enable_summary,
+      this.formsvalue?.enable_images
     ].filter(Boolean).length;
 
     if (enabledCount > 1) {
@@ -638,6 +715,9 @@ export class ReportPageComponent implements OnChanges {
         if (this.parsedBlocks[0]?.screenshot) {
           this.download(this.parsedBlocks[0].screenshot, 0, 'png');
         }
+        break;
+      case 'pills-images':
+        this.downloadAllImages();
         break;
     }
   }

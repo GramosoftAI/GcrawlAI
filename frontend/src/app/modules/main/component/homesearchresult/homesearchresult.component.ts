@@ -55,7 +55,7 @@ export class HomesearchresultComponent implements OnInit {
       enable_ss: 'Screenshots',
       enable_json: 'JSON',
       enable_brand: 'Branding',
-      enable_image: 'Images',
+      enable_images: 'Images',
       enable_seo: 'SEO'
     };
     const selected = Object.keys(labels).filter(k => this.crawlform.get(k)?.value);
@@ -78,7 +78,7 @@ export class HomesearchresultComponent implements OnInit {
       enable_links: [false],
       enable_summary: [false],
       enable_brand: [false],
-      enable_image: [false],
+      enable_images: [false],
       button: ['scrape', [Validators.required]],
       limit: [10, [Validators.min(1), Validators.max(100)]],
     });
@@ -129,6 +129,7 @@ export class HomesearchresultComponent implements OnInit {
           if (page.seo_md) this.getContent(page.seo_md, 'seo_md', page.page);
           if (page.seo_json) this.getContent(page.seo_json, 'seo_json', page.page);
           if (page.seo_xlsx) this.getContent(page.seo_xlsx, 'seo_xlsx', page.page);
+          if (page.images) this.getContent(page.images, 'images', page.page);
         });
         this.scrape = true;
       } else {
@@ -164,7 +165,7 @@ export class HomesearchresultComponent implements OnInit {
         enable_links: true,
         enable_summary: false,
         enable_brand: false,
-        enable_image: false
+        enable_images: false
       });
     } else if (value === 'search') {
       this.crawlform.patchValue({
@@ -176,7 +177,7 @@ export class HomesearchresultComponent implements OnInit {
         enable_json: true,
         enable_summary: false,
         enable_brand: false,
-        enable_image: false
+        enable_images: false
       });
     } else {
       this.crawlform.patchValue({
@@ -209,7 +210,7 @@ export class HomesearchresultComponent implements OnInit {
       enable_ss: 'Screenshots',
       enable_json: 'JSON',
       enable_brand: 'Branding',
-      enable_image: 'Images',
+      enable_images: 'Images',
       enable_seo: 'SEO'
     };
 
@@ -273,7 +274,7 @@ export class HomesearchresultComponent implements OnInit {
       return;
     }
 
-    const formats = ['enable_md', 'enable_html', 'enable_ss', 'enable_seo', 'enable_json', 'enable_links', 'enable_summary', 'enable_brand', 'enable_image'];
+    const formats = ['enable_md', 'enable_html', 'enable_ss', 'enable_seo', 'enable_json', 'enable_links', 'enable_summary', 'enable_brand', 'enable_images'];
     const anySelected = formats.some(key => this.crawlform.get(key)?.value);
 
     if (!anySelected) {
@@ -387,7 +388,7 @@ searchStart() {
         enable_links: true,
         enable_summary: false,
         enable_brand: false,
-        enable_image: false
+        enable_images: false
       });
     }
     this.crawlform.patchValue({
@@ -498,6 +499,14 @@ searchStart() {
               if (this.formdata?.crawl_mode !== 'links') this.pendingErrors.add('Generation failed for SEO Data');
             }
           }
+          if (this.formdata?.enable_images) {
+            if (this.isValidPath(data.images)) {
+              pagePaths.images = data.images;
+              this.getContent(data.images, 'images', data.page);
+            } else if (this.formdata?.crawl_mode !== 'links') {
+              this.pendingErrors.add('Generation failed for Images');
+            }
+          }
           this.savePagePaths(pagePaths);
 
         } else if (data?.type === 'crawl_completed') {
@@ -584,7 +593,7 @@ searchStart() {
     this.markdownBlocks.push(combined);
   }
 
-  getContent(path: any, type: 'markdown' | 'screenshot' | 'html' | 'links' | 'summary' | 'seo_json' | 'seo_md' | 'seo_xlsx', pageIndex?: number) {
+  getContent(path: any, type: 'markdown' | 'screenshot' | 'html' | 'links' | 'summary' | 'seo_json' | 'seo_md' | 'seo_xlsx' | 'images', pageIndex?: number) {
     debugger
     if (!path || this.visitedPaths.has(path)) return;
     this.visitedPaths.add(path);
@@ -609,6 +618,7 @@ searchStart() {
           if (type === 'markdown') content = content.markdown || content.content || content;
           if (type === 'screenshot') content = content.screenshot || content.image || content.content || content;
           if (type === 'html') content = content.html || content.engineHtml || content.content || content;
+          if (type === 'images') content = content.json || content.content || content;
         }
 
         // Failsafe serialization if it's still somehow an object, to prevent silent JS errors crashing marked parses.
@@ -633,7 +643,8 @@ searchStart() {
           'summary': 'summary',
           'seo_json': 'seo_json',
           'seo_md': 'seo_md',
-          'seo_xlsx': 'seo_xlsx'
+          'seo_xlsx': 'seo_xlsx',
+          'images': 'images'
         };
         const key = keyMap[type] || type;
 
@@ -708,6 +719,7 @@ searchStart() {
       enable_seo: historyResponse.pages.some((p: any) => p.seo_json || p.seo_md || p.seo_xlsx),
       enable_links: historyResponse.pages.some((p: any) => p.links_file_path || p.links),
       enable_ss: historyResponse.pages.some((p: any) => p.screenshot),
+      enable_images: historyResponse.pages.some((p: any) => p.images),
       enable_summary: historyResponse.pages.some((p: any) => p.summary_file),
       button: isCrawl ? 'crawl' : 'scrape'
     };
@@ -733,6 +745,7 @@ searchStart() {
       if (page.seo_json) this.getContent(page.seo_json, 'seo_json', index);
       if (page.seo_md) this.getContent(page.seo_md, 'seo_md', index);
       if (page.seo_xlsx) this.getContent(page.seo_xlsx, 'seo_xlsx', index);
+      if (page.images) this.getContent(page.images, 'images', index);
     });
 
     if (this.loadingCounter === 0) {
