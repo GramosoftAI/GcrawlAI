@@ -1,41 +1,92 @@
 .overlay {
     position: fixed;
-    display: block;
-    width: 100%;
-    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    height: 100vh;
     top: 0;
     left: 0;
-    background-color: rgba(74, 74, 74, 0.8);
-    z-index: 99;
-}
-
-
-
-.loader {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    border: 4px solid rgba(0, 0, 0, 0.2); 
-    border-top: 4px solid #1a237e; 
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     z-index: 99999;
-    animation: spin 1s linear infinite, changeColor 4s ease-in-out infinite;
+    transition: background-color 0.3s ease;
 }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+body.dark-theme .overlay {
+    background-color: rgba(15, 23, 42, 0.75); // a nice deep premium dark blue/gray
 }
 
-@keyframes changeColor {
-    0%, 50% {
-        border-top-color: #1a237e;
+.loader-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 250px;
+    height: 250px;
+}
+
+.loader-logo {
+    width: 180px;
+    z-index: 2;
+    animation: heartbeat 2s ease-in-out infinite;
+    filter: drop-shadow(0px 10px 20px rgba(0, 0, 0, 0.15));
+}
+
+body.dark-theme .loader-logo {
+    filter: drop-shadow(0px 10px 20px rgba(0, 0, 0, 0.5));
+}
+
+.glow-ring {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(33, 212, 150, 0.5) 0%, rgba(33, 212, 150, 0) 70%);
+    animation: expand-glow 2s cubic-bezier(0.165, 0.84, 0.44, 1) infinite;
+    z-index: 1;
+}
+
+.glow-ring:nth-child(2) {
+    background: radial-gradient(circle, rgba(5, 74, 145, 0.4) 0%, rgba(5, 74, 145, 0) 70%);
+    animation-delay: -1s;
+}
+
+body.dark-theme .glow-ring:nth-child(2) {
+    background: radial-gradient(circle, rgba(65, 136, 255, 0.4) 0%, rgba(65, 136, 255, 0) 70%);
+}
+
+@keyframes heartbeat {
+    0% {
+        transform: scale(1);
     }
-    50.1%, 100% {
-        border-top-color: #2196f3; 
+
+    15% {
+        transform: scale(1.05);
+    }
+
+    30% {
+        transform: scale(1);
+    }
+
+    45% {
+        transform: scale(1.03);
+    }
+
+    100% {
+        transform: scale(1);
     }
 }
 
+@keyframes expand-glow {
+    0% {
+        transform: scale(0.5);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(3.5);
+        opacity: 0;
+    }
+}

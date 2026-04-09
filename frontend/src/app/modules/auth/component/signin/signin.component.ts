@@ -25,6 +25,7 @@ export class SigninComponent {
   hideConfirmPassword: boolean = true;
   hidePassword: boolean = true;
   Isforgot: boolean = false;
+  isLoading: boolean = false;
   firstLogin: any;
   activeTab: 'login' | 'signup' = 'signup';
   jsonData = JSON.stringify({
@@ -38,7 +39,7 @@ export class SigninComponent {
 
   constructor(private fb: FormBuilder, private toastr: ToastrService, private localService: LocalStorageService, private apiService: ApiService, private authService: AuthService, private router: Router, public ds: DependencyService, public dialog: MatDialog) {
     this.loginForm = this.fb.group({
-      email: new FormControl('', [Validators.required]),
+      email: new FormControl('', [Validators.required, Validators.email]),
       password: new FormControl('', [Validators.required, Validators.minLength(8), Validators.pattern(/^(?=.*[0-9])(?=.*[!@#$%^&*])[A-Za-z0-9!@#$%^&*]{8,}$/)]),
       name: new FormControl('', [Validators.required]),
       firstLogin: new FormControl(false, [Validators.required])
@@ -54,6 +55,10 @@ export class SigninComponent {
   }
 
   ngOnInit(): void {
+    if (this.authService.isLoggedIn()) {
+      this.router.navigate(['/app']);
+    }
+
     this.firstLogin = this.localService.getfirstLogin();
     if (this.firstLogin) {
       this.activeTab = 'login';
@@ -97,6 +102,11 @@ export class SigninComponent {
   get f() { return this.loginForm.controls; }
 
   OnSubmit() {
+    if (this.loginForm.invalid) {
+      this.loginForm.markAllAsTouched();
+      return;
+    }
+
     if (this.activeTab === 'login') {
       this.loginSubmit();
     } else {
@@ -109,14 +119,22 @@ export class SigninComponent {
     if (this.loginForm.invalid) {
       return
     }
-    this.apiService.post(URLS.signin, this.loginForm.value, { type: 'LO' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
-      if (res.status === "success") {
-        this.toastr.success('Signin Sucessfully')
-        this.authService.login(res);
-      } else {
-        this.toastr.error('Failed')
+    this.isLoading = true;
+    this.apiService.post(URLS.signin, this.loginForm.value, { type: 'LO' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe({
+      next: (res: any) => {
+        this.isLoading = false;
+        if (res.status === "success") {
+          this.toastr.success('Signin Sucessfully')
+          this.authService.login(res);
+        } else {
+          this.toastr.error('Failed')
+        }
+      },
+      error: () => {
+        this.isLoading = false;
+        this.toastr.error('An error occurred');
       }
-    })
+    });
   }
 
   signUpSubmit() {
@@ -124,16 +142,29 @@ export class SigninComponent {
     if (this.loginForm.invalid) {
       return
     }
-    this.apiService.post(URLS.signup, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe((res: any) => {
-      if (res.status === "success") {
-        this.toastr.success(res.message);
-        this.openOtpModal();
+    this.isLoading = true;
+    this.apiService.post(URLS.signup, this.loginForm.value, { type: 'NT' }, this.loginForm.value.user_type == 'V' ? 'TRUE' : 'FALSE').pipe((takeUntil(this.unSubscribe$))).subscribe({
+      next: (res: any) => {
+        this.isLoading = false;
+        if (res.status === "success") {
+          this.toastr.success(res.message);
+          this.openOtpModal();
+        } else {
+          this.toastr.error('Signup Failed');
+        }
+      },
+      error: () => {
+        this.isLoading = false;
+        this.toastr.error('An error occurred');
       }
-    })
+    });
   }
 
   openOtpModal() {
     ($('#OTPModel') as any).modal('show');
+    if (this.childOTP) {
+      this.childOTP.startTimer();
+    }
   }
 
   onOtpSubmit(otp: string) {

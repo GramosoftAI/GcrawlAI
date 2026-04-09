@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { Subject } from 'rxjs';
 import { LoaderService } from 'src/app/services/loader-service';
+import { ThemeService } from 'src/app/services/theme.service';
 
 @Component({
   selector: 'app-loader',
@@ -9,8 +10,8 @@ import { LoaderService } from 'src/app/services/loader-service';
 })
 export class LoaderComponent {
   showLoader: Subject<boolean> = this.loaderService.showLoader;
-  
-  constructor(private loaderService:LoaderService) { }
+
+  constructor(private loaderService: LoaderService, public themeService: ThemeService) { }
 
   ngOnInit(): void {
   }

@@ -4,13 +4,13 @@
 
     <div class="column col-json">
       <div class="crawl-wrapper speed-slow">
-        <pre *ngFor="let i of [1,2,3,4,5]">{{ jsonData }}</pre>
+        <pre *ngFor="let i of [1, 2, 3, 4, 5]">{{ jsonData }}</pre>
       </div>
     </div>
 
     <div class="column col-md">
       <div class="crawl-wrapper speed-medium">
-        <div class="md-block" *ngFor="let i of [1,2,3,4,5]">
+        <div class="md-block" *ngFor="let i of [1, 2, 3, 4, 5]">
           <h3>## CRAWL_RESPONSE_STREAM</h3>
           <p>* TARGET_URL: https://example.com</p>
           <p>* STATUS: SCRAPING_IN_PROGRESS</p>
@@ -20,16 +20,13 @@
           <p>> PARSING_DOM_STRUCTURE...</p>
           <p>> EXTRACTING_METADATA...</p>
         </div>
-
       </div>
     </div>
 
     <div class="column col-logs">
       <div class="crawl-wrapper speed-fast">
         <div *ngFor="let log of logs">{{ log }}</div>
-        <div *ngFor="let i of [1,2,3,4,5]">
-          0x4F 0xAC 0x22 0x11 0x88
-        </div>
+        <div *ngFor="let i of [1, 2, 3, 4, 5]">0x4F 0xAC 0x22 0x11 0x88</div>
       </div>
     </div>
   </div>
@@ -42,10 +39,18 @@
       </div>
 
       <div class="tab-switch d-flex mb-4" *ngIf="!Isforgot">
-        <button class="tab-btn" [class.active]="activeTab === 'login'" (click)="activeTab = 'login'">
+        <button
+          class="tab-btn"
+          [class.active]="activeTab === 'login'"
+          (click)="activeTab = 'login'"
+        >
           Log In
         </button>
-        <button class="tab-btn" [class.active]="activeTab === 'signup'" (click)="activeTab = 'signup'">
+        <button
+          class="tab-btn"
+          [class.active]="activeTab === 'signup'"
+          (click)="activeTab = 'signup'"
+        >
           Sign Up
         </button>
       </div>
@@ -53,21 +58,39 @@
       <form [formGroup]="loginForm" (ngSubmit)="OnSubmit()" *ngIf="!Isforgot">
         <div class="mb-3">
           <label class="form-label">Email</label>
-          <input type="email" formControlName="email" class="form-control" />
+          <input
+            placeholder="example123@gmail.com"
+            type="email"
+            formControlName="email"
+            class="form-control"
+          />
 
           <div class="text-danger" *ngIf="loginForm.get('email')?.touched">
             <small *ngIf="loginForm.get('email')?.errors?.['required']">
               Email is required
             </small>
+            <small *ngIf="loginForm.get('email')?.errors?.['email']">
+              Invalid email format
+            </small>
           </div>
         </div>
         <div class="mb-4 position-relative">
           <label class="form-label">Password</label>
-          <input [type]="hidePassword ? 'password' : 'text'" formControlName="password"
-            class="form-control position-relative" />
-          <button type="button" class="btn btn-outline-secondary confirm-visible"
-            (click)="hidePassword = !hidePassword">
-            <i class="fa" [ngClass]="hidePassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          <input
+            placeholder="Welcome#3"
+            [type]="hidePassword ? 'password' : 'text'"
+            formControlName="password"
+            class="form-control position-relative"
+          />
+          <button
+            type="button"
+            class="btn btn-outline-secondary confirm-visible"
+            (click)="hidePassword = !hidePassword"
+          >
+            <i
+              class="fa"
+              [ngClass]="hidePassword ? 'fa-eye-slash' : 'fa-eye'"
+            ></i>
           </button>
 
           <div class="text-danger" *ngIf="loginForm.get('password')?.touched">
@@ -83,29 +106,56 @@
           </div>
         </div>
 
-        <button class="btn btn-orange w-100" type="submit">
-          {{ activeTab === 'signup' ? 'Create Account' : 'Log In' }}
+        <button
+          class="btn btn-orange w-100"
+          type="submit"
+          [disabled]="isLoading"
+        >
+          <span *ngIf="!isLoading">{{
+            activeTab === "signup" ? "Create Account" : "Log In"
+          }}</span>
+          <span *ngIf="isLoading">Please wait...</span>
         </button>
-        <div class="d-flex justify-content-start w-100 mt-1" (click)="forgot()">
+        <!-- <div class="d-flex justify-content-start w-100 mt-1" (click)="forgot()">
           Forgot password
-        </div>
+        </div> -->
       </form>
 
-      <form *ngIf="Isforgot" [formGroup]="passwordForm" (ngSubmit)="changePassword()">
+      <form
+        *ngIf="Isforgot"
+        [formGroup]="passwordForm"
+        (ngSubmit)="changePassword()"
+      >
         <div class="mb-4 position-relative">
           <label class="form-label">New Password</label>
-          <input [type]="hideNewPassword ? 'password' : 'text'" formControlName="newpassword"
-            class="form-control position-relative" />
-          <button type="button" class="btn btn-outline-secondary confirm-visible"
-            (click)="hideNewPassword = !hideNewPassword">
-            <i class="fa" [ngClass]="hideNewPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          <input
+            [type]="hideNewPassword ? 'password' : 'text'"
+            formControlName="newpassword"
+            class="form-control position-relative"
+          />
+          <button
+            type="button"
+            class="btn btn-outline-secondary confirm-visible"
+            (click)="hideNewPassword = !hideNewPassword"
+          >
+            <i
+              class="fa"
+              [ngClass]="hideNewPassword ? 'fa-eye-slash' : 'fa-eye'"
+            ></i>
           </button>
 
-          <div class="text-danger" *ngIf="passwordForm.get('newpassword')?.touched">
-            <small *ngIf="passwordForm.get('newpassword')?.errors?.['required']">
+          <div
+            class="text-danger"
+            *ngIf="passwordForm.get('newpassword')?.touched"
+          >
+            <small
+              *ngIf="passwordForm.get('newpassword')?.errors?.['required']"
+            >
               Password is required
             </small>
-            <small *ngIf="passwordForm.get('newpassword')?.errors?.['minlength']">
+            <small
+              *ngIf="passwordForm.get('newpassword')?.errors?.['minlength']"
+            >
               Password must be at least 8 characters
             </small>
             <small *ngIf="passwordForm.get('newpassword')?.errors?.['pattern']">
@@ -116,26 +166,48 @@
 
         <div class="mb-4 position-relative">
           <label class="form-label">Confirm Password</label>
-          <input [type]="hideConfirmPassword ? 'password' : 'text'" formControlName="confirmpassword"
-            class="form-control position-relative" />
-          <button type="button" class="btn btn-outline-secondary new-visible"
-            (click)="hideConfirmPassword = !hideConfirmPassword">
-            <i class="fa" [ngClass]="hideConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          <input
+            [type]="hideConfirmPassword ? 'password' : 'text'"
+            formControlName="confirmpassword"
+            class="form-control position-relative"
+          />
+          <button
+            type="button"
+            class="btn btn-outline-secondary new-visible"
+            (click)="hideConfirmPassword = !hideConfirmPassword"
+          >
+            <i
+              class="fa"
+              [ngClass]="hideConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"
+            ></i>
           </button>
 
-          <div class="text-danger" *ngIf="passwordForm.get('confirmpassword')?.touched">
-            <small *ngIf="passwordForm.get('confirmpassword')?.errors?.['required']">
+          <div
+            class="text-danger"
+            *ngIf="passwordForm.get('confirmpassword')?.touched"
+          >
+            <small
+              *ngIf="passwordForm.get('confirmpassword')?.errors?.['required']"
+            >
               Confirm password is required
             </small>
-            <small *ngIf="passwordForm.get('confirmpassword')?.errors?.['mismatch']">
+            <small
+              *ngIf="passwordForm.get('confirmpassword')?.errors?.['mismatch']"
+            >
               Passwords do not match
             </small>
           </div>
         </div>
-        <button class="btn btn-orange w-100" type="submit" [disabled]="passwordForm.invalid">
+        <button
+          class="btn btn-orange w-100"
+          type="submit"
+          [disabled]="passwordForm.invalid"
+        >
           Submit
         </button>
-          <p class="text-end pt-1">Back to <a (click)="this.activeTab = 'login'">Login?</a></p>
+        <p class="text-end pt-1">
+          Back to <a (click)="this.activeTab = 'login'">Login?</a>
+        </p>
       </form>
     </div>
   </div>
@@ -143,5 +215,9 @@
 
 <!-- <app-otp-modal (validateEvent)="validateOtp($event)" [otpFor]="'LS'"></app-otp-modal> -->
 
-<app-otp-modal (validateEvent)="onOtpSubmit($event)" (resendOtpEvent)="signUpSubmit()" [otpFor]="'LS'">
+<app-otp-modal
+  (validateEvent)="onOtpSubmit($event)"
+  (resendOtpEvent)="signUpSubmit()"
+  [otpFor]="'LS'"
+>
 </app-otp-modal>

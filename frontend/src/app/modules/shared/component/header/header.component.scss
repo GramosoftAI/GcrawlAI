@@ -4,6 +4,10 @@
   object-fit: cover;
 }
 
+.cursor {
+  cursor: pointer;
+}
+
 .fav-icons {
   width: 20px;
   height: 20px;
@@ -21,9 +25,9 @@
 
 
 .btn-danger-soft {
-  background: rgba(255, 89, 94, 0.1);
-  color: var(--danger);
-  padding: 8px 16px;
+  background: rgb(246 68 73 / 93%);
+  color: #eae5e5;
+  padding: 5px 13px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
@@ -31,19 +35,21 @@
 }
 
 .btn-danger-soft:hover {
-  background: rgba(255, 89, 94, 0.2);
+  background: rgb(246 68 73 / 93%);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 20px;
 }
 
 .btn-outline {
   border: 1px solid var(--card-border);
   color: var(--text-main);
-  padding: 8px 16px;
+  padding: 3px 15px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
@@ -57,45 +63,116 @@
   background: var(--tab-hover);
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
+/* Responsive adjustments and Offcanvas */
+@media (max-width: 991.98px) {
   .logo img {
     width: 90px;
   }
 
+  .btn-outline,
+  .btn-danger-soft,
+  .btn-bg-primary {
+    padding: 10px 15px;
+    font-size: 14px;
+    margin-right: 0;
+  }
+
+  .gh-star-btn {
+    font-size: 14px;
+    width: 100%;
+    margin-right: 0 !important;
+    display: flex;
+  }
+
+  .gh-star-main {
+    flex: 1;
+    justify-content: center;
+  }
+
   .header-actions {
-    gap: 10px;
-  }
-
-  .btn-outline {
-    padding: 6px 12px;
-    font-size: 12px;
-  }
-
-  .btn-danger-soft {
-    padding: 6px 12px;
-    font-size: 12px;
+    gap: 12px;
   }
 }
 
-@media (max-width: 480px) {
-  .logo img {
-    width: 80px;
-  }
+.btn-light {
+  padding: 3px 12px;
+}
 
-  .header-actions {
-    gap: 8px;
-  }
+/* ── GitHub Star Button ── */
+.gh-star-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--card-border, rgba(0, 0, 0, 0.18));
+  font-size: 12px;
+  font-weight: 600;
+  transition: opacity 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
-  .btn-outline,
-  .btn-danger-soft {
-    padding: 5px 10px;
-    font-size: 11px;
+  &:hover {
+    opacity: 0.85;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
+}
 
-  /* Hide text on very small screens if needed, or adjust layout */
-  .btn-light.fs-13 {
-    font-size: 11px !important;
-    padding: 4px !important;
+.gh-star-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--card-bg, #f6f8fa);
+  color: var(--text-main);
+  border-right: 1px solid var(--card-border, rgba(0, 0, 0, 0.15));
+}
+
+.gh-icon {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  filter: var(--gh-icon-filter, none);
+}
+
+.gh-star-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--tab-bg, rgba(0, 0, 0, 0.04));
+  color: var(--text-main);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 11px;
+}
+
+
+.header-fixed {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1000;
+}
+
+.logout-img {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+}
+
+:host-context(body.dark-theme) {
+
+  .gh-icon,
+  .logout-img {
+    filter: invert(1);
+  }
+}
+
+:host-context(body.light-theme) {
+
+  .gh-icon,
+  .logout-img {
+    filter: none;
   }
 }
