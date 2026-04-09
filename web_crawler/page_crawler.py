@@ -9,6 +9,7 @@ import json
 import os
 import re
 import yaml
+import base64
 from typing import Optional, Dict
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
@@ -27,6 +28,7 @@ from web_crawler.websocket_manager import WebSocketManager
 from web_crawler.utils import normalize_url
 from web_crawler.redis_events import publish_event
 from web_crawler.proxy_manager import ProxyManager
+from web_crawler.artifact_store import upsert_crawl_artifact
 
 
 logger = logging.getLogger(__name__)
@@ -178,6 +180,45 @@ def _persist_crawl_event(
             except Exception:
                 pass
 
+
+def _store_crawl_artifact(
+    crawl_id: Optional[str],
+    artifact_type: str,
+    content,
+    *,
+    content_kind: str = "text",
+    page_url: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Optional[str]:
+    if not crawl_id or content is None:
+        return None
+
+    conn = None
+    try:
+        conn = _get_db_conn()
+        artifact_ref = upsert_crawl_artifact(
+            conn,
+            crawl_id=crawl_id,
+            page_url=page_url,
+            artifact_type=artifact_type,
+            content=content,
+            content_kind=content_kind,
+            title=title,
+        )
+        conn.commit()
+        return artifact_ref
+    except Exception as db_err:
+        logger.warning(
+            f"⚠ Could not persist crawl artifact '{artifact_type}' for {page_url or crawl_id}: {db_err}"
+        )
+        return None
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 class PageCrawler:
     """Handle individual page crawling"""
     
@@ -272,43 +313,79 @@ class PageCrawler:
             if enable_seo:
                 try:
                     writer = CrawlReportWriter(self.config.output_dir)
-                    seo_json_path = writer.save_single_json(prefix, seo)
-                    seo_md_path = writer.save_single_markdown(prefix, seo)
-                    seo_xlsx_path = writer.save_single_excel(prefix, seo)
+                    seo_json_path = _store_crawl_artifact(
+                        client_id,
+                        "seo_json",
+                        writer.render_single_json(seo),
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
+                    seo_md_path = _store_crawl_artifact(
+                        client_id,
+                        "seo_md",
+                        writer.render_single_markdown(seo),
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
+                    seo_xlsx_path = _store_crawl_artifact(
+                        client_id,
+                        "seo_xlsx",
+                        writer.render_single_excel_base64(seo),
+                        content_kind="binary",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save per-page SEO report for {url}: {e}")
             
-            # Save HTML
+            html_content = None
             if enable_html:
-                html_path = str(self.config.html_dir / f"{prefix}.html")
                 try:
-                    with open(html_path, "w", encoding="utf-8") as f:
-                        f.write(html)
+                    html_content = html
+                    html_path = _store_crawl_artifact(
+                        client_id,
+                        "html",
+                        html_content,
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save HTML for {url}: {e}")
             
-            # Save markdown (per page file)
+            markdown = None
             if enable_md:
                 try:
                     markdown = self.content_processor.convert_to_markdown(html, url)
-                    # md_filename = f"{count}_{title_safe}.md"
-                    # md_path = Path(self.config.output_dir) / md_filename
-                    md_path = str(self.config.md_dir / f"{prefix}.md")
-                    
-                    with open(md_path, "w", encoding="utf-8") as f:
-                        f.write(markdown)
+                    md_path = _store_crawl_artifact(
+                        client_id,
+                        "markdown",
+                        markdown,
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save markdown for {url}: {e}")
 
-            # Save screenshot
+            screenshot_b64 = None
             if enable_ss:
-                screenshot_path = str(self.config.screenshot_dir / f"{prefix}.png")
                 try:
-                    # Scroll back to top before capturing full page screenshot
-                    # to ensure fixed headers/elements render in their correct initial positions.
                     page.evaluate("window.scrollTo(0, 0)")
-                    page.wait_for_timeout(1000) # Give UI elements a moment to settle
-                    page.screenshot(path=screenshot_path, full_page=True)
+                    page.wait_for_timeout(1000)
+                    screenshot_b64 = base64.b64encode(
+                        page.screenshot(full_page=True)
+                    ).decode("utf-8")
+                    screenshot_path = _store_crawl_artifact(
+                        client_id,
+                        "screenshot",
+                        screenshot_b64,
+                        content_kind="binary",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save screenshot for {url}: {e}")
 
