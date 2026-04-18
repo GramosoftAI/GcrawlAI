@@ -11,7 +11,7 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from web_crawler.search_engine import execute_search_router
+from web_crawler.search.search_engine import execute_search_router
 
 logger = logging.getLogger(__name__)
 
