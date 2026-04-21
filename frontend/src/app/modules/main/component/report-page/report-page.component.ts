@@ -3,9 +3,15 @@ import { marked } from 'marked';
 import * as XLSX from 'xlsx';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { LocalStorageService } from 'src/app/services/localstorage-service';
-import { FormBuilder, FormGroup } from '@angular/forms';
+import { FormArray, FormBuilder, FormControl, FormGroup } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import * as JSZip from 'jszip';
+import { ToastrService } from 'ngx-toastr';
+import { Clipboard } from '@angular/cdk/clipboard';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { ApiService } from 'src/app/services/api.service';
+import { URLS } from 'src/app/configs/api.config';
+import { Subject, takeUntil } from 'rxjs';
 
 @Component({
   selector: 'app-report-page',
@@ -14,35 +20,105 @@ import * as JSZip from 'jszip';
 })
 export class ReportPageComponent implements OnChanges {
   token: any;
+  formValues: any;
+  userdetails: any;
   @Input() blocks: any[] = [];
   @Input() formsvalue: any;
+  @Input() isCompleted: boolean = false;
   parsedBlocks: any[] = [];
   reportForm: FormGroup;
   activeSeoTab: string = 'xlsx';
   activeTab: string = 'pills-markdown';
+  blockImageViewModes: Record<number, 'gallery' | 'list'> = {};
+  unSubscribe$ = new Subject();
   isFirstSelection: boolean = true;
+  issueList = [
+    'Missing content',
+    'Bot protections',
+    'Formatting issues'
+  ];
   private parsedCache = new Map<any
     , any>();
 
-  constructor(private sanitizer: DomSanitizer, private router: Router, private localService: LocalStorageService, private Fb: FormBuilder) {
-    this.reportForm = this.Fb.group({
-
-    })
+  constructor(private fb: FormBuilder, private snackBar: MatSnackBar, private clipboard: Clipboard, private sanitizer: DomSanitizer, private toastr: ToastrService, private router: Router, private localService: LocalStorageService, private Fb: FormBuilder, private apiService: ApiService) {
+    this.reportForm = this.fb.group({
+      url_affected: [''],
+      email: [''],
+      issue_related_to: this.fb.array([]),
+      other_issue: [''],
+      explanation: ['']
+    });
   }
 
   ngOnInit(): void {
+    debugger
+    this.userdetails = this.localService.getUserDetails();
     this.token = this.localService.getAccessToken();
-    console.log('token', this.token)
+    this.formValues = this.localService.getformDetails();
+    this.reportForm.patchValue({
+      url_affected: this.formValues?.url,
+      email: this.userdetails?.user?.email
+    });
+    this.reportForm.get('url_affected')?.disable();
+    this.reportForm.get('email')?.disable();
+  }
+
+  get issues(): FormArray {
+    return this.reportForm.get('issue_related_to') as FormArray;
+  }
+
+  onIssueChange(event: any) {
+
+    const value = event.target.value;
+
+    if (event.target.checked) {
+      this.issues.push(new FormControl(value));
+    } else {
+      const index = this.issues.controls
+        .findIndex(ctrl => ctrl.value === value);
+
+      if (index !== -1) {
+        this.issues.removeAt(index);
+      }
+    }
+  }
+
+  submitReport() {
+    debugger
+    const formValue = this.reportForm.getRawValue();
+    let issues = [...formValue.issue_related_to];
+    if (formValue.other_issue &&
+      formValue.other_issue.trim() !== '') {
+      issues.push(formValue.other_issue.trim());
+    }
+
+    const payload = {
+      url_affected: formValue.url_affected,
+      email: formValue.email,
+      issue_related_to: issues,
+      explanation: formValue.explanation
+    };
+    // console.log(payload);
+    this.apiService.post(URLS.report_Issue, payload, { type: 'NT' }).pipe(takeUntil(this.unSubscribe$)).subscribe((res: any) => {
+      if (res.status === 'success') {
+        ($('#exampleModal') as any).modal('hide');
+        this.toastr.success(res.message);
+        this.reportForm.reset();
+        this.issues.clear();
+      } else {
+        this.toastr.error('Failed');
+      }
+    });
   }
 
   isLogin() {
     this.localService.setfirstLogin(true)
-    this.router.navigate(['/auth'])
+    this.router.navigate(['/login'])
   }
 
   ngOnChanges(changes: SimpleChanges) {
+    debugger
     this.formsvalue = this.formsvalue
-    console.log('formsvalue', this.formsvalue)
     this.localService.setformDetails(this.formsvalue)
 
     // If blocks are reset (new crawl started), reset selection flag
@@ -65,6 +141,10 @@ export class ReportPageComponent implements OnChanges {
           if (this.parsedCache.has(block)) {
             return this.parsedCache.get(block);
           }
+          // The block might already be fully parsed out if coming from historical state
+          // where homesearchresult component maps it manually into full objects. 
+          // If the block is an object and already has `html`/`raw`/etc., we might not need full parsing.
+          // But `parseBlock` handles those object blocks too, so we pass it gracefully.
           const parsed = await this.parseBlock(block);
           this.parsedCache.set(block, parsed);
           return parsed;
@@ -72,6 +152,17 @@ export class ReportPageComponent implements OnChanges {
 
         Promise.all(promises).then(parsed => {
           this.parsedBlocks = parsed;
+          if (this.isCrawlMode()) {
+            this.snackBar.open(
+              `Total Pages: ${this.parsedBlocks.length} / 10`,
+              'Close',
+              {
+                duration: 8000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom'
+              }
+            );
+          }
         });
       }
     }
@@ -82,6 +173,8 @@ export class ReportPageComponent implements OnChanges {
       this.activeTab = 'pills-screenshot';
     } else if (this.formsvalue.enable_md) {
       this.activeTab = 'pills-markdown';
+    } else if (this.formsvalue.enable_images) {
+      this.activeTab = 'pills-images';
     } else if (this.formsvalue.enable_summary) {
       this.activeTab = 'pills-summary';
     } else if (this.formsvalue.enable_links) {
@@ -99,14 +192,57 @@ export class ReportPageComponent implements OnChanges {
     this.activeTab = tabId;
   }
 
+  toggleBlockImageViewMode(index: number) {
+    const currentMode = this.blockImageViewModes[index] || 'gallery';
+    this.blockImageViewModes[index] = currentMode === 'gallery' ? 'list' : 'gallery';
+  }
+
+  downloadBlockImages(index: number) {
+    const block = this.parsedBlocks[index];
+    if (!block || !block.images || block.images.length === 0) {
+      this.toastr.info('No images to download for this page');
+      return;
+    }
+
+    const rawTitle = block.title ? block.title : block.url || 'report';
+    const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+
+    const urlList = block.images.map((img: any) => img.url).join('\n');
+    const blob = new Blob([urlList], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizedTitle}_images_list.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async parseBlock(block: any) {
     debugger
-    console.log('Parsing block:', block);
-    const md = typeof block === 'string' ? block : block.markdown || '';
+    // console.log('Parsing block:', block);
+    const md = typeof block === 'string' ? block : (block.markdown || block.raw || block.content || '');
     const ss = typeof block === 'string' ? null : block.screenshot || null;
     const htmlContent = typeof block === 'string' ? null : block.engineHtml || null;
-    const linksContent = typeof block === 'string' ? null : block.links || null;
+    let linksContent = typeof block === 'string' ? null : block.links || null;
+    let linksCount = 0;
+    if (linksContent) {
+      const parsedLinks = linksContent.split('\n').filter((l: string) => l.trim().length > 0);
+      linksCount = parsedLinks.length;
+      linksContent = parsedLinks.map((link: string, idx: number) => {
+        const cleanLink = link.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '');
+        return `${idx + 1}. ${cleanLink}`;
+      }).join('\n');
+    }
     const summaryContent = typeof block === 'string' ? null : block.summary || null;
+    let imagesContent = typeof block === 'string' ? null : block.images || null;
+
+    if (imagesContent && typeof imagesContent === 'string') {
+      try {
+        imagesContent = JSON.parse(imagesContent);
+      } catch (e) {
+        console.error('Error parsing images JSON:', e);
+      }
+    }
 
     // SEO sub-formats
     const seo_md = typeof block === 'string' ? null : block.seo_md || null;
@@ -127,71 +263,146 @@ export class ReportPageComponent implements OnChanges {
     const urlLine = lines.find((l: string) => l.startsWith('URL:'));
     const url = urlLine ? urlLine.replace('URL:', '').trim() : '';
 
-    // Parse XLSX if available
     let xlsxTable: any[] = [];
     if (seo_xlsx) {
       try {
-        const workbook = XLSX.read(seo_xlsx, { type: 'base64' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        xlsxTable = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        let base64Data = seo_xlsx;
+        if (typeof seo_xlsx === 'string') {
+          // Strip data URI prefix if present
+          base64Data = seo_xlsx.includes('base64,') ? seo_xlsx.split('base64,')[1] : seo_xlsx;
+          const workbook = XLSX.read(base64Data, { type: 'base64' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          xlsxTable = XLSX.utils.sheet_to_json(worksheet);
+        } else {
+          this.toastr.warning('seo_xlsx is not a string:', typeof seo_xlsx);
+        }
       } catch (e) {
         console.error('Error parsing XLSX:', e);
       }
     }
 
+    // Parse JSON directly to build comprehensive table rows
+    let parsedJsonData = null;
+    if (seo_json) {
+      try {
+        parsedJsonData = typeof seo_json === 'string' ? JSON.parse(seo_json) : seo_json;
+        // Unwrap nested data object if it exists (e.g. { url: "...", data: { title: "..." } })
+        if (parsedJsonData && parsedJsonData.data) {
+          parsedJsonData = parsedJsonData.data;
+        }
+      } catch (e) {
+        console.error('Error parsing SEO JSON:', e);
+      }
+    }
+
+    let finalTitle = title;
+    let finalUrl = url;
+
+    if (typeof block === 'object' && block.title) {
+      finalTitle = block.title;
+    } else if (finalTitle === 'Untitled' || !finalTitle) {
+      if (parsedJsonData?.title) {
+        finalTitle = parsedJsonData.title;
+      } else if (xlsxTable && xlsxTable.length > 0 && xlsxTable[0].title) {
+        finalTitle = xlsxTable[0].title;
+      } else if (renderedSeoMd) {
+        const seoLines = renderedSeoMd.split('\n');
+        const titleLine = seoLines.find((l: string) => l.startsWith('Title:'));
+        if (titleLine) finalTitle = titleLine.replace('Title:', '').trim();
+      }
+    }
+
+    if (!finalUrl) {
+      if (parsedJsonData?.url) {
+        finalUrl = parsedJsonData.url;
+      } else if (xlsxTable && xlsxTable.length > 0 && xlsxTable[0].url) {
+        finalUrl = xlsxTable[0].url;
+      } else if (renderedSeoMd) {
+        const seoLines = renderedSeoMd.split('\n');
+        const urlLine = seoLines.find((l: string) => l.startsWith('URL:'));
+        if (urlLine) finalUrl = urlLine.replace('URL:', '').trim();
+      }
+    }
+
     return {
-      title,
+      title: finalTitle,
       subtitle,
       html: this.sanitizer.bypassSecurityTrustHtml(renderedMd),
       raw: md,
       screenshot: ss,
       rawHtml: htmlContent,
       links: linksContent,
+      linksCount: linksCount,
       summary: summaryContent,
+      images: Array.isArray(imagesContent) ? imagesContent.map((img: any) => typeof img === 'string' ? { url: img, alt: '' } : img) : [],
       seo: {
         md: renderedSeoMd,
         raw_md: seo_md,
         json: seo_json,
+        parsedJsonData: parsedJsonData,
         xlsx: seo_xlsx,
         xlsxTable: xlsxTable
       },
-      url
+      url: finalUrl
     };
   }
 
-  get consolidatedXlsxTable(): any[] {
-    if (!this.parsedBlocks || this.parsedBlocks.length === 0) return [];
+  get consolidatedXlsxTable(): { headers: string[], rows: any[] } {
+    if (!this.parsedBlocks || this.parsedBlocks.length === 0) return { headers: [], rows: [] };
 
-    let headers: any[] = [];
+    let headersSet = new Set<string>();
     let allDataRows: any[] = [];
 
     this.parsedBlocks.forEach(block => {
-      if (block.seo?.xlsxTable && block.seo.xlsxTable.length > 0) {
-        if (headers.length === 0) {
-          headers = block.seo.xlsxTable[0];
-        }
-        const dataRows = block.seo.xlsxTable.slice(1);
-        allDataRows = [...allDataRows, ...dataRows];
+      // Prioritize raw JSON metric data since it maps accurately
+      if (block.seo?.parsedJsonData) {
+        const rowData = { ...block.seo.parsedJsonData };
+        Object.keys(rowData).forEach(key => {
+          if (Array.isArray(rowData[key])) {
+            rowData[key] = rowData[key].join(', ');
+          }
+          headersSet.add(key);
+        });
+        allDataRows.push(rowData);
+      }
+      // Fallback to parsed XLSX Table
+      else if (block.seo?.xlsxTable && block.seo.xlsxTable.length > 0) {
+        block.seo.xlsxTable.forEach((row: any) => {
+          allDataRows.push(row);
+          Object.keys(row).forEach(k => headersSet.add(k));
+        });
       }
     });
 
-    if (headers.length === 0) return [];
-    return [headers, ...allDataRows];
+    return {
+      headers: Array.from(headersSet),
+      rows: allDataRows
+    };
   }
 
   parseSeoMd(md: string): { label: string, value: string }[] {
     if (!md) return [];
+    // Regular expression to handle "Label: Value" format, ignoring header lines starting with #
     return md.split('\n')
       .map(line => line.trim())
-      .filter(line => line.includes(':'))
+      .filter(line => line.includes(':') && !line.startsWith('#'))
       .map(line => {
-        const parts = line.split(':');
+        const index = line.indexOf(':');
         return {
-          label: parts[0].trim(),
-          value: parts.slice(1).join(':').trim()
+          label: line.substring(0, index).trim(),
+          value: line.substring(index + 1).trim()
         };
-      });
+      })
+      .filter(item => item.label && item.value);
+  }
+
+  isScrapeMode(): boolean {
+    return this.formsvalue?.button === 'scrape';
+  }
+
+  isCrawlMode(): boolean {
+    return this.formsvalue?.button === 'crawl';
   }
 
 
@@ -245,7 +456,7 @@ export class ReportPageComponent implements OnChanges {
     a.href = url;
 
     // Use customized name or derive from first page title
-    const rawTitle = this.parsedBlocks[0]?.title || 'report';
+    const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
     const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const fileName = customName || `${sanitizedTitle}_${index + 1}.${ext}`;
 
@@ -256,17 +467,17 @@ export class ReportPageComponent implements OnChanges {
   }
 
   downloadConsolidatedXlsx() {
-    if (!this.consolidatedXlsxTable || this.consolidatedXlsxTable.length <= 1) return;
+    if (!this.consolidatedXlsxTable || this.consolidatedXlsxTable.rows.length === 0) return;
 
-    // Create worksheet from AOA
-    const ws: XLSX.WorkSheet = XLSX.utils.aoa_to_sheet(this.consolidatedXlsxTable);
+    // Create worksheet from JSON array
+    const ws: XLSX.WorkSheet = XLSX.utils.json_to_sheet(this.consolidatedXlsxTable.rows);
     const wb: XLSX.WorkBook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SEO Report');
 
     // Generate XLSX file as base64 and use existing download helper
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
 
-    const rawTitle = this.parsedBlocks[0]?.title || 'report';
+    const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
     const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
     this.download(wbout, 0, 'xlsx', `${sanitizedTitle}_seo.xlsx`);
@@ -279,10 +490,36 @@ export class ReportPageComponent implements OnChanges {
       .map((block, i) => `<!-- PAGE ${i + 1}: ${block.url} -->\n${block.rawHtml}\n\n`)
       .join('---\n\n');
 
-    const rawTitle = this.parsedBlocks[0]?.title || 'report';
+    const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
     const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
     this.download(allHtml, 0, 'html', `${sanitizedTitle}_all_pages.html`);
+  }
+
+  downloadAllImages() {
+    if (!this.parsedBlocks || this.parsedBlocks.length === 0) return;
+
+    const allImages = this.parsedBlocks
+      .filter(block => block.images && block.images.length > 0)
+      .flatMap(block => block.images);
+
+    if (allImages.length === 0) {
+      this.toastr.info('No images to download');
+      return;
+    }
+
+    const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
+    const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+
+    // Download as a list of URLs instead of a ZIP
+    const urlList = allImages.map((img: any) => img.url).join('\n');
+    const blob = new Blob([urlList], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizedTitle}_images_list.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   downloadAllSeoMd() {
@@ -292,7 +529,7 @@ export class ReportPageComponent implements OnChanges {
       .map((block, i) => `<!-- PAGE ${i + 1}: ${block.url} -->\n${block.seo.raw_md}\n\n`)
       .join('---\n\n');
     if (allSeoMd) {
-      const rawTitle = this.parsedBlocks[0]?.title || 'report';
+      const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
       const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       this.download(allSeoMd, 0, 'md', `${sanitizedTitle}_seo.md`);
     }
@@ -310,7 +547,7 @@ export class ReportPageComponent implements OnChanges {
         }
       });
     if (allSeoJson.length > 0) {
-      const rawTitle = this.parsedBlocks[0]?.title || 'report';
+      const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
       const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       this.download(JSON.stringify(allSeoJson, null, 2), 0, 'json', `${sanitizedTitle}_seo.json`);
     }
@@ -320,7 +557,7 @@ export class ReportPageComponent implements OnChanges {
     if (!this.parsedBlocks || this.parsedBlocks.length === 0) return;
 
     const zip = new JSZip();
-    const rawTitle = this.parsedBlocks[0]?.title || 'report';
+    const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
     const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const folder = zip.folder(sanitizedTitle);
 
@@ -383,8 +620,8 @@ export class ReportPageComponent implements OnChanges {
         if (allSeoJson.length > 0) seoFolder.file('seo_report.json', JSON.stringify(allSeoJson, null, 2));
 
         // XLSX
-        if (this.consolidatedXlsxTable.length > 1) {
-          const ws = XLSX.utils.aoa_to_sheet(this.consolidatedXlsxTable);
+        if (this.consolidatedXlsxTable.rows.length > 0) {
+          const ws = XLSX.utils.json_to_sheet(this.consolidatedXlsxTable.rows);
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, 'SEO Report');
           const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -406,6 +643,18 @@ export class ReportPageComponent implements OnChanges {
       }
     }
 
+    // 7. Images
+    if (this.formsvalue?.enable_images) {
+      const allImages = this.parsedBlocks
+        .filter(block => block.images && block.images.length > 0)
+        .flatMap(block => block.images);
+
+      if (allImages.length > 0) {
+        const urlList = allImages.map((img: any) => img.url).join('\n');
+        folder.file('images_list.txt', urlList);
+      }
+    }
+
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -422,15 +671,14 @@ export class ReportPageComponent implements OnChanges {
     }
 
     if (!this.parsedBlocks || this.parsedBlocks.length === 0) return;
-
-    // If multiple items are enabled, generate a ZIP
     const enabledCount = [
       this.formsvalue?.enable_md,
       this.formsvalue?.enable_html,
       this.formsvalue?.enable_ss,
       this.formsvalue?.enable_seo,
       this.formsvalue?.enable_links,
-      this.formsvalue?.enable_summary
+      this.formsvalue?.enable_summary,
+      this.formsvalue?.enable_images
     ].filter(Boolean).length;
 
     if (enabledCount > 1) {
@@ -468,6 +716,9 @@ export class ReportPageComponent implements OnChanges {
           this.download(this.parsedBlocks[0].screenshot, 0, 'png');
         }
         break;
+      case 'pills-images':
+        this.downloadAllImages();
+        break;
     }
   }
 
@@ -478,7 +729,7 @@ export class ReportPageComponent implements OnChanges {
       .join('---\n\n');
 
     if (content) {
-      const rawTitle = this.parsedBlocks[0]?.title || 'report';
+      const rawTitle = this.parsedBlocks[0]?.title ? this.parsedBlocks[0]?.title : this.parsedBlocks[0]?.url || 'report';
       const sanitizedTitle = rawTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       this.download(content, 0, ext, `${sanitizedTitle}_${label.toLowerCase()}.md`);
     }
@@ -488,5 +739,29 @@ export class ReportPageComponent implements OnChanges {
 
   setSeoTab(type: string) {
     this.activeSeoTab = type;
+  }
+
+  copiedItem: string | null = null;
+
+  copyToClipboard(text: string, identifier: string) {
+    if (!text || text === '-') return;
+
+    const successful = this.clipboard.copy(text);
+    if (successful) {
+      this.toastr.success('Copied to clipboard');
+      this.copiedItem = identifier;
+      setTimeout(() => {
+        if (this.copiedItem === identifier) {
+          this.copiedItem = null;
+        }
+      }, 2000); // Reset icon after 2 seconds
+    } else {
+      this.toastr.error('Failed to copy');
+    }
+  }
+
+  isLongData(text: any): boolean {
+    if (!text) return false;
+    return text.toString().length > 100;
   }
 }

@@ -1,13 +1,14 @@
-<main class="container w-100 flex-col align-center text-center">
+<main class="container w-100 flex-col align-center text-center pb-5">
 
   <!-- ================= HERO SECTION ================= -->
-  <section class="hero mt-5 pt-4">
-    <h1 class="no-animation">
+  <section class="hero mt-5 pt-5">
+    <h1 class="no-animation mt-lg-5 mt-3">
       Transform any website into <br>
       structured <span class="primary-text-gradient">LLM-ready</span> data
     </h1>
     <p class="no-animation">
-      Get clean web data from any website and power your AI apps, all open source.
+      Get clean web data from any website and power your AI apps, <a class="primary-text-gradient" target="_blank"
+        href="https://github.com/GramosoftAI/GcrawlAI">all open source.</a>
     </p>
   </section>
 
@@ -17,15 +18,21 @@
       [class.initial-state]="!markdownBlocks || !markdownBlocks.length">
 
       <!-- URL INPUT + FORMAT DROPDOWN in top-right -->
-      <div class="search-input-wrapper">
+      <div class="search-input-wrapper"
+        [class.with-format-dropdown]="crawlform.get('button')?.value !== 'links' && crawlform.get('button')?.value !== 'search'">
         <i class="bi bi-globe2"></i>
-        <input type="text" formControlName="url" class="search-input" placeholder="https://example.com"
-          autocomplete="off" />
-
+        <span class="https-prefix" *ngIf="crawlform.get('button')?.value !== 'search'">https://</span>
+        <input type="text" formControlName="url" class="search-input query-input"
+          [placeholder]="crawlform.get('button')?.value === 'search' ? 'Enter search query' : 'example.com'"
+          autocomplete="off" (input)="stripProtocol($event)" />
+        <input type="number" *ngIf="crawlform.get('button')?.value === 'search'" formControlName="limit"
+          class="limit-input border-start ms-2 border-1 bg-transparent" min="1" max="100" step="1"
+          placeholder="Limit (1-100)" matTooltip="Number of results (Max 100)" />
         <!-- Format multi-select dropdown -->
-        <div class="dropdown format-dropdown">
+        <div class="dropdown format-dropdown"
+          *ngIf="crawlform.get('button')?.value !== 'links' && crawlform.get('button')?.value !== 'search'">
           <button class="format-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
-            (click)="$event.stopPropagation()" [disabled]="crawlform.get('button')?.value === 'links'">
+            (click)="$event.stopPropagation()" [disabled]="isLoading">
             {{ formatLabel }}
           </button>
           <ul class="dropdown-menu dropdown-menu-end format-menu" (click)="$event.stopPropagation()">
@@ -71,12 +78,12 @@
                 <img src="/assets/image/brand.png" class="filter-img"> SEO
               </label>
             </li>
-            <!-- <li>
+            <li>
               <label class="dropdown-item format-item">
-                <input type="checkbox" formControlName="enable_image" class="format-check">
+                <input type="checkbox" formControlName="enable_images" class="format-check">
                 <img src="/assets/image/image.png" class="filter-img"> Images
               </label>
-            </li> -->
+            </li>
           </ul>
         </div>
       </div>
@@ -84,31 +91,30 @@
       <!-- TABS + SUBMIT (always visible) -->
       <div class="controls-wrapper mt-2">
         <div class="custom-tabs">
-          <button [matTooltip]="scrapeTooltipcontent" type="button" class="tab-btn"
+          <button [disabled]="isLoading" [matTooltip]="scrapeTooltipcontent" type="button" class="tab-btn"
             [class.active]="crawlform.get('button')?.value === 'scrape'" (click)="setButton('scrape')">
             <i class="bi bi-grid"></i> Scrape
           </button>
-          <!-- <button type="button" class="tab-btn" disabled>
+          <button [disabled]="isLoading" [matTooltip]="searchTooltipcontent" type="button" class="tab-btn"
+            [class.active]="crawlform.get('button')?.value === 'search'" (click)="setButton('search')">
             <i class="bi bi-search"></i> Search
-          </button> -->
-          <!-- <button type="button" class="tab-btn" disabled>
-            <i class="bi bi-robot"></i> Agent
-            <span class="badge-new">New</span>
-          </button> -->
-          <button [matTooltip]="crawlTooltipcontent" type="button" class="tab-btn"
+          </button>
+          <button [disabled]="isLoading" [matTooltip]="crawlTooltipcontent" type="button" class="tab-btn"
             [class.active]="crawlform.get('button')?.value === 'crawl'" (click)="setButton('crawl')">
             <i class="bi bi-bug"></i> Crawl
           </button>
 
-          <button [matTooltip]="linksTooltipcontent" type="button" class="tab-btn" [class.active]="crawlform.get('button')?.value === 'links'"
-            (click)="setButton('links')">
-            <i class="bi bi-map"></i> Links
-          </button>
+            <button [disabled]="isLoading" [matTooltip]="linksTooltipcontent" type="button" class="tab-btn"
+              [class.active]="crawlform.get('button')?.value === 'links'" (click)="setButton('links')">
+              <i class="bi bi-map"></i> Links
+            </button>
         </div>
 
-        <button type="submit" class="btn-primary">
+        <button type="submit" class="btn-primary" [disabled]="isLoading" [class.is-loading]="isLoading">
           <span *ngIf="!isLoading">Submit</span>
-          <div *ngIf="isLoading" class="spinner"></div>
+          <div *ngIf="isLoading" class="spinner-border spinner-border-sm mx-auto" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
         </button>
       </div>
 
@@ -117,7 +123,10 @@
 
   <!-- ================= RESULT SECTION ================= -->
   <app-report-page *ngIf="markdownBlocks && markdownBlocks.length" [blocks]="markdownBlocks" [formsvalue]="formdata"
-    class="w-100 mt-5">
+    [isCompleted]="crawlCompleted" class="w-100 mt-5">
   </app-report-page>
+
+  <app-crawl-history class="mt-4 mb-5 d-block" [scrapper]="this.scrape"
+    (reportClicked)="onHistoricalReportClicked($event)"></app-crawl-history>
 
 </main>

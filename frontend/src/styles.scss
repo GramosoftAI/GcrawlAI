@@ -1,5 +1,6 @@
 /* You can add global styles to this file, and also import other style files */
 @use "@angular/material" as mat;
+@import "font.scss";
 @include mat.core();
 $my-app-primary: mat.define-palette(mat.$indigo-palette);
 $my-app-accent: mat.define-palette(mat.$pink-palette, A200, A100, A400);
@@ -14,9 +15,10 @@ $my-app-theme: mat.define-light-theme((color: (primary: $my-app-primary,
 
 :root {
     --font-family: 'Inter', system-ui, sans-serif;
-    --primary: #21D496;
-    --primary-hover: #1cb882;
-    --primary-gradient: linear-gradient(135deg, #21D496 0%, #02a157 100%);
+    --primary: #054A91;
+    --primary-hover: #054A91;
+    --primary-font: "Montserrat";
+    --primary-gradient: linear-gradient(135deg, #054A91 0%, #054A91 100%);
     --danger: #ff595e;
     --transition: all 0.2s ease;
     --bg-color: #ffffff;
@@ -42,6 +44,8 @@ body.dark-theme {
     --tab-hover: rgba(255, 255, 255, 0.1);
     --tab-active-bg: #1a1a1a;
     --input-bg: transparent;
+    --primary: #21D496;
+    --primary-gradient: linear-gradient(135deg, #21D496 0%, #02a157 100%);
 
     /* Override Bootstrap variables */
     --bs-body-bg: #0a0a0a;
@@ -76,20 +80,26 @@ body.light-theme {
 }
 
 body {
-    font-family: var(--font-family);
-    background-color: var(--bg-color) !important; /* Force override Bootstrap */
+    font-family: var(--primary-font), sans-serif !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    font-size: 14px !important;
+    background-color: var(--bg-color) !important;
     color: var(--text-main) !important;
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
     align-items: center;
     transition: background-color 0.3s, color 0.3s;
-
+    overflow-x: hidden !important;
+    width: 100%;
     background-image:
         linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
         linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
     background-size: 40px 40px;
     background-position: center top;
+}
+
+html {
+    min-height: 100%;
 }
 
 a {
@@ -129,6 +139,10 @@ button {
     font-size: 15px !important;
 }
 
+.fs-16 {
+    font-size: 16px !important;
+}
+
 .fs-17 {
     font-size: 17px !important;
 }
@@ -150,11 +164,11 @@ button {
 }
 
 .txt-green {
-    color: #21D496 !important;
+    color: #054A91 !important;
 }
 
 .btn-bg-primary {
-    background-color: #21D496 !important;
+    background: var(--primary-gradient);
     padding: 2px 14px !important;
     border-radius: 6px !important;
     margin-left: 12px !important;
@@ -162,7 +176,7 @@ button {
 
 .btn-bg-primary-light {
     background-color: transparent !important;
-    border: 1px solid #21D496;
+    border: 1px solid #054A91;
     padding: 2px 14px !important;
     border-radius: 6px !important;
     margin-left: 12px !important;
@@ -210,7 +224,31 @@ button {
 }
 
 .mat-mdc-tooltip {
-  border-radius: 13px !important;
-  padding: 8px 10px;
-  font-size: 12px;
+    border-radius: 13px !important;
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
+/* Custom Thin Scrollbar for long data cells */
+::-webkit-scrollbar {
+    width: 6px !important;
+    height: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--grid-line-color) !important;
+    border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--text-color-secondary) !important;
+    border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-color) !important;
+}
+
+.owl-carousel .owl-item {
+    width: 320px !important;
 }
