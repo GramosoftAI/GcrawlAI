@@ -227,6 +227,7 @@ class DatabaseSetup:
             HTML BOOLEAN DEFAULT FALSE,
             Screenshot BOOLEAN DEFAULT FALSE,
             Markdown BOOLEAN DEFAULT FALSE,
+            Images BOOLEAN DEFAULT FALSE,
             user_id INTEGER,
             links_file_path TEXT,
             summary_file_path TEXT,
@@ -235,6 +236,15 @@ class DatabaseSetup:
                 REFERENCES users (user_id)
                 ON DELETE CASCADE
         );
+
+        -- Migration: add Images column if missing
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='crawl_jobs' AND column_name='images') THEN
+                ALTER TABLE crawl_jobs ADD COLUMN Images BOOLEAN DEFAULT FALSE;
+            END IF;
+        END;
+        $$;
         """
 
         conn = None
@@ -270,6 +280,7 @@ class DatabaseSetup:
             seo_json TEXT,
             seo_md TEXT,
             seo_xlsx TEXT,
+            images TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_crawl_job
                 FOREIGN KEY (crawl_id)
@@ -292,6 +303,15 @@ class DatabaseSetup:
             END IF;
         EXCEPTION WHEN others THEN
             NULL;  -- Ignore if already migrated
+        END;
+        $$;
+
+        -- Migration: add images column if missing
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='crawl_events' AND column_name='images') THEN
+                ALTER TABLE crawl_events ADD COLUMN images TEXT;
+            END IF;
         END;
         $$;
 
@@ -318,6 +338,51 @@ class DatabaseSetup:
                 conn.close()
 
     
+    def create_crawl_artifacts_table(self) -> bool:
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS crawl_artifacts (
+            artifact_id VARCHAR(64) PRIMARY KEY,
+            crawl_id VARCHAR(64) NOT NULL,
+            page_url TEXT NOT NULL DEFAULT '',
+            artifact_type VARCHAR(50) NOT NULL,
+            content_kind VARCHAR(20) NOT NULL DEFAULT 'text',
+            title TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_crawl_artifact_job
+                FOREIGN KEY (crawl_id)
+                REFERENCES crawl_jobs (crawl_id)
+                ON DELETE CASCADE,
+            CONSTRAINT unique_crawl_artifact
+                UNIQUE (crawl_id, page_url, artifact_type)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_crawl_artifacts_crawl_id
+            ON crawl_artifacts(crawl_id);
+        CREATE INDEX IF NOT EXISTS idx_crawl_artifacts_page_url
+            ON crawl_artifacts(crawl_id, page_url);
+        """
+
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            logger.info("✓ crawl_artifacts table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create crawl_artifacts table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     def create_failed_crawl_pages_table(self) -> bool:
         """
         Create failed_crawl_pages table if it doesn't exist.
@@ -459,11 +524,12 @@ class DatabaseSetup:
         api_keys_created = self.create_api_keys_table()
         crawl_jobs_created = self.create_crawl_jobs_table()
         crawl_events_created = self.create_crawl_events_table()
+        crawl_artifacts_created = self.create_crawl_artifacts_table()
         failed_pages_created = self.create_failed_crawl_pages_table()
         reported_issues_created = self.create_reported_issues_table()
 
         if all([users_created, otps_created, api_keys_created, crawl_jobs_created, crawl_events_created,
-                failed_pages_created, reported_issues_created]):
+                crawl_artifacts_created, failed_pages_created, reported_issues_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:

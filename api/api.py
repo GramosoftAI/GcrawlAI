@@ -80,6 +80,7 @@ def get_db_config():
 
 from api.auth_manager import AuthManager
 from web_crawler.crawler.crawler import main as crawl_main
+from web_crawler.common.artifact_store import get_crawl_artifact, parse_artifact_ref
 from web_crawler.common.config import CrawlConfig
 from web_crawler.crawler.celery_tasks import crawl_website, crawl_single_page, crawl_links
 from api.auth_routes import (
@@ -274,6 +275,11 @@ async def startup_event():
     logger.info("✓ AuthManager initialized")
 
 
+def _read_artifact_content(artifact_ref: str):
+    with get_pooled_connection() as conn:
+        return get_crawl_artifact(conn, artifact_ref)
+
+
 def _configure_root_logger():
     """Reconfigure root logger to ensure all modules write to file."""
     root = logging.getLogger()
@@ -303,6 +309,7 @@ class CrawlRequest(BaseModel):
     enable_html: bool = False
     enable_ss: bool = False
     enable_seo: bool = False
+    enable_images: bool = False
     proxy: Optional[Literal["basic", "stealth", "enhanced", "auto"]] = None
     user_id: Optional[int] = None
 
@@ -317,6 +324,7 @@ class CrawlResponse(BaseModel):
     HTML: bool
     Screenshot: bool
     Markdown: bool
+    Images: bool
     status: str
 
 class PagePaths(BaseModel):
@@ -328,6 +336,7 @@ class PagePaths(BaseModel):
     seo_json: Optional[str] = None
     seo_md: Optional[str] = None
     seo_xlsx: Optional[str] = None
+    images: Optional[str] = None
 
 class CrawlPathsResponse(BaseModel):
     status_code: int = 200
@@ -344,6 +353,7 @@ class UserCrawlJobResponse(BaseModel):
     html: bool
     screenshot: bool
     markdown: bool
+    images: bool
     links_file_path: Optional[str] = None
     created_at: datetime
 
@@ -362,7 +372,7 @@ def root():
 def _run_background_crawl_task(client_id: str, **kwargs):
     """Wrapper to run synchronous crawls (single, links) and persist their completion to DB."""
     # Run the actual crawl
-    summary = crawl_main(**kwargs)
+    summary = crawl_main(client_id=client_id, **kwargs)
     
     # Persist the completion to the database directly
     # This prevents WebSockets from hanging if they connect AFTER the short crawl completes
@@ -375,11 +385,11 @@ def _run_background_crawl_task(client_id: str, **kwargs):
             )
             cur.execute(
                 """
-                INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx)
-                VALUES (%s, 'page_processed', %s, 'Scraped Page', %s, %s, %s, %s, %s, %s)
+                INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx, images)
+                VALUES (%s, 'page_processed', %s, 'Scraped Page', %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (crawl_id, url) DO NOTHING
                 """,
-                (client_id, summary.get("start_url", ""), summary.get("markdown_file"), summary.get("html_file"), summary.get("screenshot"), summary.get("seo_json"), summary.get("seo_md"), summary.get("seo_xlsx"))
+                (client_id, summary.get("start_url", ""), summary.get("markdown_file"), summary.get("html_file"), summary.get("screenshot"), summary.get("seo_json"), summary.get("seo_md"), summary.get("seo_xlsx"), summary.get("images_path"))
             )
             cur.execute(
                 """
@@ -409,7 +419,8 @@ def _run_background_crawl_task(client_id: str, **kwargs):
                 "screenshot": summary.get("screenshot"),
                 "seo_json": summary.get("seo_json"),
                 "seo_md": summary.get("seo_md"),
-                "seo_xlsx": summary.get("seo_xlsx")
+                "seo_xlsx": summary.get("seo_xlsx"),
+                "images": summary.get("images_path")
             }
         )
         
@@ -473,6 +484,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
+                enable_images=payload.enable_images,
                 config=config
             )
 
@@ -493,6 +505,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
+                enable_images=payload.enable_images,
                 config=config
             )
 
@@ -524,6 +537,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_html=payload.enable_html,
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
+                enable_images=payload.enable_images,
             )
 
             crawl_id = task.id
@@ -537,8 +551,8 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             cur.execute(
                 """
                 INSERT INTO crawl_jobs
-                (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown, user_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (crawl_id, url, crawl_mode, created_at, task_id, SEO, HTML, Screenshot, Markdown, Images, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     crawl_id,
@@ -550,6 +564,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                     payload.enable_html,
                     payload.enable_ss,
                     payload.enable_md,
+                    payload.enable_images,
                     payload.user_id
                 )
             )
@@ -567,6 +582,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
             "HTML": payload.enable_html,
             "Screenshot": payload.enable_ss,
             "Markdown": payload.enable_md,
+            "Images": payload.enable_images,
             "status": status
         }
 
@@ -607,7 +623,7 @@ def get_user_crawls(user_id: int):
                 SELECT 
                     user_id, crawl_id, url, crawl_mode, 
                     seo, html, 
-                    screenshot, markdown, 
+                    screenshot, markdown, images,
                     links_file_path, 
                     created_at
                 FROM crawl_jobs
@@ -645,7 +661,7 @@ def get_crawl_paths(crawl_id: str):
             
             cur.execute(
                 """
-                SELECT url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx
+                SELECT url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx, images
                 FROM crawl_events
                 WHERE crawl_id = %s AND event_type = 'page_processed'
                 ORDER BY created_at ASC
@@ -664,7 +680,8 @@ def get_crawl_paths(crawl_id: str):
                     screenshot=row[4],
                     seo_json=row[5],
                     seo_md=row[6],
-                    seo_xlsx=row[7]
+                    seo_xlsx=row[7],
+                    images=row[8]
                 ))
                 
             cur.close()
@@ -700,6 +717,68 @@ def get_markdown(file_path: str):
     Return markdown content + metadata as JSON
     """
     try:
+        if parse_artifact_ref(file_path):
+            artifact = _read_artifact_content(file_path)
+            if not artifact:
+                raise HTTPException(status_code=404, detail="Artifact not found")
+
+            title = artifact.get("title") or artifact.get("artifact_type", "Artifact")
+            artifact_type = artifact.get("artifact_type")
+            content = artifact.get("content")
+            content_kind = artifact.get("content_kind")
+
+            if content_kind == "json":
+                return JSONResponse(
+                    content={
+                        "status_code": 200,
+                        "status": "success",
+                        "title": title,
+                        "json": json.loads(content) if content else {},
+                    }
+                )
+
+            if artifact_type in {"screenshot", "seo_xlsx", "aggregate_seo_xlsx", "images"}:
+                key = "image" if artifact_type == "screenshot" else ("xlsx" if "xlsx" in artifact_type else "json")
+                if artifact_type == "images":
+                    key = "json"
+                
+                return JSONResponse(
+                    content={
+                        "status_code": 200,
+                        "status": "success",
+                        "title": title,
+                        key: json.loads(content) if key == "json" else content,
+                    }
+                )
+
+            if artifact_type in {"markdown", "seo_md", "aggregate_seo_md"}:
+                return JSONResponse(
+                    content={
+                        "status_code": 200,
+                        "status": "success",
+                        "title": title,
+                        "markdown": content,
+                    }
+                )
+
+            if artifact_type in {"seo_json", "aggregate_seo_json"}:
+                return JSONResponse(
+                    content={
+                        "status_code": 200,
+                        "status": "success",
+                        "title": title,
+                        "json": json.loads(content) if content else {},
+                    }
+                )
+
+            return JSONResponse(
+                content={
+                    "status_code": 200,
+                    "status": "success",
+                    "title": title,
+                    "content": content,
+                }
+            )
         md_path = Path(file_path).resolve()
         filename = md_path.name
         filename_parts = filename.split(".")

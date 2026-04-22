@@ -27,6 +27,8 @@ from web_crawler.crawler.websocket_manager import WebSocketManager
 from web_crawler.common.utils import normalize_url
 from web_crawler.common.redis_events import publish_event
 from web_crawler.common.proxy_manager import ProxyManager
+from web_crawler.common.artifact_store import upsert_crawl_artifact
+import base64
 
 
 logger = logging.getLogger(__name__)
@@ -112,6 +114,7 @@ def _persist_crawl_event(
     seo_json: Optional[str],
     seo_md: Optional[str],
     seo_xlsx: Optional[str],
+    images: Optional[str] = None,
 ) -> None:
     """
     Persist a page_processed event directly into crawl_events.
@@ -137,12 +140,12 @@ def _persist_crawl_event(
                 INSERT INTO crawl_events
                     (crawl_id, event_type, url, title,
                      markdown_file, html_file, screenshot,
-                     seo_json, seo_md, seo_xlsx)
-                VALUES (%s, 'page_processed', %s, %s, %s, %s, %s, %s, %s, %s)
+                     seo_json, seo_md, seo_xlsx, images)
+                VALUES (%s, 'page_processed', %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (crawl_id, url, title,
                  markdown_file, html_file, screenshot,
-                 seo_json, seo_md, seo_xlsx),
+                 seo_json, seo_md, seo_xlsx, images),
             )
             conn.commit()
         except Exception:
@@ -157,11 +160,12 @@ def _persist_crawl_event(
                     screenshot    = %s,
                     seo_json      = %s,
                     seo_md        = %s,
-                    seo_xlsx      = %s
+                    seo_xlsx      = %s,
+                    images        = %s
                 WHERE crawl_id = %s AND url = %s
                 """,
                 (title, markdown_file, html_file, screenshot,
-                 seo_json, seo_md, seo_xlsx,
+                 seo_json, seo_md, seo_xlsx, images,
                  crawl_id, url),
             )
             conn.commit()
@@ -175,6 +179,50 @@ def _persist_crawl_event(
                 conn.close()
             except Exception:
                 pass
+
+
+def _store_crawl_artifact(
+    crawl_id: Optional[str],
+    artifact_type: str,
+    content,
+    *,
+    content_kind: str = "text",
+    page_url: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Helper to store a crawl artifact in the database via the common artifact store.
+    Returns the artifact ref (artifact://UUID) or None on failure.
+    """
+    if not crawl_id or content is None:
+        return None
+
+    conn = None
+    try:
+        conn = _get_db_conn()
+        artifact_ref = upsert_crawl_artifact(
+            conn,
+            crawl_id=crawl_id,
+            page_url=page_url,
+            artifact_type=artifact_type,
+            content=content,
+            content_kind=content_kind,
+            title=title,
+        )
+        conn.commit()
+        return artifact_ref
+    except Exception as db_err:
+        logger.warning(
+            f"⚠ Could not persist crawl artifact '{artifact_type}' for {page_url or crawl_id}: {db_err}"
+        )
+        return None
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 class PageCrawler:
     """Handle individual page crawling"""
@@ -240,6 +288,7 @@ class PageCrawler:
         enable_html: bool,
         enable_ss: bool,
         enable_seo: bool,
+        enable_images: bool,
         client_id: Optional[str]
     ) -> Optional[Dict]:
         """Process loaded page and extract data"""
@@ -249,6 +298,7 @@ class PageCrawler:
         seo_json_path = None
         seo_md_path = None
         seo_xlsx_path = None
+        images_path = None
         
         try:
             # Scroll to load dynamic content
@@ -262,24 +312,48 @@ class PageCrawler:
             canonical = normalize_url(canonical_url if canonical_url else url)
             
             title = seo.get("title")
-            title_safe = self.file_manager.safe_filename(title if title else "page")
-            prefix = f"{count}_{title_safe}"
-
+            
             if enable_seo:
                 try:
                     writer = CrawlReportWriter(self.config.output_dir)
-                    seo_json_path = writer.save_single_json(prefix, seo)
-                    seo_md_path = writer.save_single_markdown(prefix, seo)
-                    seo_xlsx_path = writer.save_single_excel(prefix, seo)
+                    seo_json_path = _store_crawl_artifact(
+                        client_id,
+                        "seo_json",
+                        writer.render_single_json(seo),
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
+                    seo_md_path = _store_crawl_artifact(
+                        client_id,
+                        "seo_md",
+                        writer.render_single_markdown(seo),
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
+                    seo_xlsx_path = _store_crawl_artifact(
+                        client_id,
+                        "seo_xlsx",
+                        writer.render_single_excel_base64(seo),
+                        content_kind="binary",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save per-page SEO report for {url}: {e}")
             
             # Save HTML
             if enable_html:
-                html_path = str(self.config.html_dir / f"{prefix}.html")
                 try:
-                    with open(html_path, "w", encoding="utf-8") as f:
-                        f.write(html)
+                    html_path = _store_crawl_artifact(
+                        client_id,
+                        "html",
+                        html,
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save HTML for {url}: {e}")
             
@@ -287,26 +361,52 @@ class PageCrawler:
             if enable_md:
                 try:
                     markdown = self.content_processor.convert_to_markdown(html, url)
-                    # md_filename = f"{count}_{title_safe}.md"
-                    # md_path = Path(self.config.output_dir) / md_filename
-                    md_path = str(self.config.md_dir / f"{prefix}.md")
-                    
-                    with open(md_path, "w", encoding="utf-8") as f:
-                        f.write(markdown)
+                    md_path = _store_crawl_artifact(
+                        client_id,
+                        "markdown",
+                        markdown,
+                        content_kind="text",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save markdown for {url}: {e}")
-
+            
             # Save screenshot
             if enable_ss:
-                screenshot_path = str(self.config.screenshot_dir / f"{prefix}.png")
                 try:
                     # Scroll back to top before capturing full page screenshot
                     # to ensure fixed headers/elements render in their correct initial positions.
                     page.evaluate("window.scrollTo(0, 0)")
                     page.wait_for_timeout(1000) # Give UI elements a moment to settle
-                    page.screenshot(path=screenshot_path, full_page=True)
+                    screenshot_bytes = page.screenshot(full_page=True)
+                    screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+                    
+                    screenshot_path = _store_crawl_artifact(
+                        client_id,
+                        "screenshot",
+                        screenshot_b64,
+                        content_kind="binary",
+                        page_url=url,
+                        title=title,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to save screenshot for {url}: {e}")
+
+            # Save Images JSON
+            if enable_images:
+                try:
+                    image_urls = self.content_processor.extract_image_urls(soup, url)
+                    images_path = _store_crawl_artifact(
+                        client_id,
+                        "images",
+                        image_urls,
+                        content_kind="json",
+                        page_url=url,
+                        title=title,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save images JSON for {url}: {e}")
 
             if client_id:
                 publish_event(
@@ -322,6 +422,7 @@ class PageCrawler:
                         "seo_json": seo_json_path,
                         "seo_md": seo_md_path,
                         "seo_xlsx": seo_xlsx_path,
+                        "images": images_path,
                     }
                 )
                 # Also persist directly to DB so /crawler/paths/ works even
@@ -336,6 +437,7 @@ class PageCrawler:
                     seo_json=seo_json_path,
                     seo_md=seo_md_path,
                     seo_xlsx=seo_xlsx_path,
+                    images=images_path,
                 )
 
             
@@ -353,6 +455,7 @@ class PageCrawler:
                 "seo_json": seo_json_path,
                 "seo_md": seo_md_path,
                 "seo_xlsx": seo_xlsx_path,
+                "images": images_path,
                 "links": links,
                 "status_code": page.evaluate("() => window.performance.getEntries()[0].responseStatus") or 200,
             }
@@ -396,6 +499,7 @@ class PageCrawler:
         enable_html: bool,
         enable_ss: bool,
         enable_seo: bool,
+        enable_images: bool,
         client_id: Optional[str],
         proxy_type: str = "basic"
     ) -> Optional[Dict]:
@@ -489,7 +593,7 @@ class PageCrawler:
                     if len(text_content.strip()) < 200:
                         return {"url": url, "error": f"Content too short ({len(text_content.strip())} chars)", "status_code": 422}
                     
-                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id)
                     return result
                 
                 finally:
@@ -532,6 +636,7 @@ class PageCrawler:
         enable_html: bool,
         enable_ss: bool,
         enable_seo: bool,
+        enable_images: bool,
         client_id: Optional[str],
         proxy_type: str = "basic"
     ) -> Optional[Dict]:
@@ -613,12 +718,12 @@ class PageCrawler:
                         # Re-check
                         text_content = page.evaluate("document.body.innerText")
                         if not self.is_captcha_page(text_content):
-                             result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                             result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id)
                              return result
                         
                         return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
                     
-                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, client_id)
+                    result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id)
                     return result
                 finally:
                     try:
@@ -658,6 +763,7 @@ class PageCrawler:
         enable_html: bool,
         enable_ss: bool,
         enable_seo: bool,
+        enable_images: bool,
         client_id: Optional[str],
         websocket_manager,
         crawl_mode: str = "all",
@@ -679,7 +785,7 @@ class PageCrawler:
 
         
         # Try Chromium first (ALWAYS without proxy as per requirements)
-        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, proxy_type="none")
+        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, proxy_type="none")
         
         if result and "error" not in result:
             logger.info(f"Chromium (no proxy) success: {url}")
@@ -694,7 +800,7 @@ class PageCrawler:
         # Fallback to Camoufox (WITH proxy as per requirements)
         logger.info(f"Chromium failed, trying Camoufox fallback with {first_proxy_type} proxy for: {url}")
         result = self.crawl_with_camoufox(
-            url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, first_proxy_type
+            url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, first_proxy_type
         )
         
         if result and "error" not in result:
@@ -708,7 +814,7 @@ class PageCrawler:
         if requested_proxy_type == "auto" and self._is_likely_proxy_failure(result):
             logger.info(f"Auto proxy escalation: retrying Camoufox with enhanced proxy for: {url}")
             retry = self.crawl_with_camoufox(
-                url, count, enable_md, enable_html, enable_ss, enable_seo, client_id, "enhanced"
+                url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, "enhanced"
             )
             if retry and "error" not in retry:
                 logger.info(f"Camoufox enhanced success: {url}")

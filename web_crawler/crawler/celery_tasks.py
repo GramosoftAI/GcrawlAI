@@ -40,6 +40,7 @@ def crawl_website(
     enable_json: bool = False,
     enable_links: bool = True,
     enable_seo: bool = False,
+    enable_images: bool = False,
     crawl_mode: str = "all",
 ) -> Dict:
     """
@@ -83,6 +84,7 @@ def crawl_website(
             enable_json=enable_json,
             enable_links=True,
             enable_seo=enable_seo,
+            enable_images=enable_images,
             client_id=task_id,  # Use task_id as client_id
             websocket_manager=None,  # No WebSocket in Celery
             crawl_mode=crawl_mode,
@@ -145,6 +147,7 @@ def crawl_single_page(self, url: str, config_dict: Dict) -> Dict:
         enable_json=True,
         enable_links=True,
         enable_seo=False,
+        enable_images=True,
     )
 
 @celery_app.task(
@@ -168,6 +171,7 @@ def crawl_links(self, url: str, config_dict: Dict) -> Dict:
         enable_json=True,
         enable_links=True,
         enable_seo=False,
+        enable_images=True,
     )
 
 

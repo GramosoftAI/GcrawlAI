@@ -124,6 +124,32 @@ class ContentProcessor:
 
     
     @staticmethod
+    def extract_image_urls(soup: BeautifulSoup, base_url: str) -> List[str]:
+        """
+        Parses HTML and returns a list of absolute image URLs.
+        """
+        images = []
+        
+        for img in soup.find_all("img", src=True):
+            src = img["src"].strip()
+            if not src:
+                continue
+                
+            # Handle srcset (if available) - pick the first/best candidate
+            srcset = img.get("srcset")
+            if srcset:
+                # We take the first image in the srcset as a fallback or target
+                src = srcset.split(",")[0].strip().split(" ")[0]
+                
+            # Resolve to absolute URL (e.g., /logo.png -> https://site.com/logo.png)
+            absolute_url = urljoin(base_url, src)
+            
+            if absolute_url not in images:
+                images.append(absolute_url)
+                
+        return images
+    
+    @staticmethod
     def extract_seo(soup: BeautifulSoup, page_url: str) -> Dict:
         """Extract SEO metadata (sync with seo.py)"""
         def get_meta(name=None, prop=None):
