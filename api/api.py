@@ -99,6 +99,7 @@ from api.auth_routes import (
 from api.contact_routes import router as contact_router
 from api.search_routes import router as search_router
 from api.api_key_routes import router as api_key_router
+from api.scrape_markdown import router as scrape_markdown_router
 
 # ================= LOGGING =================
 # Configure logging to file (output.log) and console
@@ -157,6 +158,7 @@ auth_manager: Optional[AuthManager] = None
 app.include_router(contact_router)
 app.include_router(search_router)
 app.include_router(api_key_router)
+app.include_router(scrape_markdown_router)
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
