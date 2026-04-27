@@ -28,13 +28,15 @@ from pathlib import Path
 import jwt
 from cryptography.fernet import Fernet
 import os
-import re
 from dotenv import load_dotenv
+import re
 
 from api.email_service import EmailService
 
-# Load environment variables from .env file
-load_dotenv(override=True)
+# Load environment variables from .env file immediately
+BASE_DIR = Path(__file__).resolve().parent.parent
+dotenv_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path, override=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

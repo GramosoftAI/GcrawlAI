@@ -8,7 +8,9 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Ensure .env is loaded (especially for Celery workers)
-load_dotenv(override=True)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+dotenv_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path, override=True)
 
 @dataclass
 class CrawlConfig:
@@ -44,9 +46,13 @@ class CrawlConfig:
     proxy_mode: str = "auto"  # "auto", "basic", "stealth", "enhanced"
 
     def __post_init__(self):
-        self.proxy_server = self._clean_env(self.proxy_server or os.getenv("PROXY_SERVER"))
-        self.proxy_username = self._clean_env(self.proxy_username or os.getenv("PROXY_USERNAME"))
-        self.proxy_password = self._clean_env(self.proxy_password or os.getenv("PROXY_PASSWORD"))
+        self.proxy_server = self._clean_env(self.proxy_server or os.getenv("PROXY_SERVER", os.getenv("EVOMI_PROXY_SERVER")))
+        self.proxy_username = self._clean_env(self.proxy_username or os.getenv("PROXY_USERNAME", os.getenv("EVOMI_PROXY_USERNAME")))
+        self.proxy_password = self._clean_env(self.proxy_password or os.getenv("PROXY_PASSWORD", os.getenv("EVOMI_PROXY_PASSWORD")))
+        
+        # Load custom region password fallback (like India or US) as provided by user
+        self.proxy_password_india = self._clean_env(os.getenv("EVOMI_PROXY_PASSWORD_INDIA"))
+        self.proxy_password_us = f"{self.proxy_password}_country-US" if self.proxy_password else None
 
         # Load from env if not explicitly provided
         if self.proxy is None:
@@ -71,13 +77,34 @@ class CrawlConfig:
             raw_proxy_mode = os.getenv("PROXY_MODE", raw_proxy_mode)
         self.proxy_mode = self._normalize_proxy_mode(raw_proxy_mode)
 
-        # If legacy CRAWL_PROXY is not set, derive requests-compatible proxy from BYOP env.
+        # If legacy CRAWL_PROXY is not set, derive requests-compatible proxies from BYOP env.
         if self.proxy is None and self.proxy_server:
-            self.proxy = self._compose_proxy_url(
+            base_url = self._compose_proxy_url(
                 server=self.proxy_server,
                 username=self.proxy_username,
                 password=self.proxy_password,
             )
+            self.proxy = base_url
+            
+            # Populate different tiers with different regions for the auto-escalation mechanism
+            if not self.basic_proxies:
+                self.basic_proxies = base_url
+            
+            if not self.stealth_proxies:
+                india_url = self._compose_proxy_url(
+                    server=self.proxy_server,
+                    username=self.proxy_username,
+                    password=self.proxy_password_india or f"{self.proxy_password}_country-IN"
+                )
+                self.stealth_proxies = india_url
+
+            if not self.enhanced_proxies:
+                us_url = self._compose_proxy_url(
+                    server=self.proxy_server,
+                    username=self.proxy_username,
+                    password=self.proxy_password_us
+                )
+                self.enhanced_proxies = us_url
         
         self.rebuild_paths()
 

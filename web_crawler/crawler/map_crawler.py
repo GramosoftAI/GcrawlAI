@@ -489,7 +489,7 @@ def _browser_extract_links(
             page = context.new_page()
 
             try:
-                page.goto(start_url, wait_until="networkidle", timeout=30_000)
+                page.goto(start_url, wait_until="domcontentloaded", timeout=30_000)
             except Exception as nav_err:
                 logger.warning(f"  ⚠ Browser navigation error: {nav_err}")
                 # Even on timeout, the page may have partially loaded

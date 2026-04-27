@@ -12,6 +12,8 @@ import yaml
 from typing import Optional, Dict
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
+import io
+from PIL import Image
 from bs4 import BeautifulSoup
 from web_crawler.crawler.seo_report import CrawlReportWriter
 import platform
@@ -42,9 +44,12 @@ def _get_db_conn():
     """
     import psycopg2
     from dotenv import load_dotenv
-    load_dotenv(override=True)
+    
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    dotenv_path = BASE_DIR / '.env'
+    load_dotenv(dotenv_path, override=True)
 
-    config_path = Path(__file__).resolve().parent.parent.parent / "config.yaml"
+    config_path = BASE_DIR / "config.yaml"
 
     def _substitute(data):
         if isinstance(data, dict):
@@ -375,11 +380,7 @@ class PageCrawler:
             # Save screenshot
             if enable_ss:
                 try:
-                    # Scroll back to top before capturing full page screenshot
-                    # to ensure fixed headers/elements render in their correct initial positions.
-                    page.evaluate("window.scrollTo(0, 0)")
-                    page.wait_for_timeout(1000) # Give UI elements a moment to settle
-                    screenshot_bytes = page.screenshot(full_page=True)
+                    screenshot_bytes = self._capture_robust_screenshot(page)
                     screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
                     
                     screenshot_path = _store_crawl_artifact(
@@ -784,20 +785,22 @@ class PageCrawler:
             )
 
         
-        # Try Chromium first (ALWAYS without proxy as per requirements)
-        result = self.crawl_with_chromium(url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, proxy_type="none")
-        
-        if result and "error" not in result:
-            logger.info(f"Chromium (no proxy) success: {url}")
-            return result
-    
         requested_proxy_type = (proxy_type or "basic").strip().lower()
-        if requested_proxy_type not in {"basic", "stealth", "enhanced", "auto"}:
+        if requested_proxy_type not in {"basic", "stealth", "enhanced", "auto", "none"}:
             requested_proxy_type = "basic"
 
         first_proxy_type = "basic" if requested_proxy_type == "auto" else requested_proxy_type
 
-        # Fallback to Camoufox (WITH proxy as per requirements)
+        # Try Chromium first (Now using proxy immediately to prevent server IP block)
+        result = self.crawl_with_chromium(
+            url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, proxy_type=first_proxy_type
+        )
+        
+        if result and "error" not in result:
+            logger.info(f"Chromium success with proxy: {url}")
+            return result
+    
+        # Fallback to Camoufox
         logger.info(f"Chromium failed, trying Camoufox fallback with {first_proxy_type} proxy for: {url}")
         result = self.crawl_with_camoufox(
             url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, first_proxy_type
@@ -809,18 +812,30 @@ class PageCrawler:
 
         failure_recorded = False
 
-        # Firecrawl-style auto mode escalation:
-        # if basic likely failed due to proxy inadequacy, retry with enhanced.
+        # Firecrawl-style auto mode escalation array:
+        # if basic likely failed due to proxy inadequacy or geoblocking.
         if requested_proxy_type == "auto" and self._is_likely_proxy_failure(result):
-            logger.info(f"Auto proxy escalation: retrying Camoufox with enhanced proxy for: {url}")
-            retry = self.crawl_with_camoufox(
+            
+            # Step 1: Try stealth (which points to India pool)
+            logger.info(f"Auto proxy escalation: retrying Camoufox with stealth (India) proxy for: {url}")
+            retry_india = self.crawl_with_camoufox(
+                url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, "stealth"
+            )
+            if retry_india and "error" not in retry_india:
+                logger.info(f"Camoufox stealth (India) success: {url}")
+                return retry_india
+            
+            # Step 2: Try enhanced (which points to US pool)
+            logger.info(f"Auto proxy escalation: retrying Camoufox with enhanced (US) proxy for: {url}")
+            retry_us = self.crawl_with_camoufox(
                 url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, "enhanced"
             )
-            if retry and "error" not in retry:
-                logger.info(f"Camoufox enhanced success: {url}")
-                return retry
-            if retry:
-                result = retry
+            if retry_us and "error" not in retry_us:
+                logger.info(f"Camoufox enhanced (US) success: {url}")
+                return retry_us
+            
+            if retry_us:
+                result = retry_us
         else:
             logger.error(f"All browsers failed for: {url}")
             # Record the failure in the DB so operators can review it
@@ -843,29 +858,187 @@ class PageCrawler:
         
         return result
 
-    def scroll_to_bottom(self, page, max_scrolls=10, wait_time=500):
+    def scroll_to_bottom(self, page):
         """
-        Incrementally scroll page to trigger lazy loading
+        Incrementally scroll page to trigger lazy loading.
+        Uses a slow auto-scroll technique to ensure all content is loaded.
         """
         try:
-            prev_height = -1
-            for _ in range(max_scrolls):
-                # Scroll in chunks
-                page.mouse.wheel(0, 1000)
-                page.wait_for_timeout(200)
-                
-                # Check if height changed
-                curr_height = page.evaluate("document.body.scrollHeight")
-                if curr_height == prev_height:
-                    break
-                prev_height = curr_height
-                
-                # Small wait between major chunks
-                page.wait_for_timeout(wait_time)
-                
-            # Final ensure bottom
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            page.wait_for_timeout(wait_time)
-            
+            logger.info("Starting slow auto-scroll to load dynamic content...")
+            page.evaluate("""
+                async () => {
+                    await new Promise((resolve) => {
+                        let totalHeight = 0;
+                        let distance = 500; 
+                        let timer = setInterval(() => {
+                            let scrollHeight = document.body.scrollHeight;
+                            // Adding small random jitter to look more human
+                            let jitter = Math.floor(Math.random() * 20);
+                            window.scrollBy(0, distance + jitter);
+                            totalHeight += distance;
+
+                            if(totalHeight >= scrollHeight || totalHeight > 15000){
+                                clearInterval(timer);
+                                resolve();
+                            }
+                        }, 200); 
+                    });
+                }
+            """)
+            # Give Southwest and other heavy sites significant time to load images
+            page.wait_for_timeout(3000)
         except Exception as e:
             logger.warning(f"Scroll failed: {e}")
+
+    def _handle_popups_and_overlays(self, page: Page):
+        """
+        Actively find and click 'Accept' buttons and hide sticky overlays
+        that block content/screenshots.
+        """
+        try:
+            # 1. Wait for skeleton loaders to disappear (common on AXS/Southwest)
+            try:
+                page.wait_for_function("""
+                    () => {
+                        const skeletons = document.querySelectorAll('[class*="skeleton"], [class*="loading-shimmer"], .shimmer');
+                        return skeletons.length === 0;
+                    }
+                """, timeout=5000)
+            except Exception:
+                pass # Continue if skeletons don't clear
+
+            # 2. Try to click standard 'Accept' buttons
+            page.evaluate("""
+                () => {
+                    const buttons = Array.from(document.querySelectorAll('button, a'));
+                    const acceptTexts = [
+                        'accept', 'agree', 'allow', 'got it', 'understand', 
+                        'ok', 'confirm', 'consent', 'accept all'
+                    ];
+                    
+                    for (const btn of buttons) {
+                        const text = (btn.innerText || btn.value || '').toLowerCase().trim();
+                        if (acceptTexts.some(t => text === t || text.includes(t)) && btn.offsetParent !== null) {
+                            try { btn.click(); } catch(e) {}
+                        }
+                    }
+                    
+                    // Specific hide for AXS and common cookie platforms
+                    const selectorsToHide = [
+                        '#onetrust-banner-sdk', '.ot-sdk-container', '#didomi-notice', 
+                        '[id*="cookie-banner"]', '[class*="cookie-banner"]',
+                        '[id*="sp-consent"]', '.cmp-container'
+                    ];
+                    selectorsToHide.forEach(s => {
+                        document.querySelectorAll(s).forEach(el => el.style.display = 'none');
+                    });
+                }
+            """)
+            page.wait_for_timeout(1000) # Wait for animation
+            
+        except Exception as e:
+            logger.debug(f"Popup handling failed: {e}")
+
+    def _capture_robust_screenshot(self, page: Page) -> bytes:
+        """
+        Capture full page screenshot using a robust merging technique to avoid blank areas.
+        Falls back to native full_page screenshot if the page is reasonably short.
+        """
+        try:
+            # Get viewport and total height
+            viewport = page.viewport_size
+            v_height = viewport["height"]
+            v_width = viewport["width"]
+            total_height = page.evaluate("document.body.scrollHeight")
+            
+            # If the page is short, native full_page=True is faster and handles fixed elements better
+            if total_height < v_height * 3:
+                page.evaluate("window.scrollTo(0, 0)")
+                page.wait_for_timeout(1000)
+                return page.screenshot(full_page=True)
+
+            logger.info(f"Page height ({total_height}px) is large, using chunk-merge screenshotting...")
+            
+            images = []
+            curr_y = 0
+            
+            # Scroll to top
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(1000)
+            
+            # Clean up popups, cookie banners, and wait for skeletons
+            self._handle_popups_and_overlays(page)
+
+            while curr_y < total_height:
+                page.evaluate(f"window.scrollTo(0, {curr_y})")
+                
+                # Wait for any lazy content in this view
+                # Wait up to 1500ms for images to finish fetching
+                page.wait_for_timeout(1000)
+                
+                # Explicitly wait for images to load in the current viewport
+                # This helps with Southwest's lazy-loaded cards
+                page.evaluate("""
+                    async () => {
+                        const imgs = Array.from(document.querySelectorAll('img'));
+                        await Promise.all(imgs.map(img => {
+                            if (img.complete) return Promise.resolve();
+                            return new Promise(resolve => {
+                                img.onload = resolve;
+                                img.onerror = resolve;
+                            });
+                        }));
+                    }
+                """)
+                
+                chunk_bytes = page.screenshot(full_page=False)
+                img = Image.open(io.BytesIO(chunk_bytes))
+                images.append(img)
+                
+                # AFTER capturing the first chunk (which likely has the header/cookie banner),
+                # hide all sticky/fixed elements so they don't repeat in subsequent chunks.
+                if len(images) == 1:
+                    page.evaluate("""
+                        () => {
+                            const elements = document.querySelectorAll('*');
+                            for (const el of elements) {
+                                const style = window.getComputedStyle(el);
+                                if (style.position === 'fixed' || style.position === 'sticky') {
+                                    el.style.setProperty('display', 'none', 'important');
+                                }
+                            }
+                        }
+                    """)
+
+                curr_y += v_height
+                if len(images) > 60: # Limit to ~60 viewports to prevent memory issues
+                    break
+                
+                # Check actual progress
+                actual_y = page.evaluate("window.scrollY + window.innerHeight")
+                if actual_y >= total_height - 10: # Small buffer
+                    break
+                
+                # Re-check total height in case of infinite scroll
+                total_height = page.evaluate("document.body.scrollHeight")
+
+            # Merge all chunks
+            widths, heights = zip(*(i.size for i in images))
+            total_merged_height = sum(heights)
+            max_width = max(widths)
+            
+            # Use RGB to avoid alpha channel issues in some viewers
+            combined = Image.new('RGB', (max_width, total_merged_height))
+            y_offset = 0
+            for img in images:
+                combined.paste(img, (0, y_offset))
+                y_offset += img.height
+            
+            out_bytes = io.BytesIO()
+            combined.save(out_bytes, format='PNG')
+            return out_bytes.getvalue()
+            
+        except Exception as e:
+            logger.warning(f"Robust screenshot failed, falling back to basic: {e}")
+            page.evaluate("window.scrollTo(0, 0)")
+            return page.screenshot(full_page=True)

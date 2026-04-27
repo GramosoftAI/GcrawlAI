@@ -17,8 +17,10 @@ import os
 import re
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv(override=True)
+# Load environment variables from explicit absolute path
+BASE_DIR_PATH = Path(__file__).resolve().parent.parent
+dotenv_path = BASE_DIR_PATH / '.env'
+load_dotenv(dotenv_path, override=True)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_path = os.path.join(BASE_DIR, "config.yaml")

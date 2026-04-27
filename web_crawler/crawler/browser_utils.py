@@ -166,11 +166,13 @@ class BrowserUtils:
     def wait_for_ready(page: Page) -> bool:
         """Wait for page to be ready"""
         try:
-            page.wait_for_load_state("networkidle", timeout=3000)
+            # Use networkidle to ensure background images and pricing data load
+            page.wait_for_load_state("networkidle", timeout=8000)
             return True
         except Exception:
             try:
-                page.wait_for_load_state("domcontentloaded", timeout=10_000)
+                # Fallback to domcontentloaded if network stays busy (common on ad-heavy sites)
+                page.wait_for_load_state("domcontentloaded", timeout=12000)
                 return True
             except Exception:
                 return False

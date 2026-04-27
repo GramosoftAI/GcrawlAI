@@ -99,7 +99,7 @@ class DynamicFetcher:
 
                     # Wait for network idle
                     try:
-                        page.wait_for_load_state("networkidle", timeout=5000)
+                        page.wait_for_load_state("domcontentloaded", timeout=5000)
                     except:
                         pass  # Timeout is ok, we have the content
 
@@ -225,7 +225,7 @@ class AsyncDynamicFetcher:
 
                     # Wait for network idle
                     try:
-                        await page.wait_for_load_state("networkidle", timeout=5000)
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
                     except:
                         pass
 

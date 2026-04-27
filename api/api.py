@@ -35,8 +35,10 @@ redis_client_async = aioredis.from_url("redis://localhost:6379/0", decode_respon
 import yaml
 from pathlib import Path
 
-# Load environment variables from .env file
-load_dotenv(override=True)
+# Load environment variables from explicit absolute path
+BASE_DIR = Path(__file__).resolve().parent.parent
+dotenv_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path, override=True)
 
 _CONFIG = None
 

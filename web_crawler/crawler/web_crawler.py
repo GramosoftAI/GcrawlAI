@@ -175,21 +175,14 @@ class WebCrawler:
         if crawl_mode == "links":
             logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
 
-            # Step 1: Try without proxy first (as per user's "no proxy first" rule)
-            logger.info("  → Attempting map discovery without proxy...")
-            map_result = map_website(start_url, proxy_dict=None)
-
-            # Step 2: Fallback to proxy if discovery failed (only returned start_url)
-            if map_result["total"] <= 1:
-                logger.info("  → Map discovery failed or returned only 1 URL. Retrying with proxy...")
-                p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
-                    self._initial_proxy_type()
-                )
-                if p_dict:
-                    map_result = map_website(start_url, proxy_dict=p_dict)
-                else:
-                    logger.warning("  ⚠ No proxy configured for fallback.")
+            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                self._initial_proxy_type()
+            )
             
+            logger.info(f"  → Attempting map discovery with {self._initial_proxy_type()} proxy...")
+            map_result = map_website(start_url, proxy_dict=p_dict)
+
+            # Fallback to enhanced proxy if discovery failed
             if (
                 map_result["total"] <= 1
                 and self._effective_proxy_mode() == "auto"
