@@ -489,6 +489,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
                 enable_images=payload.enable_images,
+                user_id=payload.user_id,
                 config=config
             )
 
@@ -510,6 +511,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
                 enable_images=payload.enable_images,
+                user_id=payload.user_id,
                 config=config
             )
 
@@ -542,6 +544,7 @@ def run_crawler(payload: CrawlRequest, background_tasks: BackgroundTasks):
                 enable_ss=payload.enable_ss,
                 enable_seo=payload.enable_seo,
                 enable_images=payload.enable_images,
+                user_id=payload.user_id,
             )
 
             crawl_id = task.id

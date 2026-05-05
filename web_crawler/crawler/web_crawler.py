@@ -145,6 +145,7 @@ class WebCrawler:
         enable_seo: bool = False,
         enable_images: bool = False,
         client_id: Optional[str] = None,
+        user_id: Optional[int] = None,
         websocket_manager=None,
         crawl_mode: str = "all"
     ) -> Dict:
@@ -473,7 +474,11 @@ class WebCrawler:
                             seen_raw.add(link)
                             self.all_links.add(link)
 
-                            if urlparse(link).netloc == urlparse(start_url).netloc:
+                            def normalize_host(h):
+                                h = h.lower()
+                                return h[4:] if h.startswith("www.") else h
+
+                            if normalize_host(urlparse(link).netloc) == normalize_host(urlparse(start_url).netloc):
                                 queue.append((link, url))
 
             finally:

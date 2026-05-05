@@ -229,6 +229,99 @@ def _store_crawl_artifact(
                 pass
 
 
+def _record_crawl_error(
+    crawl_id: Optional[str],
+    url: str,
+    error_source: str,
+    reason: str,
+    blocked_message: Optional[str] = None,
+) -> None:
+    """
+    Insert a row into crawl_errors table.
+    """
+    if not crawl_id:
+        return
+    conn = None
+    try:
+        conn = _get_db_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO crawl_errors (crawl_id, url, error_source, reason, blocked_message)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (crawl_id, url, error_source, reason, blocked_message),
+        )
+        conn.commit()
+        cur.close()
+        logger.info(f"✓ Crawl error ({error_source}) recorded in DB for: {url}")
+        
+        # Also trigger email notification
+        _send_crawl_error_notification(crawl_id, url, error_source, reason, blocked_message)
+        
+    except Exception as db_err:
+        logger.warning(f"⚠ Could not record crawl error in DB for {url}: {db_err}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _send_crawl_error_notification(
+    crawl_id: str,
+    url: str,
+    error_source: str,
+    reason: str,
+    blocked_message: Optional[str] = None,
+) -> None:
+    """
+    Send an email notification for a crawl error.
+    """
+    try:
+        from api.email_service import EmailService
+        
+        # Load config to get SMTP settings and admin email
+        BASE_DIR = Path(__file__).resolve().parent.parent.parent
+        config_path = BASE_DIR / "config.yaml"
+        
+        def _substitute(data):
+            if isinstance(data, dict):
+                return {k: _substitute(v) for k, v in data.items()}
+            if isinstance(data, str):
+                def _rep(m):
+                    return os.getenv(m.group(1), m.group(2) or "")
+                return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', _rep, data)
+            return data
+
+        if not config_path.exists():
+            logger.warning(f"Configuration file not found: {config_path}")
+            return
+
+        with open(config_path, "r") as f:
+            cfg = _substitute(yaml.safe_load(f))
+            
+        smtp_cfg = cfg.get("email", {})
+        admin_email = os.getenv("ADMIN_EMAIL", "ganesha@gramosoft.in")
+        
+        if not smtp_cfg:
+            logger.warning("Email configuration not found in config.yaml")
+            return
+
+        email_service = EmailService(smtp_cfg)
+        email_service.send_crawl_error_email(
+            to_email=admin_email,
+            crawl_id=crawl_id,
+            url=url,
+            error_source=error_source,
+            reason=reason,
+            blocked_message=blocked_message
+        )
+    except Exception as e:
+        logger.warning(f"⚠ Could not send crawl error email: {e}")
+
+
 class PageCrawler:
     """Handle individual page crawling"""
     
@@ -347,6 +440,7 @@ class PageCrawler:
                     )
                 except Exception as e:
                     logger.error(f"Failed to save per-page SEO report for {url}: {e}")
+                    _record_crawl_error(client_id, url, "seo", "SEO report generation failed", str(e))
             
             # Save HTML
             if enable_html:
@@ -359,28 +453,47 @@ class PageCrawler:
                         page_url=url,
                         title=title,
                     )
+                    # Also save to disk for user visibility
+                    if self.config.output_dir:
+                        safe_title = self.file_manager.safe_filename(title or url)
+                        local_html_file = self.config.html_dir / f"{count:03d}_{safe_title}.html"
+                        local_html_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(local_html_file, "w", encoding="utf-8") as f:
+                            f.write(html)
                 except Exception as e:
                     logger.error(f"Failed to save HTML for {url}: {e}")
+                    _record_crawl_error(client_id, url, "html", "Failed to save HTML", str(e))
             
             # Save markdown (per page file)
             if enable_md:
                 try:
-                    markdown = self.content_processor.convert_to_markdown(html, url)
+                    markdown_content = self.content_processor.convert_to_markdown(html, url)
                     md_path = _store_crawl_artifact(
                         client_id,
                         "markdown",
-                        markdown,
+                        markdown_content,
                         content_kind="text",
                         page_url=url,
                         title=title,
                     )
+                    # Also save to disk for user visibility
+                    if self.config.output_dir:
+                        safe_title = self.file_manager.safe_filename(title or url)
+                        local_md_file = self.config.md_dir / f"{count:03d}_{safe_title}.md"
+                        local_md_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(local_md_file, "w", encoding="utf-8") as f:
+                            f.write(markdown_content)
+                        logger.info(f"✓ Markdown saved to disk: {local_md_file}")
                 except Exception as e:
                     logger.error(f"Failed to save markdown for {url}: {e}")
+                    _record_crawl_error(client_id, url, "markdown", "Failed to save markdown", str(e))
             
             # Save screenshot
             if enable_ss:
                 try:
                     screenshot_bytes = self._capture_robust_screenshot(page)
+                    if not screenshot_bytes:
+                        raise ValueError("Screenshot data is empty")
                     screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
                     
                     screenshot_path = _store_crawl_artifact(
@@ -391,13 +504,24 @@ class PageCrawler:
                         page_url=url,
                         title=title,
                     )
+                    # Also save to disk for user visibility
+                    if self.config.output_dir:
+                        safe_title = self.file_manager.safe_filename(title or url)
+                        local_ss_file = self.config.screenshot_dir / f"{count:03d}_{safe_title}.png"
+                        local_ss_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(local_ss_file, "wb") as f:
+                            f.write(screenshot_bytes)
                 except Exception as e:
                     logger.error(f"Failed to save screenshot for {url}: {e}")
+                    _record_crawl_error(client_id, url, "screenshot", "Screenshot not generated", str(e))
 
             # Save Images JSON
             if enable_images:
                 try:
                     image_urls = self.content_processor.extract_image_urls(soup, url)
+                    if not image_urls:
+                        # Only record if images were expected but not found (optional but good for tracking)
+                        logger.info(f"No images found on {url}")
                     images_path = _store_crawl_artifact(
                         client_id,
                         "images",
@@ -406,8 +530,16 @@ class PageCrawler:
                         page_url=url,
                         title=title,
                     )
+                    # Also save to disk for user visibility
+                    if self.config.output_dir:
+                        safe_title = self.file_manager.safe_filename(title or url)
+                        local_img_file = Path(self.config.output_dir) / "images" / f"{count:03d}_{safe_title}.json"
+                        local_img_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(local_img_file, "w", encoding="utf-8") as f:
+                            json.dump(image_urls, f, indent=2)
                 except Exception as e:
                     logger.error(f"Failed to save images JSON for {url}: {e}")
+                    _record_crawl_error(client_id, url, "image", "Failed to extract images", str(e))
 
             if client_id:
                 publish_event(
@@ -442,7 +574,12 @@ class PageCrawler:
                 )
 
             
-            links = self.content_processor.extract_links(soup, url)
+            try:
+                links = self.content_processor.extract_links(soup, url)
+            except Exception as e:
+                logger.error(f"Failed to extract links for {url}: {e}")
+                _record_crawl_error(client_id, url, "links", "Link extraction failed", str(e))
+                links = []
             
             logger.info(f"Successfully processed: {url}")
             
@@ -855,6 +992,14 @@ class PageCrawler:
                 crawl_mode=crawl_mode,
                 page_number=count,
             )
+            _record_crawl_error(
+                crawl_id=client_id,
+                url=url,
+                error_source="access",
+                reason="All browser strategies failed (Site likely blocked access)",
+                blocked_message=str(result.get("error") if result else "Unknown error")
+            )
+            failure_recorded = True
         
         return result
 
@@ -984,8 +1129,9 @@ class PageCrawler:
                         await Promise.all(imgs.map(img => {
                             if (img.complete) return Promise.resolve();
                             return new Promise(resolve => {
-                                img.onload = resolve;
-                                img.onerror = resolve;
+                                const timer = setTimeout(resolve, 3000);
+                                img.onload = () => { clearTimeout(timer); resolve(); };
+                                img.onerror = () => { clearTimeout(timer); resolve(); };
                             });
                         }));
                     }

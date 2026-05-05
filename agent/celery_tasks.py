@@ -1,6 +1,6 @@
 import logging
 
-from web_crawler.celery_config import celery_app
+from web_crawler.crawler.celery_config import celery_app
 from agent.db import AgentRepository
 from agent.pipeline import AgentPipeline
 

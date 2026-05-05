@@ -28,6 +28,7 @@ def main(
     enable_seo: bool = False,
     enable_images: bool = False,
     client_id: Optional[str] = None,
+    user_id: Optional[int] = None,
     websocket_manager = None,
     crawl_mode: str = "all",
     config: Optional[CrawlConfig] = None
@@ -75,6 +76,7 @@ def main(
         enable_seo=enable_seo,
         enable_images=enable_images,
         client_id=client_id,
+        user_id=user_id,
         websocket_manager=websocket_manager,
         crawl_mode=crawl_mode
     )

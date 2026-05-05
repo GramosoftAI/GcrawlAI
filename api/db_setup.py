@@ -518,6 +518,49 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_crawl_errors_table(self) -> bool:
+        """
+        Create crawl_errors table if it doesn't exist.
+        Stores errors related to crawling failures (e.g., screenshots, blocking).
+        """
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS crawl_errors (
+            id SERIAL PRIMARY KEY,
+            crawl_id VARCHAR(64),
+            url TEXT,
+            error_source VARCHAR(50), -- screenshot, image, seo, links, markdown, html, json
+            reason TEXT,
+            blocked_message TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_crawl_errors_job
+                FOREIGN KEY (crawl_id)
+                REFERENCES crawl_jobs (crawl_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_crawl_errors_crawl_id ON crawl_errors(crawl_id);
+        CREATE INDEX IF NOT EXISTS idx_crawl_errors_created_at ON crawl_errors(created_at);
+        """
+
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(create_table_query)
+            conn.commit()
+
+            cursor.close()
+            logger.info("✓ crawl_errors table created successfully (or already exists)")
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to create crawl_errors table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     def setup_all_tables(self) -> bool:
         logger.info("Starting database setup...")
 
@@ -529,9 +572,10 @@ class DatabaseSetup:
         crawl_artifacts_created = self.create_crawl_artifacts_table()
         failed_pages_created = self.create_failed_crawl_pages_table()
         reported_issues_created = self.create_reported_issues_table()
+        crawl_errors_created = self.create_crawl_errors_table()
 
         if all([users_created, otps_created, api_keys_created, crawl_jobs_created, crawl_events_created,
-                crawl_artifacts_created, failed_pages_created, reported_issues_created]):
+                crawl_artifacts_created, failed_pages_created, reported_issues_created, crawl_errors_created]):
             logger.info("✓ Database setup completed successfully")
             return True
         else:

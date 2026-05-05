@@ -99,8 +99,12 @@ class ContentProcessor:
             parsed = urlparse(url)
             link_host = parsed.netloc.lower()
 
-            # Only keep links from the EXACT same host (no subdomains)
-            if link_host != base_host:
+            # Only keep links from the same domain (ignore www vs non-www)
+            def normalize_host(h):
+                h = h.lower()
+                return h[4:] if h.startswith("www.") else h
+
+            if normalize_host(link_host) != normalize_host(base_host):
                 continue
 
             # Normalize: strip query string and fragment, normalize trailing slash

@@ -822,6 +822,172 @@ GcrawlAI automated notification.
 
         return self.send_email(to_email, subject, html_content, text_content)
 
+    def send_crawl_error_email(
+        self,
+        to_email: str,
+        crawl_id: str,
+        url: str,
+        error_source: str,
+        reason: str,
+        blocked_message: Optional[str] = None
+    ) -> bool:
+        """
+        Send a notification email when a crawl error occurs (e.g., screenshot failed, site blocked).
+        """
+        if not self.is_configured:
+            logger.warning(f"⚠ Email not sent to {to_email}. SMTP not configured.")
+            return False
+
+        subject = f"🚨 Crawl Error Alert: {error_source.upper()} Failed for {url}"
+        
+        blocked_section = ""
+        if blocked_message:
+            blocked_section = f"""
+            <div class="field-label">Blocked/Error Message</div>
+            <div class="explanation-box" style="border-left-color: #dc3545; background-color: #fff5f5;">{blocked_message}</div>
+            """
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #f4f4f4;
+                }}
+                .container {{
+                    max-width: 620px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #ffffff;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #dc3545 0%, #ff4b5c 100%);
+                    color: white;
+                    padding: 30px 20px;
+                    text-align: center;
+                    border-radius: 10px 10px 0 0;
+                }}
+                .header h1 {{
+                    margin: 0;
+                    font-size: 26px;
+                    font-weight: 700;
+                }}
+                .badge {{
+                    display: inline-block;
+                    background: rgba(255,255,255,0.2);
+                    border-radius: 20px;
+                    padding: 4px 14px;
+                    font-size: 13px;
+                    margin-top: 8px;
+                    letter-spacing: 0.5px;
+                }}
+                .content {{
+                    background-color: #f9f9f9;
+                    padding: 36px 30px;
+                    border-radius: 0 0 10px 10px;
+                }}
+                .field-label {{
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: #888;
+                    margin-bottom: 4px;
+                }}
+                .field-value {{
+                    background: #fff;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    margin-bottom: 20px;
+                    font-size: 15px;
+                    word-break: break-all;
+                }}
+                .field-value.url {{
+                    color: #dc3545;
+                    font-weight: 600;
+                }}
+                .explanation-box {{
+                    background: #fff;
+                    border-left: 4px solid #dc3545;
+                    border-radius: 0 6px 6px 0;
+                    padding: 14px 16px;
+                    margin-bottom: 20px;
+                    font-size: 15px;
+                    white-space: pre-wrap;
+                }}
+                .meta {{
+                    font-size: 12px;
+                    color: #aaa;
+                    margin-top: 4px;
+                }}
+                .footer {{
+                    text-align: center;
+                    margin-top: 30px;
+                    padding-top: 16px;
+                    border-top: 1px solid #ddd;
+                    color: #999;
+                    font-size: 12px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🚨 Crawl Error Detected</h1>
+                    <div class="badge">Crawl ID: {crawl_id}</div>
+                </div>
+                <div class="content">
+                    <p style="margin-top:0;">An error occurred during the crawling process for the following URL.</p>
+
+                    <div class="field-label">URL Affected</div>
+                    <div class="field-value url">{url}</div>
+
+                    <div class="field-label">Error Source</div>
+                    <div class="field-value"><strong>{error_source.upper()}</strong></div>
+
+                    <div class="field-label">Reason</div>
+                    <div class="explanation-box">{reason}</div>
+
+                    {blocked_section}
+
+                    <div class="meta">Detected on {datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}</div>
+                </div>
+                <div class="footer">
+                    <p>This is an automated notification from GcrawlAI.</p>
+                    <p>&copy; {datetime.now().year} GcrawlAI. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+        Crawl Error Detected
+        
+        Crawl ID: {crawl_id}
+        URL Affected: {url}
+        Error Source: {error_source.upper()}
+        Reason: {reason}
+        {f'Blocked Message: {blocked_message}' if blocked_message else ''}
+        
+        Detected on {datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
+        
+        ---
+        This is an automated notification from GcrawlAI.
+        © {datetime.now().year} GcrawlAI. All rights reserved.
+        """
+
+        return self.send_email(to_email, subject, html_content, text_content)
+
     def send_contact_email(
         self,
         to_email: str,
