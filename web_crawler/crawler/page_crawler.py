@@ -8,7 +8,15 @@ import sys
 import json
 import os
 import re
+import random
 import yaml
+
+# Monkeypatch yaml for environments where CLoader/CDumper are missing (e.g. Python 3.14 on Mac)
+if not hasattr(yaml, "CLoader"):
+    yaml.CLoader = yaml.Loader
+if not hasattr(yaml, "CDumper"):
+    yaml.CDumper = yaml.Dumper
+
 from typing import Optional, Dict
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
@@ -31,6 +39,8 @@ from web_crawler.common.redis_events import publish_event
 from web_crawler.common.proxy_manager import ProxyManager
 from web_crawler.common.artifact_store import upsert_crawl_artifact
 import base64
+from dotenv import load_dotenv
+
 
 
 logger = logging.getLogger(__name__)
@@ -43,11 +53,10 @@ def _get_db_conn():
     Raises on failure — callers should catch.
     """
     import psycopg2
-    from dotenv import load_dotenv
-    
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     dotenv_path = BASE_DIR / '.env'
     load_dotenv(dotenv_path, override=True)
+
 
     config_path = BASE_DIR / "config.yaml"
 
@@ -73,7 +82,21 @@ def _get_db_conn():
     )
 
 
+def _move_human(page: Page, x: int, y: int):
+    """
+    Simulate human-like mouse movement to target coordinates.
+    Uses Playwright's built-in interpolation for basic realism.
+    """
+    try:
+        # Move mouse in human-like steps
+        steps = random.randint(5, 15)
+        page.mouse.move(x, y, steps=steps)
+    except Exception:
+        pass
+
+
 def _record_failed_page(
+
     url: str,
     crawl_id: Optional[str],
     crawl_mode: str,
@@ -99,6 +122,15 @@ def _record_failed_page(
         conn.commit()
         cur.close()
         logger.info(f"✓ Failure recorded in DB for: {url} (crawl_id={crawl_id})")
+        
+        # Trigger email notification for total failure
+        _send_crawl_error_notification(
+            crawl_id=crawl_id,
+            url=url,
+            error_source="crawler_total_failure",
+            reason=f"All tiers/browsers failed for this URL (Mode: {crawl_mode})",
+            blocked_message=None
+        )
     except Exception as db_err:
         logger.warning(f"⚠ Could not record failed page in DB for {url}: {db_err}")
     finally:
@@ -268,6 +300,9 @@ def _record_crawl_error(
             except Exception:
                 pass
 
+# List of admin emails to notify on crawl errors
+ADMIN_EMAILS = ['jeevae@gramosoft.in']
+
 
 def _send_crawl_error_notification(
     crawl_id: str,
@@ -303,21 +338,37 @@ def _send_crawl_error_notification(
             cfg = _substitute(yaml.safe_load(f))
             
         smtp_cfg = cfg.get("email", {})
-        admin_email = os.getenv("ADMIN_EMAIL", "ganesha@gramosoft.in")
+        
+        # Ensure .env is loaded to get latest ADMIN_EMAIL
+        BASE_DIR = Path(__file__).resolve().parent.parent.parent
+        load_dotenv(BASE_DIR / ".env", override=True)
+        
+        # Get recipients from env or fallback to hardcoded list
+        env_admin_email = os.getenv("ADMIN_EMAIL")
+        if env_admin_email:
+            # Handle possible list-like string format from .env: ['a', 'b'] -> a, b
+            cleaned = env_admin_email.strip().strip("[]").replace("'", "").replace('"', "")
+            recipients = [e.strip() for e in cleaned.split(",") if e.strip()]
+        else:
+            recipients = ADMIN_EMAILS
+
         
         if not smtp_cfg:
             logger.warning("Email configuration not found in config.yaml")
             return
 
         email_service = EmailService(smtp_cfg)
-        email_service.send_crawl_error_email(
-            to_email=admin_email,
-            crawl_id=crawl_id,
-            url=url,
-            error_source=error_source,
-            reason=reason,
-            blocked_message=blocked_message
-        )
+        for recipient in recipients:
+            logger.info(f"Sending crawl error notification to {recipient}...")
+            email_service.send_crawl_error_email(
+                to_email=recipient,
+                crawl_id=crawl_id,
+                url=url,
+                error_source=error_source,
+                reason=reason,
+                blocked_message=blocked_message
+            )
+
     except Exception as e:
         logger.warning(f"⚠ Could not send crawl error email: {e}")
 
@@ -337,11 +388,8 @@ class PageCrawler:
             enhanced_proxies=config.enhanced_proxies,
         )
 
-    @staticmethod
-    def _is_likely_proxy_failure(result: Optional[Dict]) -> bool:
-        """
-        Heuristic used for auto mode escalation (basic -> enhanced).
-        """
+    def _is_likely_proxy_failure(self, result: Optional[Dict]) -> bool:
+        """Detect if the failure was likely due to a proxy block or network error."""
         if not result:
             return True
 
@@ -361,21 +409,21 @@ class PageCrawler:
         ]
         return any(marker in err for marker in proxy_markers)
 
-    def _resolve_playwright_proxy(self, proxy_type: str = "basic") -> Optional[Dict]:
+    def _resolve_playwright_proxy(self, proxy_tier: int = 1) -> Optional[Dict]:
         """
         Resolve proxy settings for Playwright contexts.
         Priority:
         1) Firecrawl-style BYOP env proxy (PROXY_SERVER/USERNAME/PASSWORD)
-        2) Requested proxy type from rotating manager
+        2) Requested Tier (1-7) from ProxyManager
         """
-        if proxy_type == "none":
-            return None
+        if proxy_tier == 1:
+            return None # Tier 1 is Direct
 
         byop_proxy = self.config.get_playwright_proxy()
         if byop_proxy:
             return byop_proxy
 
-        return self.proxy_manager.get_playwright_proxy(proxy_type)
+        return self.proxy_manager.get_playwright_proxy(tier=proxy_tier)
     
     def process_page(
         self,
@@ -414,30 +462,54 @@ class PageCrawler:
             if enable_seo:
                 try:
                     writer = CrawlReportWriter(self.config.output_dir)
-                    seo_json_path = _store_crawl_artifact(
+                    
+                    seo_json_content = writer.render_single_json(seo)
+                    seo_json_path_artifact = _store_crawl_artifact(
                         client_id,
                         "seo_json",
-                        writer.render_single_json(seo),
+                        seo_json_content,
                         content_kind="text",
                         page_url=url,
                         title=title,
                     )
-                    seo_md_path = _store_crawl_artifact(
+                    
+                    seo_md_content = writer.render_single_markdown(seo)
+                    seo_md_path_artifact = _store_crawl_artifact(
                         client_id,
                         "seo_md",
-                        writer.render_single_markdown(seo),
+                        seo_md_content,
                         content_kind="text",
                         page_url=url,
                         title=title,
                     )
-                    seo_xlsx_path = _store_crawl_artifact(
+                    
+                    seo_xlsx_content = writer.render_single_excel_base64(seo)
+                    seo_xlsx_path_artifact = _store_crawl_artifact(
                         client_id,
                         "seo_xlsx",
-                        writer.render_single_excel_base64(seo),
+                        seo_xlsx_content,
                         content_kind="binary",
                         page_url=url,
                         title=title,
                     )
+                    
+                    os.makedirs(self.config.seo_dir, exist_ok=True)
+                    
+                    local_seo_json = self.config.seo_dir / f"seo_{count}.json"
+                    with open(local_seo_json, "w", encoding="utf-8") as f:
+                        f.write(seo_json_content)
+                    seo_json_path = str(local_seo_json)
+                    
+                    local_seo_md = self.config.seo_dir / f"seo_{count}.md"
+                    with open(local_seo_md, "w", encoding="utf-8") as f:
+                        f.write(seo_md_content)
+                    seo_md_path = str(local_seo_md)
+                    
+                    local_seo_xlsx = self.config.seo_dir / f"seo_{count}.xlsx"
+                    with open(local_seo_xlsx, "wb") as f:
+                        f.write(base64.b64decode(seo_xlsx_content))
+                    seo_xlsx_path = str(local_seo_xlsx)
+                    
                 except Exception as e:
                     logger.error(f"Failed to save per-page SEO report for {url}: {e}")
                     _record_crawl_error(client_id, url, "seo", "SEO report generation failed", str(e))
@@ -445,7 +517,7 @@ class PageCrawler:
             # Save HTML
             if enable_html:
                 try:
-                    html_path = _store_crawl_artifact(
+                    html_path_artifact = _store_crawl_artifact(
                         client_id,
                         "html",
                         html,
@@ -453,13 +525,14 @@ class PageCrawler:
                         page_url=url,
                         title=title,
                     )
-                    # Also save to disk for user visibility
-                    if self.config.output_dir:
-                        safe_title = self.file_manager.safe_filename(title or url)
-                        local_html_file = self.config.html_dir / f"{count:03d}_{safe_title}.html"
-                        local_html_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(local_html_file, "w", encoding="utf-8") as f:
-                            f.write(html)
+                    
+                    
+
+                    os.makedirs(self.config.html_dir, exist_ok=True)
+                    local_html_path = self.config.html_dir / f"page_{count}.html"
+                    with open(local_html_path, "w", encoding="utf-8") as f:
+                        f.write(html)
+                    html_path = str(local_html_path)
                 except Exception as e:
                     logger.error(f"Failed to save HTML for {url}: {e}")
                     _record_crawl_error(client_id, url, "html", "Failed to save HTML", str(e))
@@ -467,23 +540,21 @@ class PageCrawler:
             # Save markdown (per page file)
             if enable_md:
                 try:
-                    markdown_content = self.content_processor.convert_to_markdown(html, url)
-                    md_path = _store_crawl_artifact(
+                    markdown = self.content_processor.convert_to_markdown(html, url)
+                    md_path_artifact = _store_crawl_artifact(
                         client_id,
                         "markdown",
-                        markdown_content,
+                        markdown,
                         content_kind="text",
                         page_url=url,
                         title=title,
                     )
-                    # Also save to disk for user visibility
-                    if self.config.output_dir:
-                        safe_title = self.file_manager.safe_filename(title or url)
-                        local_md_file = self.config.md_dir / f"{count:03d}_{safe_title}.md"
-                        local_md_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(local_md_file, "w", encoding="utf-8") as f:
-                            f.write(markdown_content)
-                        logger.info(f"✓ Markdown saved to disk: {local_md_file}")
+                    
+                    os.makedirs(self.config.md_dir, exist_ok=True)
+                    local_md_path = self.config.md_dir / f"page_{count}.md"
+                    with open(local_md_path, "w", encoding="utf-8") as f:
+                        f.write(markdown)
+                    md_path = str(local_md_path)
                 except Exception as e:
                     logger.error(f"Failed to save markdown for {url}: {e}")
                     _record_crawl_error(client_id, url, "markdown", "Failed to save markdown", str(e))
@@ -496,7 +567,7 @@ class PageCrawler:
                         raise ValueError("Screenshot data is empty")
                     screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
                     
-                    screenshot_path = _store_crawl_artifact(
+                    screenshot_path_artifact = _store_crawl_artifact(
                         client_id,
                         "screenshot",
                         screenshot_b64,
@@ -504,13 +575,12 @@ class PageCrawler:
                         page_url=url,
                         title=title,
                     )
-                    # Also save to disk for user visibility
-                    if self.config.output_dir:
-                        safe_title = self.file_manager.safe_filename(title or url)
-                        local_ss_file = self.config.screenshot_dir / f"{count:03d}_{safe_title}.png"
-                        local_ss_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(local_ss_file, "wb") as f:
-                            f.write(screenshot_bytes)
+                    
+                    os.makedirs(self.config.screenshot_dir, exist_ok=True)
+                    local_ss_path = self.config.screenshot_dir / f"page_{count}.png"
+                    with open(local_ss_path, "wb") as f:
+                        f.write(screenshot_bytes)
+                    screenshot_path = str(local_ss_path)
                 except Exception as e:
                     logger.error(f"Failed to save screenshot for {url}: {e}")
                     _record_crawl_error(client_id, url, "screenshot", "Screenshot not generated", str(e))
@@ -519,10 +589,7 @@ class PageCrawler:
             if enable_images:
                 try:
                     image_urls = self.content_processor.extract_image_urls(soup, url)
-                    if not image_urls:
-                        # Only record if images were expected but not found (optional but good for tracking)
-                        logger.info(f"No images found on {url}")
-                    images_path = _store_crawl_artifact(
+                    images_path_artifact = _store_crawl_artifact(
                         client_id,
                         "images",
                         image_urls,
@@ -530,13 +597,12 @@ class PageCrawler:
                         page_url=url,
                         title=title,
                     )
-                    # Also save to disk for user visibility
-                    if self.config.output_dir:
-                        safe_title = self.file_manager.safe_filename(title or url)
-                        local_img_file = Path(self.config.output_dir) / "images" / f"{count:03d}_{safe_title}.json"
-                        local_img_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(local_img_file, "w", encoding="utf-8") as f:
-                            json.dump(image_urls, f, indent=2)
+                    
+                    
+                    local_images_path = Path(self.config.output_dir) / f"images_{count}.json"
+                    with open(local_images_path, "w", encoding="utf-8") as f:
+                        json.dump(image_urls, f, indent=2)
+                    images_path = str(local_images_path)
                 except Exception as e:
                     logger.error(f"Failed to save images JSON for {url}: {e}")
                     _record_crawl_error(client_id, url, "image", "Failed to extract images", str(e))
@@ -639,14 +705,15 @@ class PageCrawler:
         enable_seo: bool,
         enable_images: bool,
         client_id: Optional[str],
-        proxy_type: str = "basic"
+        proxy_tier: int = 2
     ) -> Optional[Dict]:
         """Crawl page using Chromium with stealth"""
         try:
-            proxy_settings = self._resolve_playwright_proxy(proxy_type)
+            proxy_settings = self._resolve_playwright_proxy(proxy_tier)
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=self.config.headless,
+                    proxy={"server": "http://per-context"} if proxy_settings else None,
                     args=[
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
@@ -682,8 +749,8 @@ class PageCrawler:
                     context_kwargs["proxy"] = proxy_settings
 
                 # Define nav_timeout and search mobile persona
-                nav_timeout = 90_000 if proxy_type in {"stealth", "enhanced"} else 60_000
-                if "google.com/search" in url and proxy_type in {"stealth", "enhanced"}:
+                nav_timeout = 90_000 if proxy_tier > 2 else 60_000
+                if "google.com/search" in url and proxy_tier > 2:
                     mobile_ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
                     context_kwargs["user_agent"] = mobile_ua
                     context_kwargs["viewport"] = {"width": 390, "height": 844}
@@ -717,6 +784,17 @@ class PageCrawler:
                     
                     if not (200 <= response.status < 300):
                         return {"url": url, "error": f"HTTP {response.status}", "status_code": response.status}
+                    
+                    # For high-sec sites, perform human activity loop
+                    high_sec_sites = ["meesho", "expedia", "zillow", "axs", "southwest", "delta"]
+                    if any(s in url.lower() for s in high_sec_sites):
+                        logger.info(f"High-security site detected, performing extended 15s human activity loop (Chromium)...")
+                        for _ in range(3):
+                            tx, ty = random.randint(200, 1000), random.randint(200, 800)
+                            _move_human(page, tx, ty)
+                            if random.random() > 0.7:
+                                page.mouse.wheel(0, random.randint(100, 300))
+                            page.wait_for_timeout(random.randint(3000, 5000))
                     
                     # Note: check_cloudflare needs a loaded page to work correctly
                     # self.browser_utils.check_cloudflare(page, self.config)
@@ -776,7 +854,7 @@ class PageCrawler:
         enable_seo: bool,
         enable_images: bool,
         client_id: Optional[str],
-        proxy_type: str = "basic"
+        proxy_tier: int = 2
     ) -> Optional[Dict]:
         """Fallback crawl using Camoufox"""
         if not self.config.camoufox_path:
@@ -784,83 +862,147 @@ class PageCrawler:
             return None
         
         try:
-            proxy_settings = self._resolve_playwright_proxy(proxy_type)
+            proxy_settings = self._resolve_playwright_proxy(proxy_tier)
+            
+            # POC PARITY: Exact Stealth Site Lists
+            high_sec_sites = [
+                "meesho", "delta.com", "jal.co.jp", "united.com", "saint-gobain", 
+                "jobrapido", "mister-auto", "ubaldi", "mansueto", "seloger",
+                "oracle.com", "expedia.com", "luisaviaroma.com", "lufthansa.com",
+                "emirates.com", "citigroup.com", "wellsfargo.com", "homedepot.com",
+                "lowes.com", "rakuten.com", "footlocker.com", "att.com", "booking.com",
+                "chewy.com", "autozone.com", "comcast.com", "creditagricole.fr",
+                "cvs.com", "indeed.com", "jdsports.com", "jimmyjazz.com",
+                "kohls.com", "laredoute.fr", "letseat.at", "neimanmarcus.com",
+                "palace-skateboards.com", "rakuten.fr", "size.co.uk",
+                "supremenewyork.com", "wayfair.com", "zillow.com"
+            ]
+            
+            mobile_target_sites = [
+                "expedia.com", "luisaviaroma.com", "oracle.com", "chewy.com",
+                "autozone.com", "indeed.com", "zillow.com", "wayfair.com"
+            ]
+            
+            use_mobile = any(site in url.lower() for site in mobile_target_sites) and proxy_tier >= 3
+            is_high_sec = any(site in url.lower() for site in high_sec_sites)
+            
             with sync_playwright() as p:
-                if platform.system() == "Windows":
-                    browser = p.firefox.launch(
-                        executable_path=self.config.camoufox_path,
-                        headless=self.config.headless
-                    )
-                else:
-                    browser = p.firefox.launch(
-                        headless=self.config.headless
-                    )
+                logger.info(f"Setting up Camoufox (sync) for: {url}")
+                from camoufox.sync_api import NewBrowser
+                
+                browser = NewBrowser(
+                    p,
+                    headless=self.config.headless,
+                    os="windows",
+                    block_webrtc=True,
+                )
                 
                 try:
+                    # POC Parity: Dynamic Geo/TZ/Locale
+                    target_tz = "America/New_York"
+                    target_locale = "en-US"
+                    target_geo = {"latitude": 40.7128, "longitude": -74.0060} 
+                    
+                    if proxy_tier in [3, 5, 7]:
+                        target_tz = "Asia/Kolkata"
+                        target_geo = {"latitude": 19.0760, "longitude": 72.8777} # Mumbai
+                    
+                    logger.info(f"[Stealth Layer] Engine initialization: Camoufox fingerprint evasion active.")
+                    logger.info(f"[Stealth Layer] Browser Identity: Platform={'Mobile' if use_mobile else 'Desktop'}, Viewport={'390x844' if use_mobile else '1920x1080'}, Locale={target_locale}, TZ={target_tz}")
+
                     context_kwargs = dict(
-                        viewport={"width": 1920, "height": 1080},
-                        locale='en-US',
-                        # Fix 4: No user_agent override — let Camoufox (Firefox) present its native UA.
-                        # Overriding with Chrome UA on a Firefox binary creates a contradictory fingerprint.
+                        viewport={"width": 1920, "height": 1080} if not use_mobile else {"width": 390, "height": 844},
+                        locale=target_locale,
+                        timezone_id=target_tz,
+                        geolocation=target_geo,
+                        permissions=["geolocation", "notifications"],
                         java_script_enabled=True,
                         ignore_https_errors=True,
-                        bypass_csp=True
+                        bypass_csp=True,
+                        color_scheme="light"
                     )
+                    
+                    if use_mobile:
+                        context_kwargs["user_agent"] = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                    
                     if proxy_settings:
                         context_kwargs["proxy"] = proxy_settings
 
                     context = browser.new_context(**context_kwargs)
                     
-                    # Apply stealth at context level only (Fix 3: removed duplicate page-level stealth)
-                    from playwright_stealth import Stealth
-                    Stealth().apply_stealth_sync(context)
+                    # POC Parity: Referer Spoofing
+                    extra_headers = {}
+                    if is_high_sec:
+                        domain_name = next((s for s in high_sec_sites if s in url.lower()), "site")
+                        extra_headers["Referer"] = f"https://www.google.com/search?q={domain_name}+official+store&oq={domain_name}"
+                        logger.info(f"[Stealth Layer] Network Identity: Applying deep referer spoofing and Sec-Fetch headers.")
+                    else:
+                        extra_headers["Referer"] = "https://www.google.com/"
+                    
+                    context.set_extra_http_headers(extra_headers)
                     
                     page = context.new_page()
-                    self.browser_utils.inject_stealth_scripts(page)
-                    # Fix 3: stealth already applied at context level — do NOT re-apply to page
+                    
+                    # POC Parity: Initial Mouse Movement
+                    import random
+                    import time
+                    logger.info("[Stealth Layer] Behavioral Simulation: Executing initial human-like mouse trajectories.")
+                    page.mouse.move(random.randint(100, 500), random.randint(100, 500))
+                    
+                    # POC Parity: Warm-up Navigation
+                    if is_high_sec:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(url)
+                        warmup_url = f"{parsed.scheme}://{parsed.netloc}/"
+                        logger.info(f"Warm-up navigation (Cookie Seeding) for: {warmup_url}")
+                        logger.info("[Stealth Layer] Cookie/Session Validation: Initiating request to generate security tokens.")
+                        try:
+                            page.goto(warmup_url, wait_until="domcontentloaded", timeout=25000)
+                            time.sleep(random.uniform(4, 8))
+                            # Log cookie status
+                            cookies = context.cookies()
+                            abck = [c for c in cookies if c['name'] == '_abck']
+                            logger.info(f"[COOKIE CHECK] _abck={'FOUND len:' + str(len(abck[0]['value'])) if abck else 'MISSING'}")
+                        except Exception as e:
+                            logger.debug(f"Warm-up failed: {e}")
 
-                    if self.config.use_custom_headers:
-                        self.browser_utils.set_custom_headers(page)
+                    # Target Navigation
+                    logger.info(f"Navigating to target URL: {url} (Tier {proxy_tier})")
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    status_code = response.status if response else 0
+                    logger.info(f"Navigation completed. Status: {status_code}")
                     
-                    # Fix 2: Skip resource-blocking on protected domains (Google uses resources to fingerprint)
-                    if not self.browser_utils.is_protected_domain(url):
-                        page.route("**/*", self.browser_utils.block_resources)
+                    # POC Parity: 15s Human Activity Loop
+                    if is_high_sec or status_code in [403, 429]:
+                        logger.info(f"High-sec site detected, performing human activity loop (15s)...")
+                        for _ in range(3):
+                            page.mouse.move(random.randint(200, 1000), random.randint(200, 800))
+                            if random.random() > 0.7:
+                                page.mouse.wheel(0, random.randint(50, 150))
+                            time.sleep(random.uniform(3, 5))
                     
-                    logger.info(f"Navigating to {url} (Camoufox)...")
-                    nav_timeout = 90_000 if proxy_type in {"stealth", "enhanced"} else 60_000
-                    response = page.goto(url, wait_until="domcontentloaded", timeout=nav_timeout)
-                    logger.info(f"Response status: {response.status if response else 'None'}")
+                    # POC Parity: Block Detection (Partial Content)
+                    html_content = page.content()
+                    check_content = html_content[:5000].lower()
+                    title = page.title().lower()
                     
-                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    page.wait_for_timeout(4000)
+                    block_keywords = [
+                        "access denied", "blocked", "captcha", "security check", 
+                        "bot detection", "robot check", "verify your identity",
+                        "human side", "distil networks", "incapsula", "perimeterx",
+                        "fw_error_www", "bot or not", "proxy authentication required",
+                        "refusing connections", "pardon our interruption"
+                    ]
                     
-                    if not response:
-                        return {"url": url, "error": "No response", "status_code": 0}
-
-                    if not (200 <= response.status < 300):
-                        return {"url": url, "error": f"HTTP {response.status}", "status_code": response.status}
+                    is_blocked = any(kw in title for kw in block_keywords) or \
+                                 any(kw in check_content for kw in block_keywords) or \
+                                 (status_code in [403, 429])
                     
-                    if not self.browser_utils.wait_for_ready(page):
-                        return {"url": url, "error": "Page not ready", "status_code": 504}
-                        
-                    text_content = page.evaluate("document.body.innerText")
-                    if self.is_captcha_page(text_content):
-                        logger.warning(f"Camoufox also hit CAPTCHA for {url}")
-                        # Final attempt: try a small random sleep and scroll to look human
-                        page.wait_for_timeout(2000)
-                        page.mouse.move(100, 100)
-                        page.mouse.move(200, 300)
-                        page.keyboard.press("PageDown")
-                        page.wait_for_timeout(1000)
-                        
-                        # Re-check
-                        text_content = page.evaluate("document.body.innerText")
-                        if not self.is_captcha_page(text_content):
-                             result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id)
-                             return result
-                        
-                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
+                    if is_blocked:
+                         logger.warning(f"[Stealth Layer] Block page detected (Title: {page.title()}, Status: {status_code}).")
+                         return {"url": url, "error": f"HTTP {status_code} - Blocked", "status_code": status_code}
                     
+                    logger.info("[Stealth Layer] JS Rendering: Stabilizing dynamic elements before extraction.")
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id)
                     return result
                 finally:
@@ -885,12 +1027,14 @@ class PageCrawler:
                         pass
                         
                     try:
-                        browser.close()
+                        browser.close() # Playwright browser instance uses .close()
                     except Exception:
                         pass
                 
         except Exception as e:
             logger.error(f"Camoufox failed for {url}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def crawl_page(
@@ -922,84 +1066,67 @@ class PageCrawler:
             )
 
         
-        requested_proxy_type = (proxy_type or "basic").strip().lower()
-        if requested_proxy_type not in {"basic", "stealth", "enhanced", "auto", "none"}:
-            requested_proxy_type = "basic"
-
-        first_proxy_type = "basic" if requested_proxy_type == "auto" else requested_proxy_type
-
-        # Try Chromium first (Now using proxy immediately to prevent server IP block)
-        result = self.crawl_with_chromium(
-            url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, proxy_type=first_proxy_type
-        )
+        # Legacy mapping for API compatibility
+        requested_proxy_type = (proxy_type or "auto").strip().lower()
         
-        if result and "error" not in result:
-            logger.info(f"Chromium success with proxy: {url}")
-            return result
-    
-        # Fallback to Camoufox
-        logger.info(f"Chromium failed, trying Camoufox fallback with {first_proxy_type} proxy for: {url}")
-        result = self.crawl_with_camoufox(
-            url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, first_proxy_type
-        )
-        
-        if result and "error" not in result:
-            logger.info(f"Camoufox success: {url}")
-            return result
+        # Start from Tier 1 (No Proxy) by default for sequential escalation
+        # unless specifically requested otherwise.
+        if requested_proxy_type == "none":
+            start_tier = 1
+        elif requested_proxy_type == "auto":
+            start_tier = 1
+        else:
+            # If they picked basic/stealth/etc, start from there
+            if requested_proxy_type == "basic":
+                start_tier = 2
+            elif requested_proxy_type == "stealth":
+                start_tier = 3
+            elif requested_proxy_type == "enhanced":
+                start_tier = 4
+            else:
+                start_tier = 1
+            
+        is_auto = True # Force escalation for all modes to ensure success
 
+        # Multi-Tier browser orchestration (Camoufox for Tiers 1-5, Chromium for Tiers 6-7)
+        current_tier = start_tier
+        result = None
         failure_recorded = False
 
-        # Firecrawl-style auto mode escalation array:
-        # if basic likely failed due to proxy inadequacy or geoblocking.
-        if requested_proxy_type == "auto" and self._is_likely_proxy_failure(result):
+        while current_tier <= 7:
+            logger.info("\n" + "="*30 + f"\nTier {current_tier} - Processing\n" + "="*30)
             
-            # Step 1: Try stealth (which points to India pool)
-            logger.info(f"Auto proxy escalation: retrying Camoufox with stealth (India) proxy for: {url}")
-            retry_india = self.crawl_with_camoufox(
-                url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, "stealth"
-            )
-            if retry_india and "error" not in retry_india:
-                logger.info(f"Camoufox stealth (India) success: {url}")
-                return retry_india
-            
-            # Step 2: Try enhanced (which points to US pool)
-            logger.info(f"Auto proxy escalation: retrying Camoufox with enhanced (US) proxy for: {url}")
-            retry_us = self.crawl_with_camoufox(
-                url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, "enhanced"
-            )
-            if retry_us and "error" not in retry_us:
-                logger.info(f"Camoufox enhanced (US) success: {url}")
-                return retry_us
-            
-            if retry_us:
-                result = retry_us
-        else:
-            logger.error(f"All browsers failed for: {url}")
-            # Record the failure in the DB so operators can review it
-            _record_failed_page(
-                url=url,
-                crawl_id=client_id,
-                crawl_mode=crawl_mode,
-                page_number=count,
-            )
-            failure_recorded = True
+            if current_tier < 6:
+                result = self.crawl_with_camoufox(
+                    url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, current_tier
+                )
+                browser_name = "Camoufox"
+            else:
+                result = self.crawl_with_chromium(
+                    url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, client_id, current_tier
+                )
+                browser_name = "Chromium"
 
-        if requested_proxy_type == "auto" and not failure_recorded:
-            logger.error(f"All browsers failed even after auto proxy escalation for: {url}")
-            _record_failed_page(
-                url=url,
-                crawl_id=client_id,
-                crawl_mode=crawl_mode,
-                page_number=count,
-            )
-            _record_crawl_error(
-                crawl_id=client_id,
-                url=url,
-                error_source="access",
-                reason="All browser strategies failed (Site likely blocked access)",
-                blocked_message=str(result.get("error") if result else "Unknown error")
-            )
-            failure_recorded = True
+            if result and "error" not in result:
+                logger.info("\n" + "="*30 + f"\nTier {current_tier} - Success\n" + "="*30)
+                logger.info(f"{browser_name} success with Tier {current_tier}: {url}")
+                return result
+
+            # If it failed, try the next tier (always escalating up to 7 for max success)
+            logger.warning("\n" + "="*30 + f"\nTier {current_tier} - Failed\n" + "="*30)
+            if current_tier < 7:
+                logger.warning(f"{browser_name} failed with Tier {current_tier} (Error: {result.get('error') if result else 'Unknown'}). Escalating to Tier {current_tier + 1}...")
+                current_tier += 1
+            else:
+                break
+                
+        logger.error(f"All browsers and tiers failed for: {url}")
+        _record_failed_page(
+            url=url,
+            crawl_id=client_id,
+            crawl_mode=crawl_mode,
+            page_number=count,
+        )
         
         return result
 
@@ -1036,12 +1163,9 @@ class PageCrawler:
             logger.warning(f"Scroll failed: {e}")
 
     def _handle_popups_and_overlays(self, page: Page):
-        """
-        Actively find and click 'Accept' buttons and hide sticky overlays
-        that block content/screenshots.
-        """
+        """Hide common popups and cookie banners using a non-destructive stealth approach."""
         try:
-            # 1. Wait for skeleton loaders to disappear (common on AXS/Southwest)
+            # 1. Wait for skeleton loaders to disappear
             try:
                 page.wait_for_function("""
                     () => {
@@ -1050,36 +1174,32 @@ class PageCrawler:
                     }
                 """, timeout=5000)
             except Exception:
-                pass # Continue if skeletons don't clear
+                pass 
 
-            # 2. Try to click standard 'Accept' buttons
+            # 2. Hide common sticky overlays without clicking anything
             page.evaluate("""
                 () => {
-                    const buttons = Array.from(document.querySelectorAll('button, a'));
-                    const acceptTexts = [
-                        'accept', 'agree', 'allow', 'got it', 'understand', 
-                        'ok', 'confirm', 'consent', 'accept all'
-                    ];
-                    
-                    for (const btn of buttons) {
-                        const text = (btn.innerText || btn.value || '').toLowerCase().trim();
-                        if (acceptTexts.some(t => text === t || text.includes(t)) && btn.offsetParent !== null) {
-                            try { btn.click(); } catch(e) {}
-                        }
-                    }
-                    
-                    // Specific hide for AXS and common cookie platforms
                     const selectorsToHide = [
                         '#onetrust-banner-sdk', '.ot-sdk-container', '#didomi-notice', 
-                        '[id*="cookie-banner"]', '[class*="cookie-banner"]',
-                        '[id*="sp-consent"]', '.cmp-container'
+                        '#cookie-banner', '.cookie-banner', '[id*="cookie"]', '[class*="cookie"]',
+                        '.modal-backdrop', '.modal-open', '.fade.in',
+                        '.bx-row-submit-button', '#newsletter-popup',
+                        '[id^="sp_message_container"]', '.sp_veil'
                     ];
+                    
                     selectorsToHide.forEach(s => {
-                        document.querySelectorAll(s).forEach(el => el.style.display = 'none');
+                        document.querySelectorAll(s).forEach(el => {
+                            // SAFETY: Don't hide the main content wrappers, headers, or navs
+                            if (['BODY', 'HTML', 'HEADER', 'NAV'].includes(el.tagName)) return;
+                            if (['app', 'root', 'main-content', 'header', 'nav'].includes(el.id)) return;
+                            
+                            // Hide via opacity/display to be non-destructive
+                            el.style.display = 'none';
+                        });
                     });
                 }
             """)
-            page.wait_for_timeout(1000) # Wait for animation
+            page.wait_for_timeout(500)
             
         except Exception as e:
             logger.debug(f"Popup handling failed: {e}")
@@ -1090,101 +1210,94 @@ class PageCrawler:
         Falls back to native full_page screenshot if the page is reasonably short.
         """
         try:
-            # Get viewport and total height
-            viewport = page.viewport_size
-            v_height = viewport["height"]
-            v_width = viewport["width"]
-            total_height = page.evaluate("document.body.scrollHeight")
+            # 1. Hide Overlays and cookie banners
+            self._handle_popups_and_overlays(page)
             
-            # If the page is short, native full_page=True is faster and handles fixed elements better
-            if total_height < v_height * 3:
+            # 2. Get viewport and total height
+            viewport = page.viewport_size
+            current_width = viewport["width"] if viewport else 1920
+            current_height = viewport["height"] if viewport else 1080
+            
+            # Ensure we are at the top to measure and capture correctly
+            page.evaluate("window.scrollTo(0, 0)")
+            total_height = page.evaluate("Math.max(document.scrollingElement.scrollHeight, document.body.scrollHeight, 1000)")
+            
+            # 3. If short page, just do native full_page
+            if total_height < current_height * 2:
                 page.evaluate("window.scrollTo(0, 0)")
                 page.wait_for_timeout(1000)
                 return page.screenshot(full_page=True)
 
-            logger.info(f"Page height ({total_height}px) is large, using chunk-merge screenshotting...")
+            # 4. Ultra-Stealth: Expand Viewport to force React/Vue rendering
+            target_height = min(total_height, 12000) 
+            page.set_viewport_size({"width": current_width, "height": target_height})
             
-            images = []
-            curr_y = 0
+            # 5. Trigger Resize/Scroll events and eagerly load all images
+            page.evaluate("""
+                async () => {
+                    window.dispatchEvent(new Event('resize'));
+                    window.scrollBy(0, 10);
+                    await new Promise(r => setTimeout(r, 100));
+                    window.scrollBy(0, -10);
+                    
+                    // Force eager loading for all images
+                    document.querySelectorAll('img').forEach(img => {
+                        img.setAttribute('loading', 'eager');
+                        // Handle data-src/lazy-src common attributes
+                        const lazyAttr = img.getAttribute('data-src') || img.getAttribute('lazy-src') || img.getAttribute('data-lazy');
+                        if (lazyAttr && !img.src.includes(lazyAttr)) {
+                            img.src = lazyAttr;
+                        }
+                    });
+                    
+                    // Wait for images to load (max 10s as in POC)
+                    const images = Array.from(document.querySelectorAll('img'));
+                    await Promise.all(images.map(img => {
+                        if (img.complete) return Promise.resolve();
+                        return new Promise(resolve => {
+                            img.onload = resolve;
+                            img.onerror = resolve;
+                            setTimeout(resolve, 10000); 
+                        });
+                    }));
+                }
+            """)
             
-            # Scroll to top
+            logger.info("Waiting 10s for dynamic catalog stabilization (POC logic)...")
+            page.wait_for_timeout(10000) # Stabilization wait as in POC line 584
+            
+            # 6. Move mouse away to clear hover states/mega-menus
+            try:
+                page.mouse.move(0, 0)
+                page.wait_for_timeout(1000)
+            except:
+                pass
+            
+            # 7. Final Height Adjustment to eliminate white space
+            final_height = page.evaluate("Math.max(document.scrollingElement.scrollHeight, document.body.scrollHeight, 1000)")
+            capture_height = min(final_height, 15000) 
+            page.set_viewport_size({"width": current_width, "height": capture_height})
+            
+            # Final top-alignment guarantee
             page.evaluate("window.scrollTo(0, 0)")
             page.wait_for_timeout(1000)
+                
+            # 8. Take the screenshot. We use full_page=True now that we've stabilized 
+            # but we keep the viewport expanded to ensure React components are mounted.
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(1000)
+            chunk_bytes = page.screenshot(full_page=True, animations="disabled")
             
-            # Clean up popups, cookie banners, and wait for skeletons
-            self._handle_popups_and_overlays(page)
-
-            while curr_y < total_height:
-                page.evaluate(f"window.scrollTo(0, {curr_y})")
-                
-                # Wait for any lazy content in this view
-                # Wait up to 1500ms for images to finish fetching
-                page.wait_for_timeout(1000)
-                
-                # Explicitly wait for images to load in the current viewport
-                # This helps with Southwest's lazy-loaded cards
-                page.evaluate("""
-                    async () => {
-                        const imgs = Array.from(document.querySelectorAll('img'));
-                        await Promise.all(imgs.map(img => {
-                            if (img.complete) return Promise.resolve();
-                            return new Promise(resolve => {
-                                const timer = setTimeout(resolve, 3000);
-                                img.onload = () => { clearTimeout(timer); resolve(); };
-                                img.onerror = () => { clearTimeout(timer); resolve(); };
-                            });
-                        }));
-                    }
-                """)
-                
-                chunk_bytes = page.screenshot(full_page=False)
-                img = Image.open(io.BytesIO(chunk_bytes))
-                images.append(img)
-                
-                # AFTER capturing the first chunk (which likely has the header/cookie banner),
-                # hide all sticky/fixed elements so they don't repeat in subsequent chunks.
-                if len(images) == 1:
-                    page.evaluate("""
-                        () => {
-                            const elements = document.querySelectorAll('*');
-                            for (const el of elements) {
-                                const style = window.getComputedStyle(el);
-                                if (style.position === 'fixed' || style.position === 'sticky') {
-                                    el.style.setProperty('display', 'none', 'important');
-                                }
-                            }
-                        }
-                    """)
-
-                curr_y += v_height
-                if len(images) > 60: # Limit to ~60 viewports to prevent memory issues
-                    break
-                
-                # Check actual progress
-                actual_y = page.evaluate("window.scrollY + window.innerHeight")
-                if actual_y >= total_height - 10: # Small buffer
-                    break
-                
-                # Re-check total height in case of infinite scroll
-                total_height = page.evaluate("document.body.scrollHeight")
-
-            # Merge all chunks
-            widths, heights = zip(*(i.size for i in images))
-            total_merged_height = sum(heights)
-            max_width = max(widths)
+            # 9. Restore viewport
+            page.set_viewport_size({"width": current_width, "height": current_height})
             
-            # Use RGB to avoid alpha channel issues in some viewers
-            combined = Image.new('RGB', (max_width, total_merged_height))
-            y_offset = 0
-            for img in images:
-                combined.paste(img, (0, y_offset))
-                y_offset += img.height
-            
-            out_bytes = io.BytesIO()
-            combined.save(out_bytes, format='PNG')
-            return out_bytes.getvalue()
+            return chunk_bytes
             
         except Exception as e:
-            logger.warning(f"Robust screenshot failed, falling back to basic: {e}")
+            logger.warning(f"Ultra-Stealth screenshot failed, falling back to basic: {e}")
+            try:
+                page.set_viewport_size({"width": current_width, "height": current_height})
+            except:
+                pass
             page.evaluate("window.scrollTo(0, 0)")
             return page.screenshot(full_page=True)
