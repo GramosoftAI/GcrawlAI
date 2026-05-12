@@ -201,6 +201,7 @@ class ContentProcessor:
             "external_links": external_links,
             "og_title": get_meta(prop="og:title"),
             "og_description": get_meta(prop="og:description"),
+            "og_site_name": get_meta(prop="og:site_name"),
             "twitter_title": get_meta(name="twitter:title"),
         }
     

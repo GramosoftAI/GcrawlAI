@@ -390,10 +390,10 @@ def _run_background_crawl_task(client_id: str, **kwargs):
             cur.execute(
                 """
                 INSERT INTO crawl_events (crawl_id, event_type, url, title, markdown_file, html_file, screenshot, seo_json, seo_md, seo_xlsx, images)
-                VALUES (%s, 'page_processed', %s, 'Scraped Page', %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, 'page_processed', %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (crawl_id, url) DO NOTHING
                 """,
-                (client_id, summary.get("start_url", ""), summary.get("markdown_file"), summary.get("html_file"), summary.get("screenshot"), summary.get("seo_json"), summary.get("seo_md"), summary.get("seo_xlsx"), summary.get("images_path"))
+                (client_id, summary.get("start_url", ""), summary.get("title", "Scraped Page"), summary.get("markdown_file"), summary.get("html_file"), summary.get("screenshot"), summary.get("seo_json"), summary.get("seo_md"), summary.get("seo_xlsx"), summary.get("images_path"))
             )
             cur.execute(
                 """
@@ -417,7 +417,7 @@ def _run_background_crawl_task(client_id: str, **kwargs):
                 "type": "page_processed",
                 "page": 1,
                 "url": summary.get("start_url", ""),
-                "title": "Scraped Page",
+                "title": summary.get("title", "Scraped Page"),
                 "markdown_file": summary.get("markdown_file"),
                 "html_file": summary.get("html_file"),
                 "screenshot": summary.get("screenshot"),
@@ -789,11 +789,34 @@ def get_markdown(file_path: str):
         md_path = Path(file_path).resolve()
         filename = md_path.name
         filename_parts = filename.split(".")
-        formatted_title = filename_parts[0].replace("_", " ").title()
-        if formatted_title == "Links":
-            clean_title = formatted_title
-        else:
-            clean_title = formatted_title[2:]  # strip first 2 characters
+        
+        # Default fallback title from filename
+        clean_title = filename_parts[0].replace("_", " ").title()
+        
+        # Try to get actual title from DB
+        try:
+            with get_pooled_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT title FROM crawl_events 
+                    WHERE markdown_file = %s OR html_file = %s OR screenshot = %s 
+                       OR seo_json = %s OR seo_md = %s OR seo_xlsx = %s OR images = %s
+                    LIMIT 1
+                    """,
+                    (file_path, file_path, file_path, file_path, file_path, file_path, file_path)
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    clean_title = row[0]
+                cur.close()
+        except Exception as db_err:
+            logger.warning(f"Failed to lookup title for {file_path}: {db_err}")
+            # If DB lookup fails, we still have our filename-based clean_title
+            if clean_title.startswith("Seo "):
+                clean_title = clean_title[4:]
+            elif clean_title.startswith("Page "):
+                pass # Keep Page 1, etc.
 
         if not md_path.exists() or not md_path.is_file():
             raise HTTPException(status_code=404, detail="File not found")

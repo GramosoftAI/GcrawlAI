@@ -48,6 +48,7 @@ class CrawlReportWriter:
 
             md += "---\n\n"
             md += f"## {seo.get('url')}\n"
+            md += f"- **Website Name:** {seo.get('og_site_name') or 'N/A'}\n"
             md += f"- **Title:** {seo.get('title')}\n"
             md += f"- **Meta Description:** {seo.get('meta_description')}\n"
             md += f"- **Keywords:** {seo.get('keywords')}\n"
@@ -78,6 +79,7 @@ class CrawlReportWriter:
 
         headers = [
             "URL",
+            "Website Name",
             "Title",
             "Title Length",
             "Meta Description",
@@ -103,6 +105,7 @@ class CrawlReportWriter:
             ws.append(
                 [
                     page.get("url"),
+                    seo.get("og_site_name"),
                     seo.get("title"),
                     seo.get("title_length"),
                     seo.get("meta_description"),
@@ -137,6 +140,7 @@ class CrawlReportWriter:
     def render_single_markdown(self, seo_data: Dict) -> str:
         md = f"# SEO Report: {seo_data.get('title')}\n\n"
         md += f"**URL:** {seo_data.get('url')}\n"
+        md += f"**Website Name:** {seo_data.get('og_site_name') or 'N/A'}\n"
         md += f"**Title Length:** {seo_data.get('title_length')}\n"
         md += f"**Meta Description:** {seo_data.get('meta_description')}\n"
         md += (
@@ -175,6 +179,7 @@ class CrawlReportWriter:
 
         rows = [
             ("URL", seo_data.get("url")),
+            ("Website Name", seo_data.get("og_site_name")),
             ("Title", seo_data.get("title")),
             ("Title Length", seo_data.get("title_length")),
             ("Meta Description", seo_data.get("meta_description")),

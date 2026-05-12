@@ -404,6 +404,7 @@ class WebCrawler:
                 "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
+                "title": result.get("title", "No Title") if (result and "error" not in result) else "No Title",
                 "markdown_file": result.get("markdown_file", None) if (result and "error" not in result) else None,
                 "html_file": result.get("html_file", None) if (result and "error" not in result) else None,
                 "screenshot": result.get("screenshot", None) if (result and "error" not in result) else None,
