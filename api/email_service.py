@@ -48,7 +48,7 @@ class EmailService:
         self.from_email = smtp_config.get('from_email', self.smtp_username)
         self.from_name = smtp_config.get('from_name', 'GcrawlAI')
         self.use_tls = smtp_config.get('use_tls', True)
-        self.reset_password_url = smtp_config.get('reset_password_url', 'http://localhost:3000/reset-password')
+        self.reset_password_url = smtp_config.get('reset_password_url', 'https://gcrawlai.com/auth/reset-password')
         
         # Check if SMTP is properly configured
         self.is_configured = bool(
@@ -320,7 +320,7 @@ class EmailService:
         
         # Include encrypted token as query parameter
         reset_link = f"{reset_url_base}?token={encrypted_token}"
-        
+        print("reset_link================",reset_link)
         # Create HTML content
         html_content = f"""
         <!DOCTYPE html>

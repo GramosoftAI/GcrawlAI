@@ -11,5 +11,7 @@ export const URLS = Object({
     markdown_Details: `${environment.apiUrl}/crawl/get/content`,
     user_history: `${environment.apiUrl}/crawler/paths`,
     userhistory_path_id: `${environment.apiUrl}/crawls/user`,
-    search: `${environment.apiUrl}/search`
+    search: `${environment.apiUrl}/search`,
+    forgotPassword: `${environment.apiUrl}/auth/forgot-password`,
+    resetPassword: `${environment.apiUrl}/auth/reset-password`,
 });

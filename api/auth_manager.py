@@ -783,7 +783,7 @@ class AuthManager:
             if self.email_service:
                 try:
                     email_config = self.config.get('email', {})
-                    reset_url = email_config.get('reset_password_url', 'http://localhost:3000/reset-password')
+                    reset_url = email_config.get('reset_password_url', 'https://gcrawlai.com/auth/reset-password')
                     
                     email_sent = self.email_service.send_password_reset_email(
                         user['email'],

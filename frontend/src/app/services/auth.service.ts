@@ -73,7 +73,7 @@ export class AuthService {
         this.isLoggedIn.set(false);
         this.currentUser.set(null);
 
-        this.router.navigate(['/login']);
+        this.router.navigate(['/auth/signin']);
       }
     });
   }

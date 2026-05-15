@@ -96,6 +96,13 @@ def resolve_canonical_url(url: str, timeout: int = 8, proxies: Optional[dict] = 
         )
         final_url = resp.url
         if final_url and final_url != url:
+            # If redirection leads to a known 'Sorry' or 'Block' page, 
+            # ignore it and return the original URL so the browser can try to bypass it.
+            block_patterns = ["sorry-server", "delta_sorry", "access-denied", "captcha", "checkpoint"]
+            if any(p in final_url.lower() for p in block_patterns):
+                logger.warning(f"⚠️ Canonical resolver redirected to a Block page ({final_url}). Ignoring and using original URL.")
+                return url
+
             parsed_orig = urlparse(url)
             parsed_final = urlparse(final_url)
             if parsed_orig.netloc != parsed_final.netloc:
@@ -404,7 +411,6 @@ class WebCrawler:
                 "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                 "crawl_mode": crawl_mode,
-                "title": result.get("title", "No Title") if (result and "error" not in result) else "No Title",
                 "markdown_file": result.get("markdown_file", None) if (result and "error" not in result) else None,
                 "html_file": result.get("html_file", None) if (result and "error" not in result) else None,
                 "screenshot": result.get("screenshot", None) if (result and "error" not in result) else None,

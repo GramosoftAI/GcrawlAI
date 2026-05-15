@@ -3,6 +3,7 @@ Browser utilities for stealth and resource management
 """
 
 import time
+import random
 import logging
 from playwright.sync_api import Page, Route
 from web_crawler.common.config import CrawlConfig
@@ -23,6 +24,7 @@ class BrowserUtils:
         protected = [
             "google.com", "googleapis.com", "gstatic.com",
             "bing.com", "yahoo.com", "yandex.com",
+            "skyscanner", "skyscanner.co.in", "skyscanner.net"
         ]
         return any(d in url.lower() for d in protected)
 
@@ -121,47 +123,14 @@ class BrowserUtils:
                 pass
         except Exception:
             pass
-
     @staticmethod
-    def apply_stealth(page: Page) -> None:
+    def apply_stealth(page: Page, extra_headers: dict = None) -> None:
         """
-        Apply production-grade stealth settings using playwright-stealth
+        [DEPRECATED] Headers should be set on context. 
+        Stealth scripts are now handled by inject_stealth_scripts.
         """
-        try:
-            from playwright_stealth import Stealth
-            Stealth().apply_stealth_sync(page)
+        pass
 
-            # HTTP headers must match browser reality
-            page.set_extra_http_headers({
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Upgrade-Insecure-Requests": "1",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none",
-                "Sec-Fetch-User": "?1",
-                "sec-ch-ua-platform": '"Windows"'
-            })
-
-        except Exception as e:
-            logger.warning(f"Failed to apply stealth settings: {e}")
-
-    
-    @staticmethod
-    def set_custom_headers(page: Page) -> None:
-        """Set custom HTTP headers"""
-        try:
-            page.set_extra_http_headers({
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Referer': 'https://www.google.com/',
-                'Upgrade-Insecure-Requests': '1'
-            })
-        except Exception as e:
-            logger.warning(f"Failed to set custom headers: {e}")
-    
     @staticmethod
     def wait_for_ready(page: Page) -> bool:
         """Wait for page to be ready"""
@@ -205,13 +174,73 @@ class BrowserUtils:
             return False
 
     @staticmethod
+    def erratic_scroll(page: Page) -> None:
+        """
+        POC Parity: Perform human-like irregular scroll to trigger lazy loading 
+        and generate behavioral telemetry. Enhanced with mouse jiggling.
+        """
+        try:
+            logger.info("[Stealth Layer] Behavioral Simulation: Executing erratic scroll sequence.")
+            
+            # Initial random mouse move
+            page.mouse.move(random.randint(100, 800), random.randint(100, 600))
+            
+            # POC Parity: Handle both window and nested div scrolling
+            page.evaluate("""
+                async () => {
+                    const getTallestScrollable = () => {
+                        const elements = document.querySelectorAll('*');
+                        let tallest = document.scrollingElement || document.documentElement;
+                        let maxH = tallest.scrollHeight;
+                        
+                        for (const el of elements) {
+                            const h = el.scrollHeight;
+                            if (h > maxH && getComputedStyle(el).overflowY !== 'hidden') {
+                                maxH = h;
+                                tallest = el;
+                            }
+                        }
+                        return tallest;
+                    };
+
+                    const scrollTarget = getTallestScrollable();
+                    let currentY = 0;
+                    const maxScroll = 15000;
+                    
+                    while (currentY < maxScroll) {
+                        const scrollHeight = scrollTarget.scrollHeight;
+                        const step = Math.floor(Math.random() * 800) + 200;
+                        
+                        if (scrollTarget === window || scrollTarget === document.documentElement || scrollTarget === document.body) {
+                            window.scrollBy({ top: step, behavior: 'auto' });
+                        } else {
+                            scrollTarget.scrollBy({ top: step, behavior: 'auto' });
+                        }
+                        
+                        currentY += step;
+                        if (currentY >= scrollHeight) break;
+                        
+                        const delay = Math.floor(Math.random() * 100) + 50;
+                        await new Promise(r => setTimeout(r, delay));
+                    }
+                    
+                    // Final jump to bottom to ensure everything is triggered
+                    if (scrollTarget.scrollTo) scrollTarget.scrollTo(0, scrollTarget.scrollHeight);
+                }
+            """)
+            
+            # Short wait for any late lazy-loading
+            page.wait_for_timeout(1500)
+            
+            # Post-scroll jiggle removed for speed
+            page.wait_for_timeout(200)
+        except Exception as e:
+            logger.debug(f"Erratic scroll failed (ignoring): {e}")
+
+    @staticmethod
     def inject_stealth_scripts(page: Page) -> None:
         """
         Inject additional JS-level anti-detection patches.
-        These complement playwright-stealth and cover edge cases:
-        - navigator.webdriver = undefined
-        - window.chrome runtime presence
-        - consistent navigator.plugins (non-empty)
         """
         try:
             page.add_init_script("""
@@ -221,7 +250,7 @@ class BrowserUtils:
                     configurable: true
                 });
 
-                // Fake window.chrome (expected by many bot-detectors)
+                // Fake window.chrome
                 if (!window.chrome) {
                     window.chrome = {
                         runtime: {
@@ -231,13 +260,18 @@ class BrowserUtils:
                     };
                 }
 
-                // Non-empty plugins list (headless Chrome has 0 plugins)
-                if (navigator.plugins.length === 0) {
-                    Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5],
-                        configurable: true
-                    });
-                }
+                // POC Parity: Real Desktop Plugins
+                const mockPlugin = { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' };
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [mockPlugin],
+                    configurable: true
+                });
+
+                // POC Parity: 0 for Desktop
+                Object.defineProperty(navigator, 'maxTouchPoints', {
+                    get: () => 0,
+                    configurable: true
+                });
 
                 // Non-empty languages
                 Object.defineProperty(navigator, 'languages', {

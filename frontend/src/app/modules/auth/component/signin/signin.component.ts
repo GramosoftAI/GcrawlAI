@@ -199,10 +199,6 @@ export class SigninComponent {
 
   changePassword() { }
 
-  forgot() {
-    this.Isforgot = true;
-  }
-
   ngOnDestroy() {
     this.unSubscribe$?.unsubscribe();
   }

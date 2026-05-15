@@ -44,8 +44,10 @@ class CrawlConfig:
     stealth_proxies: Optional[Union[str, list]] = None
     enhanced_proxies: Optional[Union[str, list]] = None
     proxy_mode: str = "auto"  # "auto", "basic", "stealth", "enhanced"
+    default_tier: int = 1
 
     def __post_init__(self):
+        self.default_tier = int(os.getenv("DEFAULT_TIER", "1"))
         self.proxy_server = self._clean_env(self.proxy_server or os.getenv("PROXY_SERVER", os.getenv("EVOMI_PROXY_SERVER")))
         self.proxy_username = self._clean_env(self.proxy_username or os.getenv("PROXY_USERNAME", os.getenv("EVOMI_PROXY_USERNAME")))
         self.proxy_password = self._clean_env(self.proxy_password or os.getenv("PROXY_PASSWORD", os.getenv("EVOMI_PROXY_PASSWORD")))

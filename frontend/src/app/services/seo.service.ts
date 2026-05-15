@@ -29,15 +29,15 @@ export class SeoService {
       { name: 'robots', content: config.robots || 'index, follow' },
       { property: 'og:title', content: config.title },
       { property: 'og:description', content: config.description },
-      { property: 'og:url', content: config.url || 'https://gcrawl.gramopro.ai' },
+      { property: 'og:url', content: config.url || 'https://gcrawlai.com' },
       { property: 'og:type', content: config.type || 'website' },
       { property: 'og:site_name', content: config.siteName || 'GCrawl by Gramosoft' },
-      { property: 'og:image', content: config.image || 'https://gcrawl.gramopro.ai/assets/image/Logo.svg' },
+      { property: 'og:image', content: config.image || 'https://gcrawlai.com/assets/image/Logo.svg' },
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'twitter:title', content: config.title },
       { name: 'twitter:description', content: config.description },
       { name: 'twitter:site', content: config.twitterSite || '@GramosoftAI' },
-      { name: 'twitter:image', content: config.image || 'https://gcrawl.gramopro.ai/assets/image/Logo.svg' }
+      { name: 'twitter:image', content: config.image || 'https://gcrawlai.com/assets/image/Logo.svg' }
     ];
 
     tags.forEach(tag => this.meta.updateTag(tag));

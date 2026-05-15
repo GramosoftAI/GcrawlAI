@@ -18,11 +18,13 @@ import os
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 from collections import OrderedDict
+from pathlib import Path
 from dotenv import load_dotenv
-
 from web_crawler.search.retriever import PersistentStealthyFetcher
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+dotenv_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path)
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────

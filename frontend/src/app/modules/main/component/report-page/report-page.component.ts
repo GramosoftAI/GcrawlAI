@@ -113,7 +113,7 @@ export class ReportPageComponent implements OnChanges {
 
   isLogin() {
     this.localService.setfirstLogin(true)
-    this.router.navigate(['/login'])
+    this.router.navigate(['/auth/signin'])
   }
 
   ngOnChanges(changes: SimpleChanges) {

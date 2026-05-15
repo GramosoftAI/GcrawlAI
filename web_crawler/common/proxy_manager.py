@@ -15,8 +15,8 @@ class ProxyManager:
         self._load_tiers_from_env()
 
     def _load_tiers_from_env(self):
-        """Loads TIER_1 to TIER_7 configurations from environment variables."""
-        for tier in range(1, 8):
+        """Loads TIER_1 to TIER_9 configurations from environment variables."""
+        for tier in range(1, 11):
             enabled = os.getenv(f"TIER_{tier}_ENABLED", "False").lower() == "true"
             if not enabled:
                 continue
@@ -50,21 +50,25 @@ class ProxyManager:
         ptype = str(proxy_type_or_tier).strip().lower()
         if ptype == "none":
             return 1
-        elif ptype == "basic":
+        elif ptype == "mobile":
             return 2
-        elif ptype == "stealth":
+        elif ptype == "bright_data":
             return 3
-        elif ptype == "enhanced":
+        elif ptype == "basic":
             return 4
+        elif ptype == "stealth":
+            return 6
+        elif ptype == "enhanced":
+            return 8
         elif ptype == "auto":
-            return 2
+            return 4 # Starting point for auto escalation
             
         if ptype.isdigit():
             return int(ptype)
             
-        return 2
+        return 3 # Default to basic
 
-    def get_playwright_proxy(self, tier: Union[int, str] = 1) -> Optional[dict]:
+    def get_playwright_proxy(self, tier: Union[int, str] = 1, session_id: Optional[str] = None, target_url: Optional[str] = None) -> Optional[dict]:
         """Returns a dict suitable for Playwright's proxy argument based on Tier."""
         resolved_tier = self._resolve_tier(tier)
         tier_config = self.tiers.get(resolved_tier)
@@ -79,6 +83,12 @@ class ProxyManager:
             proxy_dict["username"] = tier_config["username"]
             
             password = tier_config["password"]
+            
+            # REASON: Force fresh IP session for residential proxies (using password for better compatibility)
+            if session_id and "evomi" in tier_config.get("host", ""):
+                if "_session-" not in password:
+                    password = f"{password}_session-{session_id}"
+
             if tier_config.get("geo", "").lower() == "india":
                 # Only append if not already present
                 if "_country-in" not in password.lower():
@@ -86,7 +96,7 @@ class ProxyManager:
             
             proxy_dict["password"] = password
             
-        logger.debug(f"Using proxy tier {resolved_tier}: {tier_config['name']}")
+        logger.debug(f"Using proxy tier {resolved_tier}: {tier_config['name']} (Session: {session_id})")
         return proxy_dict
 
     def get_proxy(self, tier: Union[int, str] = 1) -> Optional[str]:

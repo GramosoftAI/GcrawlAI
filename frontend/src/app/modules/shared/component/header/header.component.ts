@@ -51,7 +51,7 @@ export class HeaderComponent {
 
   Onclick() {
     if (!this.token) {
-      this.router.navigate(['/login'])
+      this.router.navigate(['/auth/signin'])
     }
   }
 

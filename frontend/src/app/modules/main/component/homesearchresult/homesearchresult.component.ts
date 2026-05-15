@@ -95,8 +95,8 @@ export class HomesearchresultComponent implements OnInit {
       title: 'GCrawl — Free AI Web Crawler | Scrape Any Website into Markdown & LLM-Ready Data',
       description: 'GCrawl is a free, open-source AI web crawler by Gramosoft. Scrape any website into clean Markdown, HTML, Screenshots or SEO data in seconds.',
       keywords: 'web crawler, AI web scraper, website to markdown, LLM data extraction, open source web crawler',
-      url: 'https://gcrawl.gramopro.ai',
-      image: 'https://gcrawl.gramopro.ai/assets/image/Logo.svg'
+      url: 'https://gcrawlai.com/',
+      image: 'https://gcrawlai.com/assets/image/Logo.svg'
     });
 
     this.route.queryParams.subscribe(params => {
