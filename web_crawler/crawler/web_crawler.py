@@ -1,0 +1,607 @@
+"""
+Main web crawler orchestration
+"""
+
+import json
+import logging
+import pytz
+import urllib.request
+import re
+import os
+import threading
+import base64
+import requests
+from collections import deque
+from datetime import datetime
+from time import perf_counter
+from typing import Set, List, Dict, Optional
+from urllib.parse import urlparse, parse_qs
+from threading import Semaphore, Thread
+from web_crawler.common.config import CrawlConfig
+from web_crawler.crawler.file_manager import FileManager
+from web_crawler.crawler.page_crawler import PageCrawler
+from web_crawler.crawler.seo_report import CrawlReportWriter
+from web_crawler.common.utils import normalize_url
+from web_crawler.crawler.map_crawler import map_website
+from web_crawler.search.search_engine import execute_search_router
+from api.core.database import upsert_job_result
+
+logger = logging.getLogger(__name__)
+
+
+# Search engine domains that should be routed through the search API
+SEARCH_ENGINE_DOMAINS = [
+    "google.com", "google.co.in", "google.co.uk",
+    "bing.com", "yahoo.com", "yandex.com",
+    "duckduckgo.com", "search.brave.com",
+]
+
+def _is_search_url(url: str) -> bool:
+    """Detect if a URL is a search engine results page."""
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower().lstrip("www.")
+    path = parsed.path.lower()
+    query = parse_qs(parsed.query)
+    
+    # Must have a query parameter and be on a search path
+    has_query = "q" in query or "query" in query or "search_query" in query
+    is_search_path = "/search" in path or path == "/"
+    is_search_domain = any(d in domain for d in SEARCH_ENGINE_DOMAINS)
+    
+    return is_search_domain and has_query and is_search_path
+
+def _extract_search_query(url: str) -> str:
+    """Extract the search query from a search engine URL."""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    return query.get("q", query.get("query", query.get("search_query", [""])))[-1]
+
+def _format_search_results_markdown(query: str, results: list) -> str:
+    """Format search results as clean markdown."""
+    lines = [f"# Search Results: {query}\n"]
+    for i, r in enumerate(results, 1):
+        title = r.get("title", "Untitled")
+        url = r.get("url", "")
+        desc = r.get("description", "")
+        lines.append(f"## {i}. [{title}]({url})\n")
+        if desc:
+            lines.append(f"{desc}\n")
+        lines.append("")
+    return "\n".join(lines)
+
+def _format_search_results_html(query: str, results: list) -> str:
+    """Format search results as HTML."""
+    items = []
+    for r in results:
+        title = r.get("title", "Untitled")
+        url = r.get("url", "")
+        desc = r.get("description", "")
+        items.append(f'<div class="result"><h3><a href="{url}">{title}</a></h3><p>{desc}</p></div>')
+    body = "\n".join(items)
+    return f"<html><head><title>Search: {query}</title></head><body><h1>Search Results: {query}</h1>{body}</body></html>"
+
+
+def resolve_canonical_url(url: str, timeout: int = 8, proxies: Optional[dict] = None) -> str:
+    """
+    Follow redirects to find the canonical URL of a page.
+    Uses a lightweight HEAD request.
+    Returns the original URL unchanged if resolution fails.
+    """
+    try:
+        # Skip canonical resolution for known high security sites to save 3-5 seconds of hanging requests
+        high_sec = ["gartner.com", "expedia", "skyscanner", "oracle.com"]
+        if any(h in url.lower() for h in high_sec):
+            return url
+            
+        resp = requests.head(
+            url, 
+            timeout=timeout, 
+            allow_redirects=True, 
+            proxies=proxies,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133.0.0.0 Safari/537.36",
+            }
+        )
+        final_url = resp.url
+        if final_url and final_url != url:
+            # If redirection leads to a known 'Sorry' or 'Block' page, 
+            # ignore it and return the original URL so the browser can try to bypass it.
+            block_patterns = ["sorry-server", "delta_sorry", "access-denied", "captcha", "checkpoint"]
+            if any(p in final_url.lower() for p in block_patterns):
+                logger.warning(f"⚠️ Canonical resolver redirected to a Block page ({final_url}). Ignoring and using original URL.")
+                return url
+
+            parsed_orig = urlparse(url)
+            parsed_final = urlparse(final_url)
+            if parsed_orig.netloc != parsed_final.netloc:
+                logger.info(f"🔀 URL canonicalized: {url} → {final_url}")
+                return final_url
+    except Exception:
+        pass
+    return url
+
+
+class WebCrawler:
+    """Main crawler orchestrator"""
+
+    def __init__(self, config: CrawlConfig):
+        self.config = config
+        self.file_manager = FileManager()
+        self.page_crawler = PageCrawler(config, self.file_manager)
+
+        # Shared state
+        self.visited: Set[str] = set()
+        self.visited_canonical: Set[str] = set()
+        self.failed: Set[str] = set()
+        self.all_links: Set[str] = set()
+        self.pages_data: List[Dict] = []
+
+    def _effective_proxy_mode(self) -> str:
+        mode = (self.config.proxy_mode or "auto").strip().lower()
+        if mode in {"basic", "stealth", "enhanced", "auto"}:
+            return mode
+        return "auto"
+
+    def _initial_proxy_type(self) -> str:
+        """
+        In auto mode, start with basic and escalate later only if needed.
+        """
+        mode = self._effective_proxy_mode()
+        return "basic" if mode == "auto" else mode
+
+    def crawl(
+        self,
+        start_url: str,
+        enable_md: bool = False,
+        enable_html: bool = False,
+        enable_ss: bool = False,
+        enable_json: bool = True,
+        enable_links: bool = True,
+        enable_seo: bool = False,
+        enable_images: bool = False,
+        client_id: Optional[str] = None,
+        user_id: Optional[int] = None,
+        websocket_manager=None,
+        crawl_mode: str = "all"
+    ) -> Dict:
+        """Main crawl orchestration"""
+
+        max_pages = 1 if crawl_mode in ("single", "screenshot") else self.config.max_pages
+
+        tz = pytz.timezone(self.config.timezone)
+        start_time = datetime.now(tz)
+        start_perf = perf_counter()
+
+        parsed_start = urlparse(start_url)
+        domain = parsed_start.netloc
+        if domain.startswith("www."):
+            domain = domain[4:]
+        domain = domain.split('.')[0]
+        path = parsed_start.path.strip('/')
+        main_prefix = domain
+        if path:
+            path = re.sub(r'[^a-zA-Z0-9]+', '_', path)
+            main_prefix = f"{domain}_{path}"
+        
+        self.config.summary_file = os.path.join(str(self.config.output_dir), f"{main_prefix}_summary.json")
+
+        queue = deque([(start_url, "START")])
+        seen_raw = {start_url}
+
+        attempted_pages = 0
+        successful_pages = 0
+
+        semaphore = Semaphore(self.config.max_workers)
+        threads: List[Thread] = []
+        lock = threading.Lock()
+
+        logger.info("🚀 Crawl started")
+
+        # =========================================================
+        # MAP MODE  (Firecrawl-style: robots.txt → sitemap → homepage)
+        # No browser — pure HTTP requests, returns full site URL list
+        # =========================================================
+        if crawl_mode == "links":
+            logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
+
+            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                self._initial_proxy_type(), target_url=start_url
+            )
+            
+            logger.info(f"  → Attempting map discovery with {self._initial_proxy_type()} proxy...")
+            map_result = map_website(start_url, proxy_dict=p_dict)
+
+            # Fallback to enhanced proxy if discovery failed
+            if (
+                map_result["total"] <= 1
+                and self._effective_proxy_mode() == "auto"
+            ):
+                logger.info("Auto mode escalation: retrying map discovery with enhanced proxy.")
+                p_dict_enhanced = self.page_crawler.proxy_manager.get_requests_proxies("enhanced", target_url=start_url)
+                if p_dict_enhanced:
+                    map_result = map_website(start_url, proxy_dict=p_dict_enhanced)
+
+            elapsed = perf_counter() - start_perf
+
+            discovered_urls = map_result["urls"]
+            
+            # Enforce user limit on returned links
+            if self.config.max_pages and len(discovered_urls) > self.config.max_pages:
+                discovered_urls = discovered_urls[:self.config.max_pages]
+                map_result["total"] = len(discovered_urls)
+
+            # Removed links.txt saving
+            pass
+
+            summary = {
+                "start_url": start_url,
+                "pages_crawled": 0,
+                "pages_failed": 0,
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "crawl_mode": crawl_mode,
+                "links": discovered_urls,
+            }
+
+            # Save to Postgres
+            upsert_job_result(client_id, summary, str(user_id) if user_id else None)
+            logger.info("✅ Map crawl finished")
+            logger.info(json.dumps(summary, indent=2))
+            return summary
+
+        # =========================================================
+        # SEARCH MODE (Firecrawl-style: route search URLs via API)
+        # No browser — uses DuckDuckGo/SearXNG, returns structured results
+        # =========================================================
+        if _is_search_url(start_url):
+            query = _extract_search_query(start_url)
+            logger.info(f"🔍 Search URL detected. Routing query '{query}' through search engine router...")
+            
+            search_results = execute_search_router(query, limit=10)
+            elapsed = perf_counter() - start_perf
+            
+            if search_results:
+                successful_pages = 1
+                md_content = _format_search_results_markdown(query, search_results)
+                html_content = _format_search_results_html(query, search_results)
+                result_links = [r.get("url") for r in search_results if r.get("url")]
+                
+                if enable_md:
+                    logger.info(f"📄 Search markdown generated in memory")
+                
+                screenshot_s3_url = None
+                # Screenshot: render the HTML in a headless browser
+                if enable_ss:
+                    try:
+                        from playwright.sync_api import sync_playwright
+                        from web_crawler.common.s3_utils import upload_to_s3
+                        with sync_playwright() as p:
+                            browser = p.chromium.launch(headless=True)
+                            page = browser.new_page(viewport={"width": 1280, "height": 800})
+                            page.set_content(html_content)
+                            page.wait_for_timeout(500)
+                            screenshot_bytes = page.screenshot(full_page=True)
+                            browser.close()
+                            
+                        screenshot_s3_url = upload_to_s3(
+                            screenshot_bytes,
+                            client_id if client_id else "search_crawl",
+                            f"search_{query[:50].replace(' ', '_')}.png",
+                            "image/png"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to capture search screenshot: {e}")
+                
+                result = {
+                    "url": start_url,
+                    "html_content": html_content if enable_html else None,
+                    "markdown_content": md_content if enable_md else None,
+                    "screenshot_s3_url": screenshot_s3_url,
+                    "links": result_links,
+                    "status_code": 200,
+                }
+                
+                # SEO report from search results
+                if enable_seo:
+                    try:
+                        seo_data = {
+                            "url": start_url,
+                            "title": f"Search Results: {query}",
+                            "meta_description": f"Search results for '{query}' via DuckDuckGo",
+                            "h1": f"Search Results: {query}",
+                            "results_count": len(search_results),
+                            "results": [
+                                {"position": i+1, "title": r.get("title"), "url": r.get("url"), "description": r.get("description")}
+                                for i, r in enumerate(search_results)
+                            ]
+                        }
+                        
+                        seo_result = {
+                            "url": start_url,
+                            "canonical": start_url,
+                            "seo": seo_data,
+                            "links": result_links,
+                        }
+                        
+                        writer = CrawlReportWriter(self.config.output_dir)
+                        domain = urlparse(start_url).netloc
+                        writer.save_json(domain, [seo_result], result_links)
+                        writer.save_markdown(domain, [seo_result], result_links)
+                        writer.save_excel(domain, [seo_result])
+                        logger.info(f"📊 Search SEO report saved")
+                    except Exception as e:
+                        logger.warning(f"SEO report generation failed: {e}")
+                
+            else:
+                logger.warning(f"Search engine router returned no results for: {query}")
+                result = {"url": start_url, "error": "No search results", "status_code": 404}
+            
+            summary = {
+                "start_url": start_url,
+                "pages_crawled": 1 if result and "error" not in result else 0,
+                "pages_failed": 1 if not result or "error" in result else 0,
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "crawl_mode": "search",
+                "search_query": query,
+            }
+            
+            if result and "error" not in result:
+                summary["html_content"] = result.get("html_content")
+                summary["markdown_content"] = result.get("markdown_content")
+                summary["screenshot_s3_url"] = result.get("screenshot_s3_url")
+            
+            # Save to Postgres
+            upsert_job_result(client_id, summary, str(user_id) if user_id else None)            
+            logger.info("✅ Search crawl finished")
+            logger.info(json.dumps(summary, indent=2))
+            return summary
+
+        # =========================================================
+        # SINGLE PAGE MODE (NO THREADING)
+        # =========================================================
+        if crawl_mode in ("single", "screenshot"):
+            logger.info(f"🔹 Single-page crawl mode ({crawl_mode})")
+
+            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                self._initial_proxy_type(), target_url=start_url
+            )
+            # Resolve canonical URL (1-2 seconds delay here)
+            logger.info(f"🔄 Resolving Canonical URL (Network Check)...")
+            # Auto-resolve canonical URL (follows redirects: naukri.com → www.naukri.com)
+            canonical_url = resolve_canonical_url(start_url, proxies=p_dict)
+
+            result = self.page_crawler.crawl_page(
+                canonical_url,
+                count=1,
+                enable_md=enable_md,
+                enable_html=enable_html,
+                enable_ss=enable_ss,
+                enable_seo=enable_seo,
+                enable_images=enable_images,
+                enable_json=enable_json,
+                client_id=client_id,
+                websocket_manager=websocket_manager,
+                crawl_mode=crawl_mode,
+                proxy_type=self._effective_proxy_mode()
+            )
+
+            if result and "error" not in result:
+                successful_pages = 1
+
+            elapsed = perf_counter() - start_perf
+            
+            summary = {
+                "start_url": start_url,
+                "pages_crawled": successful_pages,
+                "pages_failed": 1 - successful_pages,
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "crawl_mode": crawl_mode,
+            }
+            
+            if result and "error" not in result:
+                if crawl_mode == "screenshot":
+                    summary["screenshot_s3_url"] = result.get("screenshot_s3_url")
+                else:
+                    # Single page mode includes the content in the main summary
+                    summary["html_content"] = result.get("html_content")
+                    summary["markdown_content"] = result.get("markdown_content")
+                    summary["screenshot_s3_url"] = result.get("screenshot_s3_url")
+                    summary["images_json"] = result.get("images_json")
+                    
+                    if enable_seo:
+                        # Single page mode gets the seo_json directly from the page crawler payload
+                        if result.get("seo_json"):
+                            try:
+                                summary["seo_json"] = json.loads(result.get("seo_json"))
+                            except Exception:
+                                summary["seo_json"] = result.get("seo_json")
+                        else:
+                            summary["seo_json"] = None
+                            
+                        summary["seo_md"] = result.get("seo_md")
+                        summary["seo_xlsx_s3_url"] = result.get("seo_xlsx_s3_url")
+
+            # Save to Postgres
+            upsert_job_result(client_id, summary, str(user_id) if user_id else None)
+            logger.info("✅ Single-page crawl finished")
+            logger.info(json.dumps(summary, indent=2))
+            return summary
+
+        # =========================================================
+        # WORKER FUNCTION
+        # =========================================================
+        def crawl_worker(url: str, page_no: int):
+            nonlocal successful_pages
+
+            try:
+                # Initial attempt
+                proxy_type = self._effective_proxy_mode()
+                result = self.page_crawler.crawl_page(
+                    url,
+                    page_no,
+                    enable_md,
+                    enable_html,
+                    enable_ss,
+                    enable_seo,
+                    enable_images,
+                    enable_json=enable_json,
+                    client_id=client_id,
+                    websocket_manager=websocket_manager,
+                    crawl_mode=crawl_mode,
+                    proxy_type=proxy_type
+                )
+
+                if not result or "error" in result:
+                    with lock:
+                        self.failed.add(url)
+                    logger.warning(f"Failed: {url} - {result.get('error') if result else 'Unknown error'}")
+                    return
+
+                canonical = result["canonical"]
+
+                with lock:
+                    if canonical in self.visited_canonical:
+                        logger.info(f"Skipping duplicate canonical: {canonical}")
+                        return
+
+                    self.visited_canonical.add(canonical)
+                    successful_pages += 1
+
+                    if enable_json:
+                        self.pages_data.append(result)
+
+                # Save individual page summary
+                try:
+                    save_payload = {
+                        "start_url": result.get("url"),
+                        "pages_crawled": 1,
+                        "pages_failed": 0,
+                        "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                        "time_taken": f"{int((perf_counter() - start_perf)//60)}m {int((perf_counter() - start_perf)%60)}s",
+                        "crawl_mode": crawl_mode,
+                        "html_content": result.get("html_content"),
+                        "markdown_content": result.get("markdown_content"),
+                        "screenshot_s3_url": result.get("screenshot_s3_url"),
+                        "images_json": result.get("images_json")
+                    }
+                    if enable_seo:
+                        if result.get("seo_json"):
+                            try:
+                                save_payload["seo_json"] = json.loads(result.get("seo_json"))
+                            except Exception:
+                                save_payload["seo_json"] = result.get("seo_json")
+                        else:
+                            save_payload["seo_json"] = None
+                            
+                        save_payload["seo_md"] = result.get("seo_md")
+                        save_payload["seo_xlsx_s3_url"] = result.get("seo_xlsx_s3_url")
+
+                    upsert_job_result(client_id, save_payload, str(user_id) if user_id else None)
+                except Exception as e:
+                    logger.error(f"Failed to upsert individual page summary: {e}")
+
+                logger.info(f"✓ Success [{successful_pages}]: {canonical}")
+
+                if crawl_mode == "all":
+                    for link in result["links"]:
+                        with lock:
+                            if link in seen_raw:
+                                continue
+                            seen_raw.add(link)
+                            self.all_links.add(link)
+
+                            def normalize_host(h):
+                                h = h.lower()
+                                return h[4:] if h.startswith("www.") else h
+
+                            if normalize_host(urlparse(link).netloc) == normalize_host(urlparse(start_url).netloc):
+                                queue.append((link, url))
+
+            finally:
+                semaphore.release()
+
+        # =========================================================
+        # MAIN SEMAPHORE-BASED CRAWL LOOP
+        # =========================================================
+        while (queue or semaphore._value < self.config.max_workers) and attempted_pages < max_pages:
+
+            if queue:
+                url, source = queue.popleft()
+                url = normalize_url(url)
+
+                with lock:
+                    if url in self.visited:
+                        continue
+                    self.visited.add(url)
+                    attempted_pages += 1
+                    page_no = attempted_pages
+
+                logger.info(f"Queued [{attempted_pages}/{max_pages}]: {url}")
+
+                semaphore.acquire()
+
+                t = Thread(
+                    target=crawl_worker,
+                    args=(url, page_no),
+                    daemon=True,
+                )
+                t.start()
+                threads.append(t)
+
+            else:
+                # Workers are still running, wait for them to enqueue links
+                threading.Event().wait(0.05)
+
+
+        # =========================================================
+        # WAIT FOR ALL THREADS
+        # =========================================================
+        for t in threads:
+            t.join()
+
+        # =========================================================
+        # =========================================================
+        # SUMMARY & DATA CONSOLIDATION
+        # =========================================================
+        elapsed = perf_counter() - start_perf
+
+        summary = {
+            "start_url": start_url,
+            "pages_attempted": attempted_pages,
+            "pages_crawled": successful_pages,
+            "pages_failed": len(self.failed),
+            "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+        }
+        
+        if enable_seo and self.pages_data:
+            try:
+                from web_crawler.crawler.seo_report import CrawlReportWriter
+                writer = CrawlReportWriter(self.config.output_dir)
+                domain = urlparse(start_url).netloc
+                all_links_list = sorted(list(self.all_links))
+                
+                summary["seo_aggregated_json"] = json.loads(writer.render_json(self.pages_data, all_links_list))
+                summary["seo_aggregated_md"] = writer.render_markdown(domain, self.pages_data, all_links_list)
+                
+                from web_crawler.common.s3_utils import upload_to_s3
+                seo_excel_b64 = writer.render_excel_base64(self.pages_data)
+                seo_excel_url = upload_to_s3(
+                    base64.b64decode(seo_excel_b64),
+                    client_id if client_id else "unknown_crawl",
+                    f"{domain}_seo.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                summary["seo_aggregated_xlsx_s3_url"] = seo_excel_url
+            except Exception as e:
+                logger.error(f"Failed to generate SEO report in memory: {e}")
+
+        if crawl_mode != "all":
+            # Save to Postgres
+            upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
+
+        logger.info("✅ Crawl finished")
+        logger.info(json.dumps(summary, indent=2))
+        return summary
