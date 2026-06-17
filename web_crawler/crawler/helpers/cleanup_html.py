@@ -21,15 +21,15 @@ from minify_html import minify
 # HTML tags that are structural boilerplate — never useful in markdown
 _BOILERPLATE_TAGS = (
     "style", "script", "noscript",
-    "iframe", "svg", "form", "meta", "head",
+    "iframe", "svg", "meta", "head",
     # NOTE: "figure" intentionally excluded — it wraps real content images
 )
 
 # class / id substrings that indicate non-content elements. (From Firecrawl excludeNonMainTags)
 _NOISE_PATTERNS = (
     "navbar", "navigation", "site-nav", "main-nav", "top-nav", "nav",
-    "site-header", "page-header", "header", "#header", ".header", "top",
-    "site-footer", "page-footer", "footer", "#footer", ".footer", "bottom",
+    "site-header", "page-header", "header", "#header", ".header",
+    "site-footer", "page-footer", "footer", "#footer", ".footer",
     "sidebar", "side-bar", "side", "aside", "#sidebar", ".sidebar",
     "cookie-banner", "cookie-consent", "gdpr-banner", "cookie", "#cookie",
     "popup-overlay", "modal-overlay", "modal", "popup", "overlay",
@@ -87,14 +87,11 @@ def extract_from_script_tags(soup):
     return "\n\n".join(script_content)
 
 
-# Compile regexes for noise matching to prevent short substrings like 'ad' or 'top' from matching inside unrelated words like 'loading' or 'desktop'
+# Compile regexes for noise matching to prevent substrings from matching inside unrelated words (like 'celwidget' matching 'widget')
 _NOISE_REGEXES = []
 for pat in _NOISE_PATTERNS:
     clean_pat = pat.lstrip("#.")
-    if len(clean_pat) <= 4:
-        regex_str = rf"(?:^|[^a-zA-Z0-9]){re.escape(clean_pat)}(?:$|[^a-zA-Z0-9])"
-    else:
-        regex_str = re.escape(clean_pat)
+    regex_str = rf"(?:^|[^a-zA-Z0-9]){re.escape(clean_pat)}(?:$|[^a-zA-Z0-9])"
     _NOISE_REGEXES.append(re.compile(regex_str, re.IGNORECASE))
 
 
@@ -296,6 +293,9 @@ def cleanup_html(html_content: str, base_url: str, only_main_content: bool = Fal
     # Step 2: Remove noise (only if only_main_content is enabled)
     if only_main_content:
         _remove_noise_by_class_id(soup)
+        # Remove hidden cookie banners/popups
+        for tag in soup.find_all(attrs={"data-gcrawl-hidden": "true"}):
+            tag.decompose()
     else:
         # Even in non-main-content mode, we still remove the absolute unneeded tags
         # passed in _BOILERPLATE_TAGS already (script, style, etc.)
@@ -339,13 +339,10 @@ def cleanup_html(html_content: str, base_url: str, only_main_content: bool = Fal
 
     # ── return body ────────────────────────────────────────────────
     body_content = soup.find("body")
-    if body_content:
-        return title, str(body_content), link_urls, image_urls, script_content
-    else:
-        raise ValueError(
-            "No HTML body content found. "
-            f"HTML snippet: {html_content[:300]}"
-        )
+    if not body_content:
+        # Fallback to entire soup structure wrapped/represented as body if no <body> exists
+        body_content = soup
+    return title, str(body_content), link_urls, image_urls, script_content
 
 
 def minify_html(html):
@@ -456,6 +453,10 @@ def clean_html_dynamic(html_content: str, base_url: str, config) -> str:
         for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
             comment.extract()
             
+        # Remove hidden cookie banners/popups
+        for tag in soup.find_all(attrs={"data-gcrawl-hidden": "true"}):
+            tag.decompose()
+            
     # 3. Relative to absolute links conversion
     if config.html_relative_to_absolute_links:
         for tag in soup.find_all(True):
@@ -494,7 +495,10 @@ def clean_html_dynamic(html_content: str, base_url: str, config) -> str:
             if src.startswith("data:"):
                 img.decompose()
                 
-    # 6. Extract body or fallback to soup
+    # 6. Extract body or fallback to soup if clean is requested, otherwise return the full document
+    if not config.html_clean:
+        return str(soup)
+
     body = soup.find("body")
     if body:
         body_content = str(body)
@@ -508,3 +512,4 @@ def clean_html_dynamic(html_content: str, base_url: str, config) -> str:
         "</html>"
     )
     return cleaned_html
+

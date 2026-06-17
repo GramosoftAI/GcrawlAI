@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 import html2text
 from urllib.parse import urlparse, urljoin
 from web_crawler.common.utils import absolutize_url
-from web_crawler.crawler.cleanup_html import cleanup_html
+from web_crawler.crawler.helpers.cleanup_html import cleanup_html
 
 
 def _post_process_markdown(md: str) -> str:

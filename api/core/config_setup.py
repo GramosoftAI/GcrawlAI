@@ -83,10 +83,17 @@ def setup_crawl_config(payload, default_max_pages=10) -> CrawlConfig:
         
         config.js_render = payload.screenshot.js_render if payload.screenshot.js_render is not None else False
         fields_set = payload.screenshot.model_fields_set if hasattr(payload.screenshot, 'model_fields_set') else set()
-        config.render_timeout = payload.screenshot.render_timeout if "render_timeout" in fields_set else 30000
-        config.auto_scroll = payload.screenshot.auto_scroll if "auto_scroll" in fields_set else True
-        config.scroll_delay = payload.screenshot.scroll_delay if "scroll_delay" in fields_set else 500
-        config.max_scrolls = payload.screenshot.max_scrolls if "max_scrolls" in fields_set else 2
+        
+        if config.js_render:
+            config.render_timeout = payload.screenshot.render_timeout if "render_timeout" in fields_set else 10000
+            config.auto_scroll = payload.screenshot.auto_scroll if "auto_scroll" in fields_set else True
+            config.scroll_delay = payload.screenshot.scroll_delay if "scroll_delay" in fields_set else 500
+            config.max_scrolls = payload.screenshot.max_scrolls if "max_scrolls" in fields_set else 1
+        else:
+            config.render_timeout = payload.screenshot.render_timeout if "render_timeout" in fields_set else 30000
+            config.auto_scroll = payload.screenshot.auto_scroll if "auto_scroll" in fields_set else True
+            config.scroll_delay = payload.screenshot.scroll_delay if "scroll_delay" in fields_set else 500
+            config.max_scrolls = payload.screenshot.max_scrolls if "max_scrolls" in fields_set else 2
 
     else:
         config.screenshot_full_page = False
@@ -97,9 +104,6 @@ def setup_crawl_config(payload, default_max_pages=10) -> CrawlConfig:
         config.auto_scroll = True
         config.scroll_delay = 500
         config.max_scrolls = 2
-
-    if not screenshot_enabled:
-        config.js_render = False
 
     if getattr(payload, 'markdown', None):
         config.markdown_clean = payload.markdown.clean if payload.markdown.clean is not None else True

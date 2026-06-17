@@ -1,8 +1,10 @@
 import asyncio
 import time
 import logging
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Union
 from pydantic import BaseModel
+import concurrent.futures
+import functools
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +17,7 @@ PLAN_PRIORITIES = {
 }
 
 class QueueItem:
-    def __init__(self, priority: int, user_id: int, func: Callable, kwargs: dict):
+    def __init__(self, priority: int, user_id: Union[int, str], func: Callable, kwargs: dict):
         self.priority = priority
         self.timestamp = time.time()
         self.user_id = user_id
@@ -34,10 +36,11 @@ class PriorityQueueManager:
         self.queue = asyncio.PriorityQueue()
         self.global_limit = global_limit
         self.active_global = 0
-        self.user_active_counts: Dict[int, int] = {}
-        self.user_locks: Dict[int, asyncio.Lock] = {}
+        self.user_active_counts: Dict[Union[int, str], int] = {}
+        self.user_locks: Dict[Union[int, str], asyncio.Lock] = {}
         self._workers = []
         self._is_running = False
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=global_limit)
 
     def start_workers(self):
         if self._is_running:
@@ -54,13 +57,14 @@ class PriorityQueueManager:
             w.cancel()
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers.clear()
+        self.thread_pool.shutdown(wait=False)
 
-    def get_user_lock(self, user_id: int) -> asyncio.Lock:
+    def get_user_lock(self, user_id: Union[int, str]) -> asyncio.Lock:
         if user_id not in self.user_locks:
             self.user_locks[user_id] = asyncio.Lock()
         return self.user_locks[user_id]
 
-    async def submit_task(self, user_id: int, plan_type: str, user_limit: int, func: Callable, **kwargs):
+    async def submit_task(self, user_id: Union[int, str], plan_type: str, user_limit: int, func: Callable, **kwargs):
         """
         Submits a task to the queue and waits for its execution.
         Respects both the User Concurrency Limit and the Global Priority Queue.
@@ -94,7 +98,7 @@ class PriorityQueueManager:
                 if self.user_active_counts[user_id] <= 0:
                     self.user_active_counts.pop(user_id, None)
 
-    async def submit_background_task(self, user_id: int, plan_type: str, user_limit: int, func: Callable, **kwargs):
+    async def submit_background_task(self, user_id: Union[int, str], plan_type: str, user_limit: int, func: Callable, **kwargs):
         """
         Submits a task to the queue and returns immediately.
         The worker will enforce limits and execute it in the background.
@@ -116,7 +120,8 @@ class PriorityQueueManager:
                 if asyncio.iscoroutinefunction(func):
                     return await func(**kwargs)
                 else:
-                    return await asyncio.to_thread(func, **kwargs)
+                    loop = asyncio.get_running_loop()
+                    return await loop.run_in_executor(self.thread_pool, functools.partial(func, **kwargs))
             finally:
                 async with lock:
                     self.user_active_counts[user_id] -= 1
@@ -141,7 +146,8 @@ class PriorityQueueManager:
                     if asyncio.iscoroutinefunction(item.func):
                         result = await item.func(**item.kwargs)
                     else:
-                        result = await asyncio.to_thread(item.func, **item.kwargs)
+                        loop = asyncio.get_running_loop()
+                        result = await loop.run_in_executor(self.thread_pool, functools.partial(item.func, **item.kwargs))
                     
                     if not item.future.done():
                         item.future.set_result(result)

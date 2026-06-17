@@ -25,19 +25,19 @@ router = APIRouter()
 
 # Dedicated thread pool for single & links background crawls
 GLOBAL_BROWSER_POOL = int(os.getenv("GLOBAL_BROWSER_POOL", 100))
-_crawler_executor = ThreadPoolExecutor(max_workers=GLOBAL_BROWSER_POOL)
-
 def pre_warm_crawler_workers():
+    from api.services.queue_manager import queue_manager
     for _ in range(GLOBAL_BROWSER_POOL):
-        _crawler_executor.submit(_pre_warm_worker)
+        queue_manager.thread_pool.submit(_pre_warm_worker)
 
 def _pre_warm_worker():
     """Initializes the browser pool inside an executor thread."""
-    from web_crawler.crawler.page_crawler1 import browser_manager
+    from web_crawler.crawler.page.page_crawler1 import browser_manager
     config = CrawlConfig(headless=True, use_stealth=True)
     logger.info(f"Pre-warming browser manager on thread {threading.get_ident()}...")
     try:
-        browser_manager.get_chromium(config)
+        browser_manager.get_chromium(config, direct=False)
+        browser_manager.get_chromium(config, direct=True)
         browser_manager.get_camoufox(config)
         logger.info(f"✓ Thread {threading.get_ident()} pre-warmed successfully!")
     except Exception as e:
@@ -226,7 +226,7 @@ async def run_scrape(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/crawl", response_model=CrawlResponse)
-def run_crawl(
+async def run_crawl(
     payload: MultiCrawlRequest,
     request: Request,
     authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
@@ -250,6 +250,9 @@ def run_crawl(
             recaptcha_header=recaptcha_token,
             api_key_header=x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
         )
+        
+        from api.core.security import check_plan_limits_and_get_details, increment_used_requests
+        plan_type, concurrency_limit = check_plan_limits_and_get_details(user_id)
 
         import socket
         from urllib.parse import urlparse
@@ -344,8 +347,16 @@ def run_crawl(
             logger.info("⚠ No active Celery worker found. Running crawl task in local background thread pool.")
             crawl_id = uuid.uuid4().hex
             
-            _crawler_executor.submit(
-                _run_background_crawl_task,
+            from api.services.queue_manager import queue_manager
+            def _wrapper(**kw):
+                _run_background_crawl_task(user_id=user_id, **kw)
+                increment_used_requests(user_id)
+                
+            await queue_manager.submit_background_task(
+                user_id=user_id,
+                plan_type=plan_type,
+                user_limit=concurrency_limit,
+                func=_wrapper,
                 client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="all",
@@ -355,7 +366,6 @@ def run_crawl(
                 enable_ss=enable_ss,
                 enable_seo=enable_seo,
                 enable_images=enable_images,
-                user_id=user_id,
                 config=config
             )
             status = "queued"
@@ -421,7 +431,7 @@ def run_crawl(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/links", response_model=CrawlResponse)
-def run_links(
+async def run_links(
     payload: LinksRequest,
     request: Request,
     authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
@@ -434,6 +444,9 @@ def run_links(
             recaptcha_header=recaptcha_token,
             api_key_header=x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
         )
+        
+        from api.core.security import check_plan_limits_and_get_details, increment_used_requests
+        plan_type, concurrency_limit = check_plan_limits_and_get_details(user_id)
 
         import socket
         from urllib.parse import urlparse
@@ -510,8 +523,16 @@ def run_links(
             logger.info("⚠ No active Celery worker found. Running links task in local background thread pool.")
             crawl_id = uuid.uuid4().hex
             
-            _crawler_executor.submit(
-                _run_background_crawl_task,
+            from api.services.queue_manager import queue_manager
+            def _wrapper(**kw):
+                _run_background_crawl_task(user_id=user_id, **kw)
+                increment_used_requests(user_id)
+                
+            await queue_manager.submit_background_task(
+                user_id=user_id,
+                plan_type=plan_type,
+                user_limit=concurrency_limit,
+                func=_wrapper,
                 client_id=crawl_id,
                 start_url=str(payload.url),
                 crawl_mode="links",
@@ -521,7 +542,6 @@ def run_links(
                 enable_ss=False,
                 enable_seo=False,
                 enable_images=False,
-                user_id=user_id,
                 config=config
             )
             status = "queued"
@@ -586,7 +606,7 @@ def run_links(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/screenshot", response_model=CrawlResponse)
-def run_screenshot(
+async def run_screenshot(
     payload: ScreenshotRequest,
     request: Request,
     authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
@@ -610,6 +630,9 @@ def run_screenshot(
             recaptcha_header=recaptcha_token,
             api_key_header=x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
         )
+        
+        from api.core.security import check_plan_limits_and_get_details, increment_used_requests
+        plan_type, concurrency_limit = check_plan_limits_and_get_details(user_id)
 
         import socket
         from urllib.parse import urlparse
@@ -638,8 +661,17 @@ def run_screenshot(
 
         crawl_id = uuid.uuid4().hex
 
-        _crawler_executor.submit(
-            _run_background_crawl_task,
+        from api.services.queue_manager import queue_manager
+        
+        def _wrapper(**kw):
+            _run_background_crawl_task(user_id=user_id, **kw)
+            increment_used_requests(user_id)
+
+        await queue_manager.submit_background_task(
+            user_id=user_id,
+            plan_type=plan_type,
+            user_limit=concurrency_limit,
+            func=_wrapper,
             client_id=crawl_id,
             start_url=str(payload.url),
             crawl_mode="screenshot",
@@ -649,7 +681,6 @@ def run_screenshot(
             enable_ss=enable_ss,
             enable_seo=enable_seo,
             enable_images=enable_images,
-            user_id=user_id,
             config=config
         )
 

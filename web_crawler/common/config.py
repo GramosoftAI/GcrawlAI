@@ -23,7 +23,7 @@ class CrawlConfig:
     nav_timeout: int = 60_000
 
     use_stealth: bool = True
-    simulate_human: bool = False
+    simulate_human: bool = True
     use_custom_headers: bool = True
     bypass_cloudflare: bool = True
 
@@ -64,6 +64,11 @@ class CrawlConfig:
     default_tier: int = 1
 
     def __post_init__(self):
+        # Allow overriding headless mode from environment variable
+        crawl_headless_env = os.getenv("CRAWL_HEADLESS")
+        if crawl_headless_env is not None:
+            self.headless = crawl_headless_env.strip().lower() == "true"
+
         self.default_tier = int(os.getenv("DEFAULT_TIER", "1"))
         self.proxy_server = self._clean_env(self.proxy_server or os.getenv("PROXY_SERVER", os.getenv("EVOMI_PROXY_SERVER")))
         self.proxy_username = self._clean_env(self.proxy_username or os.getenv("PROXY_USERNAME", os.getenv("EVOMI_PROXY_USERNAME")))

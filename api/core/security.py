@@ -35,8 +35,12 @@ def verify_recaptcha(token: str) -> bool:
         res = requests.post(url, data=payload, timeout=5)
         res_json = res.json()
         success = res_json.get("success", False)
+
         if not success:
             logger.warning(f"Google reCAPTCHA verification failed. Response: {res_json}")
+            logger.warning("Secret key: %s", secret_key)
+            logger.warning("Received token: %s", token)
+            logger.warning("Google response: %s", res_json)
         return success
     except Exception as e:
         logger.error(f"reCAPTCHA network/parsing error: {e}", exc_info=True)
@@ -114,7 +118,7 @@ def validate_recaptcha_or_jwt(
     if recaptcha_header:
         if verify_recaptcha(recaptcha_header):
             logger.info("✓ [AUTH] Anonymous reCAPTCHA verification successful.")
-            return None
+            return "demo"
         logger.warning("reCAPTCHA token provided but verification failed.")
         recaptcha_error = True
 
@@ -133,7 +137,7 @@ def validate_recaptcha_or_jwt(
     
     raise HTTPException(status_code=401, detail="Missing authentication token, API key, or reCAPTCHA token")
 
-def check_plan_limits_and_get_details(user_id: int) -> tuple[str, int]:
+def check_plan_limits_and_get_details(user_id: Union[int, str]) -> tuple[str, int]:
     """
     Checks if the user has a valid plan and hasn't exhausted their requests.
     Returns (plan_type, concurrency_limit).
@@ -161,7 +165,7 @@ def check_plan_limits_and_get_details(user_id: int) -> tuple[str, int]:
         
     return plan_type, concurrency_limit
 
-def increment_used_requests(user_id: int):
+def increment_used_requests(user_id: Union[int, str]):
     """Increments the used_requests counter for a user upon successful task completion."""
     if user_id == "demo":
         return

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, HttpUrl, StrictBool, StrictInt, StrictStr
-from typing import List, Optional
+from typing import List, Optional, Union
 from datetime import datetime
 
 class ProxyConfig(BaseModel):
@@ -86,7 +86,7 @@ class CrawlResponse(BaseModel):
     Markdown: bool
     Images: bool
     status: str
-    user_id: Optional[int] = None
+    user_id: Optional[Union[int, str]] = None
 
 class CrawlPathsResponse(BaseModel):
     status_code: int = 200
@@ -95,7 +95,7 @@ class CrawlPathsResponse(BaseModel):
     summary_files: List[str]
 
 class UserCrawlJobResponse(BaseModel):
-    user_id: Optional[int] = None
+    user_id: Optional[Union[int, str]] = None
     crawl_id: str
     url: str
     crawl_mode: str

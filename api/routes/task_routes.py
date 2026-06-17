@@ -1,4 +1,5 @@
 import logging
+from typing import Union
 from fastapi import APIRouter, HTTPException
 from api.models.payloads import UserCrawlsResponse, UserCrawlJobResponse, CrawlPathsResponse
 from api.core.database import get_pooled_connection
@@ -22,7 +23,7 @@ def get_task_status(task_id: str):
     }
 
 @router.get("/user/{user_id}", response_model=UserCrawlsResponse)
-def get_user_crawls(user_id: int):
+def get_user_crawls(user_id: Union[int, str]):
     """
     Returns all crawl jobs for a specific user_id.
     """

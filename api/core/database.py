@@ -2,6 +2,7 @@ import logging
 import psycopg2
 from psycopg2 import pool as psycopg2_pool
 from contextlib import contextmanager
+from typing import Union
 
 from api.core.config_setup import get_db_config
 
@@ -32,25 +33,26 @@ def get_pooled_connection(max_retries: int = 3):
     if not _db_pool:
         raise RuntimeError("Database pool is not initialized. Call _init_db_pool() first.")
         
+    conn = None
     last_error = None
+    
+    # 1. Obtain and validate a connection from the pool
     for attempt in range(1, max_retries + 1):
-        conn = None
         try:
             conn = _db_pool.getconn()
-
-            # Probe the connection: poll() checks the socket without hitting the server.
-            # If the connection is broken psycopg2 raises OperationalError immediately.
-            conn.poll()
-
-            yield conn
-            return  # success — exit the retry loop
-
-        except psycopg2.OperationalError as e:
+            
+            # Execute a lightweight query to verify the connection is active and stable.
+            # This detects stale/closed SSL connections before yielding them to the caller.
+            with conn.cursor() as test_cursor:
+                test_cursor.execute("SELECT 1")
+            
+            # Connection is valid, exit the retry loop
+            break
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             last_error = e
-            # SSL closed / server restarted / network hiccup — discard this connection
             if conn is not None:
                 try:
-                    _db_pool.putconn(conn, close=True)  # removes it from the pool
+                    _db_pool.putconn(conn, close=True)  # removes and closes the stale connection
                 except Exception:
                     pass
                 conn = None
@@ -58,30 +60,37 @@ def get_pooled_connection(max_retries: int = 3):
                 f"Stale DB connection on attempt {attempt}/{max_retries}: {e}. "
                 + ("Retrying with fresh connection..." if attempt < max_retries else "No more retries.")
             )
+            
+    if conn is None:
+        if last_error:
+            raise last_error
+        else:
+            raise psycopg2.OperationalError("Could not retrieve a valid connection from the pool")
 
-        except Exception:
-            # Non-connection error — rollback and return connection to pool normally
-            if conn is not None:
-                try:
+    # 2. Yield the connection and handle exceptions raised in the client block
+    try:
+        yield conn
+    except Exception as e:
+        # Check if the exception raised during client execution was a connection drop
+        is_conn_error = isinstance(e, (psycopg2.OperationalError, psycopg2.InterfaceError))
+        if conn is not None:
+            try:
+                if is_conn_error:
+                    _db_pool.putconn(conn, close=True)  # discard broken connection
+                else:
                     conn.rollback()
-                except Exception:
-                    pass
-                try:
                     _db_pool.putconn(conn)
-                except Exception:
-                    pass
-                conn = None
-            raise
-
-        finally:
-            # Safety net: return connection if it was yielded successfully
-            if conn is not None:
-                try:
-                    _db_pool.putconn(conn)
-                except Exception:
-                    pass
-
-    raise last_error
+            except Exception:
+                pass
+            conn = None
+        raise  # Re-raise the exception to respect the context manager generator protocol
+    finally:
+        # 3. If no exception occurred, return the connection to the pool normally
+        if conn is not None:
+            try:
+                _db_pool.putconn(conn)
+            except Exception:
+                pass
 
 # Legacy wrapper for backwards compatibility
 def get_db_connection():
@@ -89,7 +98,7 @@ def get_db_connection():
     global _db_pool
     return _db_pool.getconn()
 
-def log_activity(user_id: int, endpoint: str, url: str, status: str, job_id: str = None) -> None:
+def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str, job_id: str = None) -> None:
     """Log an activity to the activity_logs table"""
     try:
         with get_pooled_connection() as conn:
@@ -102,7 +111,7 @@ def log_activity(user_id: int, endpoint: str, url: str, status: str, job_id: str
     except Exception as e:
         logger.error(f"Failed to log activity for user {user_id}: {e}")
 
-def get_activity_logs(user_id: int, days: int = 7, endpoint: str = None) -> list:
+def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = None) -> list:
     """Fetch activity logs for a specific user"""
     try:
         with get_pooled_connection() as conn:

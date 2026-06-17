@@ -151,7 +151,7 @@ async def submit_contact_form(payload: ContactRequest):
     try:
         # Import the shared email service that is initialised on startup
         from api.services.email_service import EmailService
-        from api.api import load_config
+        from api.core.config_setup import load_config
 
         config = load_config()
         email_config = config.get("email", {})

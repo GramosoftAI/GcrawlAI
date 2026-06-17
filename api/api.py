@@ -133,6 +133,16 @@ def root():
 async def startup_event():
     logger.info("Starting up FastAPI application...")
     _init_db_pool()
+    
+    # Automatically ensure database partitions exist on startup
+    try:
+        from api.core.db_setup import DatabaseSetup
+        db_setup = DatabaseSetup()
+        db_setup.create_job_results_table()
+        logger.info("✓ job_results partitions validated/created on startup")
+    except Exception as db_setup_err:
+        logger.error(f"Failed to check/create database partitions on startup: {db_setup_err}")
+        
     am = AuthManager()
     set_auth_manager(am)
     
