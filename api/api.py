@@ -166,3 +166,5 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     queue_manager.stop_workers()
+
+# Reload trigger comment to refresh module cache

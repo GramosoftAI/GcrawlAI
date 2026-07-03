@@ -26,6 +26,7 @@ router = APIRouter(prefix="/search", tags=["Crawler"])
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Search query text")
     limit: int = Field(10, ge=1,le = 100, description="Number of results to return")
+    geo: Optional[str] = Field(None, description="Country code for proxy search")
 
 
 class SearchResult(BaseModel):
@@ -92,6 +93,10 @@ async def search(
         conn.commit()
 
     try:
+        geo_val = search_req.geo
+        if not geo_val or geo_val.strip().lower() == "default":
+            geo_val = "IN"
+
         # Pass to the global Priority Queue instead of executing directly
         results: List[Dict[str, str]] = await queue_manager.submit_task(
             user_id=user_id,
@@ -100,10 +105,13 @@ async def search(
             func=execute_search_router,
             query=search_req.query,
             limit=search_req.limit,
-            ip=client_ip
+            ip=client_ip,
+            proxy_geo=geo_val
         )
-        # On success, deduct/increment used credit
-        increment_used_requests(user_id)
+        # On success, deduct/increment used credit (1 request credit per 10 limit size)
+        limit_val = search_req.limit if search_req.limit is not None else 10
+        credits_to_deduct = (limit_val + 9) // 10
+        increment_used_requests(user_id, amount=credits_to_deduct)
     except Exception as exc:
         logger.exception("Search route failed")
         from api.core.database import log_activity

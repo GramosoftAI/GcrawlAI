@@ -2,13 +2,14 @@ import json
 import logging
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from websockets.exceptions import ConnectionClosed
 import redis.asyncio as aioredis
 from api.core.database import get_pooled_connection
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-redis_client_async = aioredis.from_url("redis://localhost:6379/0", decode_responses=True)
+redis_client_async = aioredis.from_url("redis://localhost:6379/0", decode_responses=True, socket_timeout=None)
 
 @router.websocket("/crawl/{crawl_id}")
 async def crawl_ws(websocket: WebSocket, crawl_id: str):
@@ -44,6 +45,9 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                 await websocket.close()
                 return
 
+    except (WebSocketDisconnect, ConnectionClosed):
+        logger.info(f"WebSocket disconnected during DB replay: {crawl_id}")
+        return
     except Exception as e:
         logger.error(f"Error replaying historical events: {e}")
 
@@ -101,8 +105,10 @@ async def crawl_ws(websocket: WebSocket, crawl_id: str):
                 logger.error(f"Error persisting event: {e}")
                 continue
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ConnectionClosed):
         logger.info(f"WebSocket disconnected: {crawl_id}")
+    except Exception as e:
+        logger.info(f"PubSub stream closed for crawl_id={crawl_id}: {e}")
 
     finally:
         await pubsub.unsubscribe(f"crawl:{crawl_id}")

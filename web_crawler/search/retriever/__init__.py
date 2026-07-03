@@ -2,8 +2,9 @@
 Fetchers package - provides regular and stealthy web fetchers.
 """
 from .response import Response
-from .chrome import DynamicFetcher, AsyncDynamicFetcher
-from .stealth_chrome import StealthyFetcher, AsyncStealthyFetcher, PersistentStealthyFetcher
+from .clock_browser import DynamicFetcher, AsyncDynamicFetcher
+from .stealth_clock_browser import StealthyFetcher
+from .stealth_clock_browser2 import AsyncStealthyFetcher, PersistentStealthyFetcher
 __all__ = [
     "Response",
     "DynamicFetcher",

@@ -218,7 +218,7 @@ def _is_valid_google_result(results: Any) -> bool:
     return True
 
 
-async def execute_search_router(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
+async def execute_search_router(query: str, limit: int, ip: Optional[str] = None, proxy_geo: Optional[str] = None) -> List[Dict[str, str]]:
     """
     Implements a robust search router with aggressive Google retry.
 
@@ -240,13 +240,13 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
         logger.info(f"⏱️ [SEARCH] Total execution time: {elapsed:.2f} seconds")
         return filter_and_deduplicate(res, limit)
 
-    search_limit = int(limit * 1.3) + 1
+    search_limit = max(int(limit * 1.5) + 5, limit + 5)
 
     # ── Attempt 1: Google Primary ────────────────────────────────────────────
-    logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Google (attempt 1/{_GOOGLE_MAX_RETRIES})")
+    logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Google (attempt 1/{_GOOGLE_MAX_RETRIES}) using proxy_geo={proxy_geo}")
     last_google_error = None
     try:
-        results = await scrape_google(query, search_limit, ip, headless=True, fast_mode=False)
+        results = await scrape_google(query, limit, ip, headless=True, fast_mode=False, proxy_geo=proxy_geo)
 
         if _is_valid_google_result(results):
             logger.info(f"✅ [SEARCH] Google search successful. Found {len(results)} results.")
@@ -271,7 +271,7 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
         await asyncio.sleep(delay)
 
         try:
-            results = await scrape_google(query, search_limit, ip, headless=True, fast_mode=False)
+            results = await scrape_google(query, limit, ip, headless=True, fast_mode=False, proxy_geo=proxy_geo)
 
             if _is_valid_google_result(results):
                 logger.info(

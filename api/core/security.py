@@ -165,16 +165,16 @@ def check_plan_limits_and_get_details(user_id: Union[int, str]) -> tuple[str, in
         
     return plan_type, concurrency_limit
 
-def increment_used_requests(user_id: Union[int, str]):
+def increment_used_requests(user_id: Union[int, str], amount: int = 1):
     """Increments the used_requests counter for a user upon successful task completion."""
-    if user_id == "demo":
+    if user_id == "demo" or amount <= 0:
         return
         
     from api.core.database import get_pooled_connection
     try:
         with get_pooled_connection() as conn:
             cur = conn.cursor()
-            cur.execute("UPDATE user_plans SET used_requests = used_requests + 1 WHERE user_id = %s", (user_id,))
+            cur.execute("UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s", (amount, user_id))
             conn.commit()
     except Exception as e:
-        logger.error(f"Failed to increment used requests for user {user_id}: {e}")
+        logger.error(f"Failed to increment used requests by {amount} for user {user_id}: {e}")

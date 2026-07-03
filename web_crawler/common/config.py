@@ -28,7 +28,6 @@ class CrawlConfig:
     bypass_cloudflare: bool = True
 
     output_dir: str = "crawl_output-api"
-    camoufox_path: Optional[str] = r"C:\Users\ganes\AppData\Local\camoufox\camoufox\Cache\camoufox.exe"
 
     proxy_geo: Optional[str] = None
     proxy_type_custom: Optional[str] = None
@@ -172,19 +171,6 @@ class CrawlConfig:
         mode = (value or "auto").strip().lower()
         return mode if mode in allowed else "auto"
 
-    def get_playwright_proxy(self) -> Optional[dict]:
-        """
-        Return a Playwright-compatible proxy block from Firecrawl-style env vars.
-        """
-        if not self.proxy_server:
-            return None
-
-        proxy_config = {"server": self.proxy_server}
-        if self.proxy_username and self.proxy_password:
-            proxy_config["username"] = self.proxy_username
-            proxy_config["password"] = self.proxy_password
-
-        return proxy_config
 
     def rebuild_paths(self):
         """Rebuild all output paths (important when output_dir changes)"""

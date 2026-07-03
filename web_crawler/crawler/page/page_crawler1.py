@@ -15,7 +15,8 @@ from typing import Optional, Dict
 from urllib.parse import urlparse
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from playwright_stealth import Stealth
+import cloakbrowser
+
 import platform
 import threading
 
@@ -45,6 +46,15 @@ class PooledConnectionWrapper:
         except Exception as e:
             logger.warning(f"Error returning connection to pool: {e}")
 
+def _substitute_config(data):
+    if isinstance(data, dict):
+        return {k: _substitute_config(v) for k, v in data.items()}
+    if isinstance(data, str):
+        def _rep(m):
+            return os.getenv(m.group(1), m.group(2) or "")
+        return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', _rep, data)
+    return data
+
 def _get_db_conn():
     """
     Get a pooled PostgreSQL connection.
@@ -64,17 +74,8 @@ def _get_db_conn():
 
                 config_path = BASE_DIR / "config.yaml"
 
-                def _substitute(data):
-                    if isinstance(data, dict):
-                        return {k: _substitute(v) for k, v in data.items()}
-                    if isinstance(data, str):
-                        def _rep(m):
-                            return os.getenv(m.group(1), m.group(2) or "")
-                        return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', _rep, data)
-                    return data
-
                 with open(config_path, "r") as f:
-                    cfg = _substitute(yaml.safe_load(f))
+                    cfg = _substitute_config(yaml.safe_load(f))
 
                 db = cfg.get("postgres", {})
                 logger.info("🚀 Initializing crawler thread-safe database connection pool...")
@@ -209,21 +210,12 @@ def _send_crawl_error_notification(
         BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
         config_path = BASE_DIR / "config.yaml"
         
-        def _substitute(data):
-            if isinstance(data, dict):
-                return {k: _substitute(v) for k, v in data.items()}
-            if isinstance(data, str):
-                def _rep(m):
-                    return os.getenv(m.group(1), m.group(2) or "")
-                return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', _rep, data)
-            return data
-
         if not config_path.exists():
             logger.warning(f"Configuration file not found: {config_path}")
             return
 
         with open(config_path, "r") as f:
-            cfg = _substitute(yaml.safe_load(f))
+            cfg = _substitute_config(yaml.safe_load(f))
             
         smtp_cfg = cfg.get("email", {})
         admin_email = os.getenv("ADMIN_EMAIL")
@@ -260,9 +252,8 @@ class BrowserManager:
     def _get_local_data(self):
         if not hasattr(self._local, 'playwright'):
             self._local.playwright = None
-            self._local.chromium_browser = None
-            self._local.chromium_browser_direct = None
-            self._local.camoufox_browser = None
+            self._local.clock_browser = None
+            self._local.clock_browser_direct = None
         return self._local
 
     def get_playwright(self):
@@ -271,11 +262,10 @@ class BrowserManager:
             local.playwright = sync_playwright().start()
         return local.playwright
 
-    def get_chromium(self, config, direct=False):
+    def get_clock_browser(self, config, direct=False):
         local = self._get_local_data()
-        p = self.get_playwright()
         
-        target_browser = local.chromium_browser_direct if direct else local.chromium_browser
+        target_browser = local.clock_browser
         
         # Check if browser is still connected
         is_connected = False
@@ -287,202 +277,78 @@ class BrowserManager:
 
         if not target_browser or not is_connected:
             with self._lock: # Thread-safe launch
-                logger.info(f"🚀 Launching WARM Chromium instance (Thread {threading.get_ident()}, direct={direct})...")
-                launch_args = {
-                    "headless": config.headless,
-                    "args": [
-                        '--no-sandbox', '--disable-setuid-sandbox', '--disable-infobars',
-                        '--ignore-certificate-errors', '--disable-blink-features=AutomationControlled',
-                        '--disable-dev-shm-usage', '--disable-gpu',
-                        '--no-first-run', '--no-default-browser-check', '--password-store=basic', '--use-mock-keychain',
-                        '--disable-web-security',
-                        '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
-                        '--disable-background-timer-throttling', '--disable-ipc-flooding-protection',
-                        '--disable-http2'
-                    ]
-                }
-                if not direct:
-                    launch_args["proxy"] = {"server": "http://per-context"}
-                    
-                target_browser = p.chromium.launch(**launch_args)
+                logger.info(f"🚀 Launching WARM ClockBrowser instance (Thread {threading.get_ident()}, direct={direct})...")
                 
-                if direct:
-                    local.chromium_browser_direct = target_browser
+                import random
+                platform_choice = random.choices(["windows", "macos", "linux"], weights=[85, 10, 5])[0]
+                seed = random.randint(100000, 9999999)
+                concurrency = random.choice([4, 8, 12, 16])
+                memory = random.choice([4, 8, 16])
+                
+                if platform_choice == "windows":
+                    res = random.choice([(1920, 1080, 48), (1366, 768, 40), (1536, 864, 40)])
+                elif platform_choice == "macos":
+                    res = random.choice([(1440, 900, 95), (1680, 1050, 95), (2560, 1600, 95)])
                 else:
-                    local.chromium_browser = target_browser
+                    res = random.choice([(1920, 1080, 0), (1366, 768, 0)])
+                    
+                width, height, taskbar = res
+                
+                fingerprint_args = [
+                    f"--fingerprint={seed}",
+                    f"--fingerprint-platform={platform_choice}",
+                    f"--fingerprint-screen-width={width}",
+                    f"--fingerprint-screen-height={height}",
+                    f"--fingerprint-taskbar-height={taskbar}",
+                    f"--fingerprint-hardware-concurrency={concurrency}",
+                    f"--fingerprint-device-memory={memory}",
+                ]
+                
+                launch_args = {
+                    "headless": config.headless if config is not None else True,
+                    "timezone": "America/Los_Angeles",
+                    "locale": "en-US",
+                    "args": fingerprint_args
+                }
+                # Match app.py: launch browser without proxy at the binary level
+                    
+                import asyncio
+                old_loop = None
+                try:
+                    old_loop = asyncio.get_running_loop()
+                    asyncio._set_running_loop(None)
+                except RuntimeError:
+                    pass
+
+                try:
+                    target_browser = cloakbrowser.launch(humanize=True, **launch_args)
+                    target_browser._stealth_viewport = {"width": width, "height": height - taskbar}
+                finally:
+                    if old_loop is not None:
+                        asyncio._set_running_loop(old_loop)
+                
+                local.clock_browser = target_browser
                     
         return target_browser
 
-    def close_chromium(self, direct=False):
+    def close_clock_browser(self, direct=False):
         local = self._get_local_data()
         with self._lock:
-            target = local.chromium_browser_direct if direct else local.chromium_browser
+            target = local.clock_browser
             if target:
                 try:
-                    logger.info(f"Closing warm Chromium instance (Thread {threading.get_ident()}, direct={direct})...")
+                    logger.info(f"Closing warm ClockBrowser instance (Thread {threading.get_ident()}, direct={direct})...")
                     target.close()
                 except Exception as e:
-                    logger.debug(f"Failed to close chromium: {e}")
-                if direct:
-                    local.chromium_browser_direct = None
-                else:
-                    local.chromium_browser = None
+                    logger.debug(f"Failed to close clock_browser: {e}")
+                local.clock_browser = None
 
-
-    def get_camoufox(self, config):
-        local = self._get_local_data()
-        p = self.get_playwright()
-        
-        is_connected = False
-        if local.camoufox_browser:
-            try:
-                is_connected = local.camoufox_browser.is_connected()
-            except:
-                is_connected = False
-
-        if not local.camoufox_browser or not is_connected:
-            with self._lock: # Thread-safe launch
-                logger.info(f"🚀 Launching WARM Camoufox instance (Thread {threading.get_ident()})...")
-                
-                # Configure system CA certificate trust policy and trust Luminati proxy root certificates
-                try:
-                    from platformdirs import user_cache_dir
-                    install_dir = Path(user_cache_dir("camoufox"))
-                    dist_dir = install_dir / "distribution"
-                    dist_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # 1. Write the Luminati CA certificate
-                    luminati_cert_content = (
-                        "-----BEGIN CERTIFICATE-----\n"
-                        "MIIFozCCA4ugAwIBAgIJAPnnIqmvvTArMA0GCSqGSIb3DQEBBQUAMD8xCzAJBgNV\n"
-                        "BAYTAklMMQswCQYDVQQIEwJJTDENMAsGA1UEChMESG9sYTEUMBIGA1UEAxMLbHVt\n"
-                        "aW5hdGkuaW8wHhcNMTYwOTI3MTQyODM4WhcNMzYwOTE1MTQyODM4WjA/MQswCQYD\n"
-                        "VQQGEwJJTDELMAkGA1UECBMCSUwxDTALBgNVBAoTBEhvbGExFDASBgNVBAMTC2x1\n"
-                        "bWluYXRpLmlvMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAtiqw0DuX\n"
-                        "g5g7BC+Cr7mZvgXB7CsJ10YFb2xwoDZlHHJ8G0KEMUeNiY9EjPR8ZIHlnjGJehsW\n"
-                        "PUvJeSAoDnT+fh4udWyUJ3VSqDTyGpu4DpfLBwaaZP/fq45UeR0oLs3ZJd6joDss\n"
-                        "AjJdQbdBPJj/57MjwbF+jddP6qm9XbCWjYzl1uxdMVjloetyRUgkhkh2ALp/VtK8\n"
-                        "hUj/XgvD/Y1souKYs5DKayJTn+GM6MlSOUBQ0+b8yUbDb/9vjbHlX4pZ8gbgSEFf\n"
-                        "xUV49Sxd6EhRXzFw4TERQVut0cgojmRmrgXXwc4kJi0Uvtc6tV/hJeH2yRS84Ehg\n"
-                        "feY5dcJVc69ILYfGrNmwbFvf5aHZPWFG0kIcy9iMMk+3wSUaBP+FAYyd0i+PJTxy\n"
-                        "5Jfmhs6BHowuEr0zgL+xge+/RCEbVUPvA6w9DWYbpqckZUh9sPga3JcHjaHGs6Cz\n"
-                        "dnjEShgmlBm0DL6JMumLWFJrjztsm56Huuai0F5pwyrsyq8fbK6Sp18sq5/vH3Vy\n"
-                        "t2XAj4EIFvpWHZjuocCe5/5vAbkSXjQ5HEIS+SyVhlFriCy5Mf3fTyMFqwm3tbZv\n"
-                        "jEooumi0/9F2WvisUgheC1uatZ8M+Pzi+Kp3x2SSS992KWs0M35GEstiB09RkNHe\n"
-                        "GItI6qxqY/Npw5u6lBE6Z28ISwvuet1a4vMCAwEAAaOBoTCBnjAdBgNVHQ4EFgQU\n"
-                        "Wq7PsMnq2tuDhTV0oUW4jjzvLTcwbwYDVR0jBGgwZoAUWq7PsMnq2tuDhTV0oUW4\n"
-                        "jjzvLTehQ6RBMD8xCzAJBgNVBAYTAklMMQswCQYDVQQIEwJJTDENMAsGA1UEChME\n"
-                        "SG9sYTEUMBIGA1UEAxMLbHVtaW5hdGkuaW+CCQD55yKpr70wKzAMBgNVHRMEBTAD\n"
-                        "AQH/MA0GCSqGSIb3DQEBBQUAA4ICAQA3oT4lrUErSqXjQtDUINo62KcJWs4kjEd8\n"
-                        "qXZdl/HVim06nOG6DFZCSh8JngFi4MFmSzGlBGxe1pXaYArtekfLWmhwoVoJiiaA\n"
-                        "DAAPItcZNlA9zIORyLZlrXlIuP5xzsb9PbnNWhd9xJHksHGoHDPHAW/KI/GJdjQv\n"
-                        "uuCyObvv1IgGvfHbv4lXGCwQuU0OBGXv1kfZtAqUS+ei5zkK+nY0qc3L3Ce+Ow6h\n"
-                        "/haDe0FDoT7zkwnEHu/ExCGSR3lNnyBAewlPVMzbJznuPMU3FFA3MHT7IcHxJWff\n"
-                        "r8jOXo3qXWqd+T2oDO02KUR2ZVolI8FGx6yIKfLwWnj+eR2dfdMx0tUX4F6mRi4N\n"
-                        "zGmhhIIHtViAMf59tBL7az26C8DGfX0p4oECpKtc86u5bYTbRZ1xrf6t/wFqqgB/\n"
-                        "RVqn9IhSfXNZtxBn8G0odR8sPIiBxJKvkLMDKoAEeErwd0yqnr8FplskFuPn0FY5\n"
-                        "N7n7dj5cHoSUtSAkM6bHCFY+XVtUoy6xisTAobajHvU3e2cDVKizC/ocUbHbTJgh\n"
-                        "nevnzyTtKL2w820PDmI7plFN3wR3epd4kTAP5KT196Pjwjg+Dqgt2OnGAafKr+Qr\n"
-                        "o2cdIF5MbULVkux4RKzpNKaoDtrnvC1jROM5s1R0Lb96dQcS/VwmyX22lKdbbY9F\n"
-                        "ij5GZar9JA==\n"
-                        "-----END CERTIFICATE-----\n"
-                    )
-                    luminati_cert_path = dist_dir / "luminati.crt"
-                    with open(luminati_cert_path, "w") as cert_f:
-                        cert_f.write(luminati_cert_content)
-                    
-                    policies = {
-                        "Certificates": {
-                            "Install": [
-                                str(luminati_cert_path.resolve())
-                            ],
-                            "ImportEnterpriseRoots": True
-                        }
-                    }
-                    
-                    # If on Linux, also configure system CA certificate trust policy via p11-kit
-                    if platform.system().lower() == "linux":
-                        p11_paths = [
-                            "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-trust.so",
-                            "/usr/lib64/pkcs11/p11-kit-trust.so",
-                            "/usr/lib/pkcs11/p11-kit-trust.so",
-                            "/usr/lib/i386-linux-gnu/pkcs11/p11-kit-trust.so",
-                            "/usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-trust.so",
-                            "/usr/lib/arm-linux-gnueabihf/pkcs11/p11-kit-trust.so",
-                        ]
-                        active_p11_path = None
-                        for p11_path in p11_paths:
-                            if os.path.exists(p11_path):
-                                active_p11_path = p11_path
-                                break
-                                
-                        # Fallback: Dynamic lookup via shell find command
-                        if not active_p11_path:
-                            try:
-                                import subprocess
-                                find_res = subprocess.run(
-                                    ["find", "/usr/lib", "-name", "p11-kit-trust.so"],
-                                    capture_output=True, text=True, timeout=3
-                                )
-                                found_paths = [p.strip() for p in find_res.stdout.split("\n") if p.strip()]
-                                if found_paths and os.path.exists(found_paths[0]):
-                                    active_p11_path = found_paths[0]
-                            except Exception:
-                                pass
-                        
-                        if active_p11_path:
-                            policies["SecurityDevices"] = {
-                                "p11-kit-trust": active_p11_path
-                            }
-                            logger.info(f"✓ Configured Firefox system CA cert policy using PKCS11 module: {active_p11_path}")
-                        else:
-                            logger.warning("Could not find p11-kit-trust.so on Linux. Firefox system root certificate policy skipped.")
-                    
-                    policies_file = dist_dir / "policies.json"
-                    policies_content = {"policies": policies}
-                    with open(policies_file, "w") as f:
-                        json.dump(policies_content, f, indent=2)
-                    logger.info(f"✓ Configured Firefox custom CA cert trust policies successfully.")
-                except Exception as policy_err:
-                    logger.warning(f"Failed to auto-configure Camoufox CA trust policies: {policy_err}")
-
-                from camoufox.sync_api import NewBrowser
-                local.camoufox_browser = NewBrowser(
-                    p,
-                    headless=config.headless,
-                    os="windows",
-                    block_webrtc=True,
-                    humanize=False,
-                    firefox_user_prefs={
-                        "security.cert_pinning.enforcement_level": 0,
-                        "security.enterprise_roots.enabled": True,
-                        "network.stricttransportsecurity.preloadlist": False,
-                        "network.http.hsts.enabled": False,
-                        "security.ssl.enable_ocsp_stapling": False,
-                        "security.ssl.enable_ocsp_must_staple": False,
-                        "security.OCSP.enabled": 0,
-                        "security.ssl.errorReporting.enabled": False,
-                        "security.tls.version.min": 1,
-                        "network.trr.mode": 5,
-                        "extensions.pocket.enabled": False,
-                        "browser.safebrowsing.enabled": False,
-                        "browser.safebrowsing.downloads.remote.enabled": False,
-                        "toolkit.telemetry.enabled": False,
-                        "toolkit.telemetry.unified": False,
-                        "datareporting.healthreport.uploadEnabled": False,
-                        "datareporting.policy.dataSubmissionEnabled": False,
-                        "browser.cache.disk.enable": False,
-                        "browser.cache.memory.enable": True,
-                    }
-                )
-        return local.camoufox_browser
 
     def shutdown(self):
         local = self._get_local_data()
         try:
-            if local.chromium_browser: local.chromium_browser.close()
-            if local.chromium_browser_direct: local.chromium_browser_direct.close()
-            if local.camoufox_browser: local.camoufox_browser.close()
+            if local.clock_browser: local.clock_browser.close()
+            if local.clock_browser_direct: local.clock_browser_direct.close()
             if local.playwright: local.playwright.stop()
         except: pass
 

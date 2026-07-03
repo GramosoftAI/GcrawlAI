@@ -45,7 +45,8 @@ _NOISE_PATTERNS = (
 _FORCE_INCLUDE_PATTERNS = (
     "#main", "main-content", ".swoogo-cols", ".swoogo-text", ".swoogo-table-div",
     ".swoogo-space", ".swoogo-alert", ".swoogo-sponsors", ".swoogo-title",
-    ".swoogo-tabs", ".swoogo-logo", ".swoogo-image", ".swoogo-button", ".swoogo-agenda"
+    ".swoogo-tabs", ".swoogo-logo", ".swoogo-image", ".swoogo-button", ".swoogo-agenda",
+    "elementor", "wp-block"
 )
 
 # Attributes to keep — everything else is stripped
@@ -108,6 +109,9 @@ def _remove_noise_by_class_id(soup: BeautifulSoup) -> None:
     for tag in soup.find_all(True):
         # Skip tags that were already decomposed by a parent in this loop
         if tag.parent is None:
+            continue
+        # Never decompose body or html tags
+        if tag.name in ("body", "html"):
             continue
         try:
             cls_str  = " ".join(tag.get("class") or []).lower()
@@ -295,7 +299,8 @@ def cleanup_html(html_content: str, base_url: str, only_main_content: bool = Fal
         _remove_noise_by_class_id(soup)
         # Remove hidden cookie banners/popups
         for tag in soup.find_all(attrs={"data-gcrawl-hidden": "true"}):
-            tag.decompose()
+            if tag.name not in ("body", "html"):
+                tag.decompose()
     else:
         # Even in non-main-content mode, we still remove the absolute unneeded tags
         # passed in _BOILERPLATE_TAGS already (script, style, etc.)
@@ -455,7 +460,8 @@ def clean_html_dynamic(html_content: str, base_url: str, config) -> str:
             
         # Remove hidden cookie banners/popups
         for tag in soup.find_all(attrs={"data-gcrawl-hidden": "true"}):
-            tag.decompose()
+            if tag.name not in ("body", "html"):
+                tag.decompose()
             
     # 3. Relative to absolute links conversion
     if config.html_relative_to_absolute_links:

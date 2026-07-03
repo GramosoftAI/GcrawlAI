@@ -11,8 +11,7 @@ from web_crawler.common.config import CrawlConfig
 from web_crawler.crawler.helpers.file_manager import FileManager
 from web_crawler.common.redis_events import publish_event
 from web_crawler.crawler.page.page_crawler2 import BasePageCrawler
-from web_crawler.crawler.page.page_crawler_chromium import ChromiumCrawlerMixin
-from web_crawler.crawler.page.page_crawler_camoufox import CamoufoxCrawlerMixin
+from web_crawler.crawler.page.page_crawler_cloak import CloakCrawlerMixin
 from web_crawler.crawler.helpers.crawler_popups import handle_popups_and_overlays
 from web_crawler.crawler.helpers.crawler_screenshot import capture_robust_screenshot
 
@@ -23,8 +22,8 @@ from web_crawler.crawler.page.page_crawler1 import (
 logger = logging.getLogger(__name__)
 
 
-class PageCrawler(BasePageCrawler, ChromiumCrawlerMixin, CamoufoxCrawlerMixin):
-    """PageCrawler orchestrates Chromium and Camoufox crawling with enhanced stealth headers."""
+class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
+    """PageCrawler orchestrates CloakBrowser crawling with Nodemaven -> Evomi fallback."""
     # High‑security sites list used for header Referer adjustments and warm‑up logic
     HIGH_SEC_SITES = [
         "meesho", "delta.com", "jal.co.jp", "united.com", "wayfair.com",
@@ -40,7 +39,7 @@ class PageCrawler(BasePageCrawler, ChromiumCrawlerMixin, CamoufoxCrawlerMixin):
         super().__init__(config, file_manager)
         self.high_sec_sites = self.HIGH_SEC_SITES
 
-    def _load_session_state(self, client_id: str, url: str, context_kwargs: dict, browser_type: str = "chromium"):
+    def _load_session_state(self, client_id: str, url: str, context_kwargs: dict, browser_type: str = "cloak"):
         if not client_id:
             return
         try:
@@ -57,7 +56,7 @@ class PageCrawler(BasePageCrawler, ChromiumCrawlerMixin, CamoufoxCrawlerMixin):
         except Exception as e:
             logger.warning(f"Failed to load session state from Redis: {e}")
 
-    def _save_session_state(self, client_id: str, url: str, context, result: dict, browser_type: str = "chromium"):
+    def _save_session_state(self, client_id: str, url: str, context, result: dict, browser_type: str = "cloak"):
         if not client_id or not result or "error" in result:
             return
         try:
@@ -88,7 +87,7 @@ class PageCrawler(BasePageCrawler, ChromiumCrawlerMixin, CamoufoxCrawlerMixin):
         crawl_mode: str = "all",
         proxy_type: str = "basic",
     ) -> Optional[Dict]:
-        """Crawl a single page with fallback browsers"""
+        """Crawl a single page using Evomi Premium -> Nodemaven -> Evomi Core loop"""
         logger.info(f"Crawling [{count}]: {url}")
         
         if client_id:
@@ -102,75 +101,63 @@ class PageCrawler(BasePageCrawler, ChromiumCrawlerMixin, CamoufoxCrawlerMixin):
                 }
             )
 
-        custom_proxy_type = (self.config.proxy_type_custom or "").strip().lower()
-        
-        if custom_proxy_type == "residential":
-            start_tier = 1
-            end_tier = 2
-        elif custom_proxy_type == "datacenter":
-            start_tier = 1
-            end_tier = 2
-        elif custom_proxy_type == "both":
-            start_tier = 1
-            end_tier = 3
-        else:
-            requested_proxy_type = (proxy_type or "auto").strip().lower()
-            if requested_proxy_type == "none":
-                start_tier = 1
-            elif requested_proxy_type == "auto":
-                start_tier = self.config.default_tier
-            else:
-                if requested_proxy_type == "enhanced":
-                    start_tier = 1
-                elif requested_proxy_type == "bright_data" or requested_proxy_type == "nodemaven":
-                    start_tier = 2
-                elif requested_proxy_type == "basic":
-                    start_tier = 1
-                elif requested_proxy_type == "stealth":
-                    start_tier = 3
-                elif requested_proxy_type == "premium":
-                    start_tier = 2
-                else:
-                    start_tier = 1
-            end_tier = 3
-            
-        current_tier = start_tier
-        result = None
+        # Load attempt order from environment with default fallback values
+        attempt_1 = os.getenv("ATTEMPT_1", "evomi_premium").strip().lower()
+        attempt_2 = os.getenv("ATTEMPT_2", "nodemaven").strip().lower()
+        attempt_3 = os.getenv("ATTEMPT_3", "evomi_core").strip().lower()
 
-        while current_tier <= end_tier:
-            logger.info("\n" + "="*30 + f"\nTier {current_tier} - Processing\n" + "="*30)
+        provider_names = {
+            "evomi_premium": "Evomi Premium",
+            "nodemaven": "Nodemaven",
+            "evomi_core": "Evomi Core"
+        }
+
+        # Normalize configured providers from environment
+        configured_pids = []
+        for pid in [attempt_1, attempt_2, attempt_3]:
+            if pid and pid in provider_names:
+                configured_pids.append(pid)
+        if not configured_pids:
+            configured_pids = ["evomi_premium", "nodemaven", "evomi_core"]
+
+        providers = []
+        for pid in configured_pids:
+            p_name = provider_names[pid]
+            providers.append((p_name, pid))
+
+        result = None
+        proxy_attempt_count = 0
+
+        for idx, (provider_name, provider_id) in enumerate(providers):
+            attempt = idx + 1
+            logger.info("\n" + "="*30 + f"\nAttempt {attempt}/3 - Provider: {provider_name}\n" + "="*30)
             
-            # Start with Chromium as the primary engine for speed
-            result = self.crawl_with_chromium(
-                url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, current_tier
+            use_high_speed = True
+            proxy_attempt_count += 1
+            if proxy_attempt_count > 1:
+                use_high_speed = False
+                logger.info("Fallback proxy attempt: Disabling high-speed ISP targeting to use the full residential pool.")
+            
+            result = self.crawl_with_cloakbrowser(
+                url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, provider_id,
+                use_high_speed=use_high_speed
             )
-            browser_name = "Chromium"
-            
-            # FALLBACK: If Chromium fails, fall back to Camoufox on the same tier
-            if not result or "error" in result:
-                logger.warning(f"Chromium failed on Tier {current_tier} (Error: {result.get('error') if result else 'Unknown'}). Falling back to Camoufox on Tier {current_tier}...")
-                result = self.crawl_with_camoufox(
-                    url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, current_tier
-                )
-                browser_name = "Camoufox (Fallback)"
  
             if result and "error" not in result:
-                logger.info("\n" + "="*30 + f"\nTier {current_tier} - Success\n" + "="*30)
-                logger.info(f"{browser_name} success with Tier {current_tier}: {url}")
+                logger.info("\n" + "="*30 + f"\nAttempt {attempt}/3 - Success\n" + "="*30)
+                logger.info(f"CloakBrowser ({provider_name}) success for: {url}")
                 return result
  
-            logger.warning("\n" + "="*30 + f"\nTier {current_tier} - Failed\n" + "="*30)
-            if current_tier < end_tier:
-                logger.warning(f"{browser_name} failed with Tier {current_tier} (Error: {result.get('error') if result else 'Unknown'}). Escalating to Tier {current_tier + 1}...")
-                current_tier += 1
+            logger.warning("\n" + "="*30 + f"\nAttempt {attempt}/3 - Failed\n" + "="*30)
+            if attempt < len(providers):
+                logger.warning(f"CloakBrowser ({provider_name}) failed (Error: {result.get('error') if result else 'Unknown'}). Escalating...")
             else:
                 break
                 
-        logger.error(f"All browsers and tiers failed for: {url}")
+        logger.error(f"All providers exhausted for: {url}")
         
         try:
             from api.core.config_setup import load_config
-            import os
             from api.services.email_service import EmailService
             
             admin_email = os.getenv("ADMIN_EMAIL")
@@ -183,16 +170,17 @@ class PageCrawler(BasePageCrawler, ChromiumCrawlerMixin, CamoufoxCrawlerMixin):
                 email_service.send_report_issue_email(
                     to_email=admin_email,
                     url_affected=url,
-                    issue_related_to=["Crawler Proxy Exhaustion", "All Tiers Failed"],
-                    explanation=f"The crawler failed to process this URL across all available proxy tiers and browsers.\\n\\nLast Error: {last_error}"
+                    issue_related_to=["Crawler Proxy Exhaustion", "All Providers Failed"],
+                    explanation=f"The crawler failed to process this URL across both Nodemaven and Evomi.\\n\\nLast Error: {last_error}"
                 )
         except Exception as e:
             logger.error(f"Failed to send alert email for proxy exhaustion: {e}")
+            
         _record_crawl_error(
             crawl_id=client_id,
             url=url,
             error_source="Crawler Orchestrator",
-            reason=f"Exhausted all proxy tiers without success.",
+            reason=f"Exhausted all proxy providers without success.",
             blocked_message=result.get("error") if result else "All attempts failed with no specific error message."
         )
         

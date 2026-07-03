@@ -45,15 +45,20 @@ def get_db_config():
     config = load_config()
     return config["postgres"]
 
-def setup_crawl_config(payload, default_max_pages=10) -> CrawlConfig:
+def setup_crawl_config(payload, default_max_pages=10, concurrency_limit=None) -> CrawlConfig:
     # Resolve max pages if crawl options exist
     max_pages = default_max_pages
     if hasattr(payload, 'crawl') and payload.crawl and payload.crawl.max_pages is not None:
         max_pages = payload.crawl.max_pages
 
+    # Set parallel workers based on user's plan concurrency limits
+    max_workers = 4
+    if concurrency_limit is not None:
+        max_workers = min(concurrency_limit, max_pages)
+
     config = CrawlConfig(
         max_pages=max_pages,
-        max_workers=4,
+        max_workers=max_workers,
         headless=True,
         use_stealth=True
     )

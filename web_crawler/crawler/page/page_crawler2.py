@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from web_crawler.common.config import CrawlConfig
 from web_crawler.crawler.helpers.file_manager import FileManager
-from web_crawler.crawler.browser.browser_utils import BrowserUtils
+
 from web_crawler.crawler.helpers.content_processor import ContentProcessor
 from web_crawler.common.utils import normalize_url
 from web_crawler.common.redis_events import publish_event
@@ -45,14 +45,8 @@ class BasePageCrawler:
     def __init__(self, config: CrawlConfig, file_manager: FileManager):
         self.config = config
         self.file_manager = file_manager
-        self.browser_utils = BrowserUtils()
         self.content_processor = ContentProcessor()
-        self.proxy_manager = ProxyManager(
-            proxies=config.proxy,
-            basic_proxies=config.basic_proxies,
-            stealth_proxies=config.stealth_proxies,
-            enhanced_proxies=config.enhanced_proxies,
-        )
+        self.proxy_manager = ProxyManager()
 
     def _move_human(self, page, target_x, target_y):
         """
@@ -76,14 +70,9 @@ class BasePageCrawler:
     def _is_likely_proxy_failure(self, result: Optional[Dict]) -> bool:
         return is_likely_proxy_failure(result)
 
-    def _resolve_playwright_proxy(self, proxy_tier: int = 1, session_id: Optional[str] = None, target_url: Optional[str] = None) -> Optional[Dict]:
-        """
-        Resolve proxy settings for Playwright contexts.
-        Priority:
-        1) Firecrawl-style BYOP env proxy (PROXY_SERVER/USERNAME/PASSWORD)
-        2) Requested Tier (1-7) from ProxyManager
-        """
-        return self.proxy_manager.get_playwright_proxy(tier=proxy_tier, session_id=session_id, target_url=target_url, geo=self.config.proxy_geo)
+    def _resolve_playwright_proxy(self, target_url: str, provider: str = "nodemaven", use_high_speed: bool = True) -> Optional[Dict]:
+        proxy_geo = getattr(self.config, "proxy_geo", None)
+        return self.proxy_manager.get_playwright_proxy(target_url=target_url, provider=provider, use_high_speed=use_high_speed, proxy_geo=proxy_geo)
 
     def is_captcha_page(self, page: Page) -> bool:
         return is_captcha_page(page)
@@ -136,7 +125,7 @@ class BasePageCrawler:
             # Adaptive DOM Polling for dynamic SPA/React page loading if status is 200 OK
             if status_code == 200:
                 poll_start = time.time()
-                max_poll_time = 5.0
+                max_poll_time = 10.0
                 poll_interval = 0.3
                 
                 check_content = soup.get_text().lower()[:5000]
@@ -191,16 +180,25 @@ class BasePageCrawler:
             is_sparse_block = False
             stripped_content = check_content.strip()
             if not triggered_reason and len(stripped_content) < 150 and len(links) < 5:
-                is_valid_json = False
-                if enable_json:
-                    try:
-                        json.loads(stripped_content)
-                        is_valid_json = True
-                    except Exception:
-                        pass
-                if not is_valid_json:
-                    is_sparse_block = True
-                    triggered_reason = f"Blank/Sparse Content ({len(stripped_content)} chars)"
+                # Exclude legitimate forms/login pages or pages with a valid title and some text content (>= 20 chars)
+                has_inputs = bool(soup.find("input"))
+                block_title_keywords = ["access denied", "captcha", "security check", "verify your identity", "robot check", "bot check", "just a moment", "cloudflare", "forbidden", "blocked"]
+                is_block_title = any(kw in page_title.lower() for kw in block_title_keywords)
+                
+                if (has_inputs or not is_block_title) and len(stripped_content) >= 20:
+                    # Legitimate sparse page (e.g. login/register form or simple landing page)
+                    pass
+                else:
+                    is_valid_json = False
+                    if enable_json:
+                        try:
+                            json.loads(stripped_content)
+                            is_valid_json = True
+                        except Exception:
+                            pass
+                    if not is_valid_json:
+                        is_sparse_block = True
+                        triggered_reason = f"Blank/Sparse Content ({len(stripped_content)} chars)"
 
             # Check DOM-level CAPTCHA and block challenges
             is_dom_captcha = self.is_captcha_page(page)

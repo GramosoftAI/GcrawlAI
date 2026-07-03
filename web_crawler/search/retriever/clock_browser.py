@@ -15,7 +15,7 @@ from .response import Response
 class DynamicFetcher:
     """
     Synchronous browser automation wrapper using Playwright.
-    Spins up a real Chromium browser, visits the URL, and waits for a specific state.
+    Spins up a real ClockBrowser browser, visits the URL, and waits for a specific state.
     """
 
     def __init__(

@@ -117,9 +117,15 @@ def crawl_website(
                         "UPDATE crawl_jobs SET updated_at = %s WHERE crawl_id = %s",
                         (datetime.now(), task_id)
                     )
+                    if user_id and user_id != "demo":
+                        charge_amount = 1 if crawl_mode == "links" else config.max_pages
+                        cur.execute(
+                            "UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s",
+                            (charge_amount, user_id)
+                        )
                 conn.commit()
         except Exception as db_e:
-            logger.error(f"Failed to update crawl_jobs for {task_id}: {db_e}")
+            logger.error(f"Failed to update database records for task {task_id}: {db_e}")
 
         
         logger.info(f"Completed crawl task {task_id}")

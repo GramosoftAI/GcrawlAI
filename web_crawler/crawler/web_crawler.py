@@ -101,8 +101,7 @@ class WebCrawler:
                 enable_json=enable_json,
                 client_id=client_id,
                 websocket_manager=websocket_manager,
-                crawl_mode=crawl_mode,
-                proxy_type=proxy_type
+                crawl_mode=crawl_mode
             )
 
             if not result or "error" in result:
@@ -233,21 +232,25 @@ class WebCrawler:
         if crawl_mode == "links":
             logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
 
-            p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
-                self._initial_proxy_type(), target_url=start_url
-            )
+            providers = [
+                ("Evomi Premium", "evomi_premium"),
+                ("Nodemaven", "nodemaven"),
+                ("Evomi Core", "evomi_core")
+            ]
             
-            logger.info(f"  → Attempting map discovery with {self._initial_proxy_type()} proxy...")
-            map_result = map_website(start_url, proxy_dict=p_dict)
-
-            if (
-                map_result["total"] <= 1
-                and self._effective_proxy_mode() == "auto"
-            ):
-                logger.info("Auto mode escalation: retrying map discovery with enhanced proxy.")
-                p_dict_enhanced = self.page_crawler.proxy_manager.get_requests_proxies("enhanced", target_url=start_url)
-                if p_dict_enhanced:
-                    map_result = map_website(start_url, proxy_dict=p_dict_enhanced)
+            map_result = {"total": 0, "urls": []}
+            for attempt, (provider_name, provider_id) in enumerate(providers, 1):
+                logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/3)...")
+                proxy_geo = getattr(self.config, "proxy_geo", None)
+                p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                    target_url=start_url, provider=provider_id, use_high_speed=(attempt == 1), proxy_geo=proxy_geo
+                )
+                if p_dict:
+                    map_result = map_website(start_url, proxy_dict=p_dict)
+                    if map_result["total"] > 1:
+                        logger.info(f"  ✓ Map discovery succeeded with {provider_name}")
+                        break
+                    logger.warning(f"  ! Map discovery yielded {map_result['total']} results with {provider_name}. Escalating...")
 
             elapsed = perf_counter() - start_perf
 
@@ -398,8 +401,7 @@ class WebCrawler:
                 enable_json=enable_json,
                 client_id=client_id,
                 websocket_manager=websocket_manager,
-                crawl_mode=crawl_mode,
-                proxy_type=self._effective_proxy_mode()
+                crawl_mode=crawl_mode
             )
 
             if result and "error" not in result:

@@ -14,9 +14,11 @@ import requests
 import asyncio
 from typing import Optional, Dict, Callable, Any, List
 
-from patchright.sync_api import sync_playwright, Page
-from patchright.async_api import async_playwright as async_pw
-from patchright.async_api import Page as AsyncPage
+from playwright.sync_api import sync_playwright, Page
+from playwright.async_api import async_playwright as async_pw
+from playwright.async_api import Page as AsyncPage
+
+import cloakbrowser
 
 from .response import Response
 
@@ -27,7 +29,7 @@ HARMFUL_ARGS = ["--enable-automation", "--disable-popup-blocking", "--disable-co
 DEFAULT_ARGS = ["--no-pings", "--no-first-run", "--disable-infobars", "--disable-breakpad", "--no-service-autorun", "--homepage=about:blank", "--password-store=basic", "--disable-hang-monitor", "--no-default-browser-check", "--disable-session-crashed-bubble", "--disable-search-engine-choice-screen"]
 STEALTH_ARGS = ["--test-type", "--lang=en-US", "--mute-audio", "--disable-sync", "--hide-scrollbars", "--disable-logging", "--start-maximized", "--enable-async-dns", "--accept-lang=en-US", "--use-mock-keychain", "--disable-translate", "--disable-voice-input", "--window-position=0,0", "--disable-wake-on-wifi", "--ignore-gpu-blocklist", "--enable-tcp-fast-open", "--enable-web-bluetooth", "--disable-cloud-import", "--disable-print-preview", "--disable-dev-shm-usage", "--disable-crash-reporter", "--disable-partial-raster", "--disable-gesture-typing", "--disable-checker-imaging", "--disable-prompt-on-repost", "--force-color-profile=srgb", "--font-render-hinting=none", "--aggressive-cache-discard", "--disable-domain-reliability", "--disable-threaded-animation", "--disable-threaded-scrolling", "--enable-simple-cache-backend", "--disable-background-networking", "--enable-surface-synchronization", "--disable-image-animation-resync", "--disable-renderer-backgrounding", "--disable-ipc-flooding-protection", "--prerender-from-omnibox=disabled", "--safebrowsing-disable-auto-update", "--disable-offer-upload-credit-cards", "--disable-background-timer-throttling", "--disable-new-content-rendering-timeout", "--run-all-compositor-stages-before-draw", "--disable-client-side-phishing-detection", "--disable-backgrounding-occluded-windows", "--disable-layer-tree-host-memory-pressure", "--autoplay-policy=user-gesture-required", "--disable-offer-store-unmasked-wallet-cards", "--disable-blink-features=AutomationControlled", "--disable-component-extensions-with-background-pages", "--enable-features=NetworkService,NetworkServiceInProcess,TrustTokens,TrustTokensAlwaysAllowIssuance", "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4", "--disable-features=AudioServiceOutOfProcess,TranslateUI,BlinkGenPropertyTrees"]
 ALL_LAUNCH_ARGS = DEFAULT_ARGS + STEALTH_ARGS
-BLOCK_RESOURCE_TYPES = {"font", "image", "media", "beacon", "object", "imageset", "texttrack", "websocket", "csp_report", "stylesheet"}
+BLOCK_RESOURCE_TYPES = {"image", "media", "beacon", "object", "imageset", "texttrack", "websocket", "csp_report"}
 
 # User Agent Pool
 _CHROME_UA_POOL = [
@@ -43,15 +45,41 @@ _CHROME_UA_POOL = [
 def _get_random_stealth_ua() -> str:
     return random.choice(_CHROME_UA_POOL)
 
+def _get_stealth_ua_for_platform(platform: str) -> str:
+    p = platform.lower()
+    if p == "windows":
+        pool = [ua for ua in _CHROME_UA_POOL if "windows" in ua.lower()]
+    elif p == "macos":
+        pool = [ua for ua in _CHROME_UA_POOL if "macintosh" in ua.lower() or "mac os" in ua.lower()]
+    elif p == "linux":
+        pool = [ua for ua in _CHROME_UA_POOL if "linux" in ua.lower() or "x11" in ua.lower()]
+    else:
+        pool = _CHROME_UA_POOL
+        
+    if not pool:
+        pool = _CHROME_UA_POOL
+    return random.choice(pool)
+
 _STEALTH_UA: str = _get_random_stealth_ua()
 
 def _build_stealth_headers(user_agent: str) -> Dict[str, str]:
     m = re.search(r"Chrome/(\d+)", user_agent)
     major = m.group(1) if m else "131"
+    
+    # Resolve platform for Sec-CH-UA-Platform
+    if "windows" in user_agent.lower():
+        platform = '"Windows"'
+    elif "macintosh" in user_agent.lower() or "mac os" in user_agent.lower():
+        platform = '"macOS"'
+    elif "linux" in user_agent.lower():
+        platform = '"Linux"'
+    else:
+        platform = '"Windows"'
+        
     return {
-        "Sec-CH-UA": f'"Chromium";v="{major}", "Google Chrome";v="{major}", "Not-A.Brand";v="99"',
+        "Sec-CH-UA": f'"ClockBrowser";v="{major}", "Google Chrome";v="{major}", "Not-A.Brand";v="99"',
         "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": '"Windows"' if "Windows" in user_agent else '"macOS"',
+        "Sec-CH-UA-Platform": platform,
         "Accept-Language": "en-US,en;q=0.9",
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-Mode": "navigate",
@@ -63,11 +91,38 @@ def _build_stealth_headers(user_agent: str) -> Dict[str, str]:
 def _build_context_options(user_agent: str, locale: str, timezone_id: Optional[str], proxy: Optional[Dict], extra_headers: Optional[Dict]) -> Dict:
     stealth_hdrs = _build_stealth_headers(user_agent)
     if extra_headers: stealth_hdrs.update(extra_headers)
+    
+    platform_choice = random.choices(["windows", "macos", "linux"], weights=[85, 10, 5])[0]
+    seed = random.randint(100000, 9999999)
+    concurrency = random.choice([4, 8, 12, 16])
+    memory = random.choice([4, 8, 16])
+    
+    if platform_choice == "windows":
+        res = random.choice([(1920, 1080, 48), (1366, 768, 40), (1536, 864, 40)])
+    elif platform_choice == "macos":
+        res = random.choice([(1440, 900, 95), (1680, 1050, 95), (2560, 1600, 95)])
+    else:
+        res = random.choice([(1920, 1080, 0), (1366, 768, 0)])
+        
+    width, height, taskbar = res
+    
+    fingerprint_args = [
+        f"--fingerprint={seed}",
+        f"--fingerprint-platform={platform_choice}",
+        f"--fingerprint-screen-width={width}",
+        f"--fingerprint-screen-height={height}",
+        f"--fingerprint-taskbar-height={taskbar}",
+        f"--fingerprint-hardware-concurrency={concurrency}",
+        f"--fingerprint-device-memory={memory}",
+    ]
+    
     opts = {
         "color_scheme": "dark", "device_scale_factor": 2, "is_mobile": False, "has_touch": False,
         "service_workers": "allow", "ignore_https_errors": True,
-        "screen": {"width": 1920, "height": 1080}, "viewport": {"width": 1920, "height": 1080},
+        "screen": {"width": width, "height": height}, "viewport": {"width": width, "height": height - taskbar},
         "user_agent": user_agent, "locale": locale, "java_script_enabled": True, "extra_http_headers": stealth_hdrs,
+        "headless": False,
+        "args": fingerprint_args + ALL_LAUNCH_ARGS
     }
     if timezone_id: opts["timezone_id"] = timezone_id
     if proxy: opts["proxy"] = proxy
@@ -219,20 +274,29 @@ class StealthyFetcher(_StealthMixin):
         self.capmonster_key = os.getenv("CAPMONSTER_API_KEY")
 
     def fetch(self, url: str, **kwargs) -> Response:
-        with sync_playwright() as p:
-            opts = _build_context_options(self.user_agent, "en-US", None, getattr(self, 'proxy', None), None)
-            ctx = p.chromium.launch_persistent_context(tempfile.mkdtemp(), **opts)
+        opts = _build_context_options(self.user_agent, "en-US", None, getattr(self, 'proxy', None), None)
+
+        import asyncio
+        old_loop = None
+        try:
+            old_loop = asyncio.get_running_loop()
+            asyncio._set_running_loop(None)
+        except RuntimeError:
+            pass
+
+        try:
+            ctx = cloakbrowser.launch_persistent_context(tempfile.mkdtemp(), humanize=True, **opts)
+        finally:
+            if old_loop is not None:
+                asyncio._set_running_loop(old_loop)
+        try:
             page = ctx.new_page()
             _human_pre_navigation(page)
             resp = page.goto(url)
             _human_post_navigation(page)
             res = Response(content=page.content(), status=resp.status, url=page.url, ok=resp.ok)
-            ctx.close()
             return res
+        finally:
+            ctx.close()
 
-try:
-    from .stealth_chrome2 import AsyncStealthyFetcher, PersistentStealthyFetcher
-except ImportError:
-    AsyncStealthyFetcher = PersistentStealthyFetcher = None
-
-__all__ = ["StealthyFetcher", "AsyncStealthyFetcher", "PersistentStealthyFetcher", "_get_random_stealth_ua"]
+__all__ = ["StealthyFetcher", "_get_random_stealth_ua", "_get_stealth_ua_for_platform"]

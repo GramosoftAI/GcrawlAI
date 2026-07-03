@@ -2,7 +2,7 @@
 Map Crawler — Firecrawl-style site URL discovery.
 
 If sitemap + static HTML discovery yields too few results,
-falls back to browser-based rendering (Playwright/Chromium) to
+falls back to browser-based rendering (Playwright/ClockBrowser) to
 capture JS-loaded navigation links.
 """
 
@@ -151,13 +151,13 @@ def _browser_extract_links(
     lock: threading.Lock,
 ) -> int:
     """
-    Render the homepage with Playwright/Chromium and extract internal links
+    Render the homepage with Playwright/ClockBrowser and extract internal links
     from the fully-rendered DOM.  This catches JS-loaded navigation (e.g.
     sites that fetch header/footer HTML fragments at runtime).
 
     Returns the number of NEW URLs added to `collected`.
     """
-    logger.info("🌐 Browser fallback — rendering homepage with Chromium...")
+    logger.info("🌐 Browser fallback — rendering homepage with ClockBrowser...")
     added = 0
     try:
         from playwright.sync_api import sync_playwright

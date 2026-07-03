@@ -36,9 +36,8 @@ def _pre_warm_worker():
     config = CrawlConfig(headless=True, use_stealth=True)
     logger.info(f"Pre-warming browser manager on thread {threading.get_ident()}...")
     try:
-        browser_manager.get_chromium(config, direct=False)
-        browser_manager.get_chromium(config, direct=True)
-        browser_manager.get_camoufox(config)
+        browser_manager.get_clock_browser(config, direct=False)
+        browser_manager.get_clock_browser(config, direct=True)
         logger.info(f"✓ Thread {threading.get_ident()} pre-warmed successfully!")
     except Exception as e:
         logger.warning(f"Failed to pre-warm thread {threading.get_ident()}: {e}")
@@ -128,7 +127,7 @@ async def run_scrape(
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
 
-        config = setup_crawl_config(payload, default_max_pages=10)
+        config = setup_crawl_config(payload, default_max_pages=10, concurrency_limit=concurrency_limit)
 
         enable_md = payload.markdown.enabled if payload.markdown else False
         enable_html = payload.html.enabled if payload.html else False
@@ -148,7 +147,7 @@ async def run_scrape(
         
         def _wrapper(**kw):
             _run_background_crawl_task(user_id=user_id, **kw)
-            increment_used_requests(user_id)
+            increment_used_requests(user_id, amount=1)
 
         await queue_manager.submit_background_task(
             user_id=user_id,
@@ -271,7 +270,7 @@ async def run_crawl(
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
 
-        config = setup_crawl_config(payload, default_max_pages=10)
+        config = setup_crawl_config(payload, default_max_pages=10, concurrency_limit=concurrency_limit)
 
         enable_md = payload.markdown.enabled if payload.markdown else False
         enable_html = payload.html.enabled if payload.html else False
@@ -350,7 +349,7 @@ async def run_crawl(
             from api.services.queue_manager import queue_manager
             def _wrapper(**kw):
                 _run_background_crawl_task(user_id=user_id, **kw)
-                increment_used_requests(user_id)
+                increment_used_requests(user_id, amount=config.max_pages)
                 
             await queue_manager.submit_background_task(
                 user_id=user_id,
@@ -471,7 +470,7 @@ async def run_links(
 
         config = CrawlConfig(
             max_pages=limit_val,
-            max_workers=4,
+            max_workers=min(concurrency_limit, limit_val) if concurrency_limit else 4,
             headless=True,
             use_stealth=True
         )
@@ -526,7 +525,7 @@ async def run_links(
             from api.services.queue_manager import queue_manager
             def _wrapper(**kw):
                 _run_background_crawl_task(user_id=user_id, **kw)
-                increment_used_requests(user_id)
+                increment_used_requests(user_id, amount=1)
                 
             await queue_manager.submit_background_task(
                 user_id=user_id,
@@ -651,7 +650,7 @@ async def run_screenshot(
         ist = pytz.timezone("Asia/Kolkata")
         created_at = datetime.now(ist)
 
-        config = setup_crawl_config(payload, default_max_pages=10)
+        config = setup_crawl_config(payload, default_max_pages=10, concurrency_limit=concurrency_limit)
 
         enable_md = False
         enable_html = False
@@ -665,7 +664,7 @@ async def run_screenshot(
         
         def _wrapper(**kw):
             _run_background_crawl_task(user_id=user_id, **kw)
-            increment_used_requests(user_id)
+            increment_used_requests(user_id, amount=1)
 
         await queue_manager.submit_background_task(
             user_id=user_id,

@@ -83,27 +83,3 @@ celery_app.conf.task_queues = {
     },
 }
 
-
-class CrawlConfig:
-    def __init__(
-        self,
-        max_pages=50,
-        max_workers=4,
-        headless=True,
-        use_stealth=True,
-        output_dir="crawl_output-api"
-    ):
-        self.max_pages = max_pages
-        self.max_workers = max_workers
-        self.headless = headless
-        self.use_stealth = use_stealth
-        self.output_dir = output_dir
-
-    def to_dict(self):
-        return {
-            "max_pages": self.max_pages,
-            "max_workers": self.max_workers,
-            "headless": self.headless,
-            "use_stealth": self.use_stealth,
-            "output_dir": self.output_dir,
-        }

@@ -11,10 +11,11 @@ import logging
 import os
 from typing import Optional, Dict, Callable
 
-from patchright.async_api import async_playwright, Page, Browser, BrowserContext
+from playwright.async_api import Browser, BrowserContext, Page, Route
+import cloakbrowser
 
 from .response import Response
-from .stealth_chrome import (
+from .stealth_clock_browser import (
     _StealthMixin,
     _human_pre_navigation_async,
     _human_post_navigation_async,
@@ -23,6 +24,7 @@ from .stealth_chrome import (
     ALL_LAUNCH_ARGS,
     BLOCK_RESOURCE_TYPES,
     _get_random_stealth_ua,
+    _get_stealth_ua_for_platform,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         self.timeout = timeout
         self.solve_cloudflare = solve_cloudflare
         self.use_random_fingerprint = use_random_fingerprint
+        self.platform_choice = "windows"
 
         from dotenv import load_dotenv
         load_dotenv()
@@ -84,16 +87,40 @@ class PersistentStealthyFetcher(_StealthMixin):
             if await self._is_alive():
                 return
 
-            logger.info("[PersistentFetcher] Launching async browser binary.")
-            if not self._playwright:
-                self._playwright = await async_playwright().start()
+            logger.info("[PersistentFetcher] Launching async browser binary with clean fingerprint.")
+            
+            # Generate realistic Chromium fingerprint arguments matching market share
+            platform_choice = random.choices(["windows", "macos", "linux"], weights=[85, 10, 5])[0]
+            self.platform_choice = platform_choice
+            seed = random.randint(100000, 9999999)
+            concurrency = random.choice([4, 8, 12, 16])
+            memory = random.choice([4, 8, 16])
+            
+            if platform_choice == "windows":
+                res = random.choice([(1920, 1080, 48), (1366, 768, 40), (1536, 864, 40)])
+            elif platform_choice == "macos":
+                res = random.choice([(1440, 900, 95), (1680, 1050, 95), (2560, 1600, 95)])
+            else:
+                res = random.choice([(1920, 1080, 0), (1366, 768, 0)])
+                
+            width, height, taskbar = res
+            
+            fingerprint_args = [
+                f"--fingerprint={seed}",
+                f"--fingerprint-platform={platform_choice}",
+                f"--fingerprint-screen-width={width}",
+                f"--fingerprint-screen-height={height}",
+                f"--fingerprint-taskbar-height={taskbar}",
+                f"--fingerprint-hardware-concurrency={concurrency}",
+                f"--fingerprint-device-memory={memory}",
+            ]
 
-            self._browser = await self._playwright.chromium.launch(
+            self._browser = await cloakbrowser.launch_async(
                 headless=self.headless,
-                ignore_default_args=HARMFUL_ARGS,
-                args=ALL_LAUNCH_ARGS,
+                humanize=True,
+                args=fingerprint_args,
             )
-            logger.info("[PersistentFetcher] Async browser binary ready.")
+            logger.info(f"[PersistentFetcher] Async browser binary ready (platform: {platform_choice}, seed: {seed}).")
 
     async def _reset(self) -> None:
         """Full reset - closes the browser binary."""
@@ -103,17 +130,33 @@ class PersistentStealthyFetcher(_StealthMixin):
                 await self._browser.close()
             except Exception:
                 pass
-        if self._playwright:
-            try:
-                await self._playwright.stop()
-            except Exception:
-                pass
         self._browser = None
-        self._playwright = None
 
     async def close(self) -> None:
         async with self._lock:
             await self._reset()
+
+    def _rotate_ip(self) -> None:
+        """Rotates the session ID in username (Nodemaven) or password (Evomi) to force a fresh IP from the residential pool."""
+        if not self.proxy:
+            return
+        import re
+        new_session = "".join(random.choices("0123456789abcdef", k=8))
+        
+        # 1. Rotate Nodemaven session ID in username if present (-session- or -sid-)
+        username = self.proxy.get("username", "")
+        if username:
+            if "-session-" in username:
+                self.proxy["username"] = re.sub(r"-session-[a-zA-Z0-9]+", f"-session-{new_session}", username)
+            elif "-sid-" in username:
+                self.proxy["username"] = re.sub(r"-sid-[a-zA-Z0-9]+", f"-sid-{new_session}", username)
+                
+        # 2. Rotate Evomi session ID in password if present (_session-)
+        password = self.proxy.get("password", "")
+        if password and "_session-" in password:
+            self.proxy["password"] = re.sub(r"_session-[a-zA-Z0-9]+", f"_session-{new_session}", password)
+            
+        logger.info(f"[PersistentFetcher] IP session rotated to {new_session}")
 
     async def fetch(
         self,
@@ -128,84 +171,47 @@ class PersistentStealthyFetcher(_StealthMixin):
             context: Optional[BrowserContext] = None
             try:
                 # ── Layer 6: Context Rotation ──
-                # Fresh UA per context for maximum isolation
-                current_ua = _get_random_stealth_ua()
+                # Fresh UA per context for maximum platform isolation
+                current_ua = _get_stealth_ua_for_platform(self.platform_choice)
                 
                 ctx_opts = _build_context_options(
                     current_ua, self.locale, self.timezone_id,
                     self.proxy, self.extra_headers or None,
                 )
-
+                if "viewport" in ctx_opts:
+                    ctx_opts.pop("viewport", None)
+                if "screen" in ctx_opts:
+                    ctx_opts.pop("screen", None)
+                if "userAgent" in ctx_opts:
+                    ctx_opts.pop("userAgent", None)
+                if "locale" in ctx_opts:
+                    ctx_opts.pop("locale", None)
+                if "timezoneId" in ctx_opts:
+                    ctx_opts.pop("timezoneId", None)
+                
+                # Setup viewport/screen dynamically
                 if self.use_random_fingerprint:
                     width = random.randint(1366, 1920)
                     height = random.randint(768, 1080)
                     ctx_opts["viewport"] = {"width": width, "height": height}
                     ctx_opts["screen"] = {"width": width, "height": height}
+                
+                # Context UA must match
+                ctx_opts["user_agent"] = current_ua
+                ctx_opts["locale"] = self.locale
+                ctx_opts["timezone_id"] = self.timezone_id
+
+                # Pop browser launch-only parameters that are invalid for new_context()
+                ctx_opts.pop("headless", None)
+                ctx_opts.pop("args", None)
 
                 context = await self._browser.new_context(**ctx_opts)
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout)
 
-                # Layer 11: Advanced Deep Stealth Script Injection (Bypass CAPTCHA)
-                stealth_script = """
-                    // 1. Overwrite webdriver
-                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    
-                    // 2. Mock chrome object completely
-                    window.chrome = {
-                        runtime: {},
-                        app: { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' } },
-                        csi: function() {},
-                        loadTimes: function() {}
-                    };
-                    
-                    // 3. Spoof Plugins and MimeTypes
-                    const mockPlugins = [
-                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                        { name: 'Chrome PDF Viewer', filename: 'mhjimiokj', description: '' },
-                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
-                    ];
-                    Object.defineProperty(navigator, 'plugins', { get: () => mockPlugins });
-                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-                    
-                    // 4. Spoof Permissions API to allow notifications
-                    const originalQuery = window.navigator.permissions.query;
-                    window.navigator.permissions.query = (parameters) => (
-                        parameters.name === 'notifications' ? 
-                            Promise.resolve({ state: Notification.permission }) : 
-                            originalQuery(parameters)
-                    );
-                    
-                    // 5. WebGL Spoofing (Vendor/Renderer)
-                    const getParameterProxyHandler = {
-                        apply: function (target, ctx, args) {
-                            const param = (args || [])[0];
-                            if (param === 37445) return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
-                            if (param === 37446) return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
-                            return Reflect.apply(target, ctx, args);
-                        }
-                    };
-                    const proxyWebGL = (contextName) => {
-                        try {
-                            const getParam = HTMLCanvasElement.prototype.getContext.call(document.createElement('canvas'), contextName).getParameter;
-                            HTMLCanvasElement.prototype.getContext.call(document.createElement('canvas'), contextName).getParameter = new Proxy(getParam, getParameterProxyHandler);
-                        } catch(e) {}
-                    };
-                    proxyWebGL('webgl');
-                    proxyWebGL('webgl2');
-                    
-                    // 6. Canvas Fingerprint Noise
-                    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-                    HTMLCanvasElement.prototype.toDataURL = function(...args) {
-                        const context = this.getContext('2d');
-                        if (context) {
-                            context.fillStyle = 'rgba(' + Math.floor(Math.random() * 255) + ',' + Math.floor(Math.random() * 255) + ',' + Math.floor(Math.random() * 255) + ', 0.01)';
-                            context.fillRect(0, 0, 1, 1);
-                        }
-                        return originalToDataURL.apply(this, args);
-                    };
-                """
-                await page.add_init_script(stealth_script)
+                # Layer 11: Advanced Deep Stealth Script Injection (Bypass CAPTCHA) - Handled natively by cloakbrowser binary
+                # stealth_script = ...
+                # await page.add_init_script(stealth_script)
 
                 if self.block_resources:
                     async def _block(route):
@@ -215,18 +221,34 @@ class PersistentStealthyFetcher(_StealthMixin):
                             await route.continue_()
                     await page.route("**/*", _block)
 
-                # Layer 5: navigation with commit-only check
-                # This ensures we don't timeout just because a slow proxy 
-                # takes long to load the whole DOM.
-                response = await page.goto(url, referer=referer, wait_until="commit", timeout=20000)
-
+                # Layer 5: navigation
                 try:
-                    # We just need the initial DOM for search results
-                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
-                except Exception:
-                    pass
+                    response = await page.goto(url, referer=referer, wait_until=self.wait_until, timeout=self.timeout if self.timeout < 20000 else 20000)
+                except Exception as goto_err:
+                    if "Timeout" in str(goto_err) or "ERR_TIMED_OUT" in str(goto_err):
+                        logger.info(f"[PersistentFetcher] Goto timed out for {url}, checking if page has rendered content...")
+                        try:
+                            if "google.com/search" in url:
+                                await page.wait_for_selector("#search, div.g, h3", timeout=2500)
+                            else:
+                                body_len = await page.evaluate("() => document.body ? document.body.innerText.trim().length : 0")
+                                if body_len < 100:
+                                    raise Exception("Body content too short")
+                            logger.info("[PersistentFetcher] Rendered content found despite page load timeout. Proceeding.")
+                            response = None
+                        except Exception:
+                            raise goto_err
+                    else:
+                        raise goto_err
 
-                if self.solve_cloudflare and await self._is_cloudflare_async(page):
+                # Skip domcontentloaded wait for Google search requests to optimize speed
+                if "google.com/search" not in url:
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+
+                if self.solve_cloudflare and "google.com/search" not in url and await self._is_cloudflare_async(page):
                     await self._solve_cloudflare_async(page)
                     try:
                         await page.wait_for_load_state("domcontentloaded", timeout=5000)
@@ -239,13 +261,8 @@ class PersistentStealthyFetcher(_StealthMixin):
                     await context.close()
                     context = None
                     
-                    # Force a new IP on retry by randomizing the proxy session string if present
-                    if self.proxy and self.proxy.get("password") and "_session-" in self.proxy["password"]:
-                        import re
-                        new_session = "".join(random.choices("0123456789abcdef", k=8))
-                        self.proxy["password"] = re.sub(r"_session-[a-zA-Z0-9]+", f"_session-{new_session}", self.proxy["password"])
-                        
-                    await asyncio.sleep(random.uniform(0.5, 1.5)) # Reduced jitter to speed up retry
+                    self._rotate_ip()
+                    await asyncio.sleep(random.uniform(0.5, 1.0)) # Reduced jitter to speed up retry
                     continue
 
                 if response and (response.status == 429 or "429" in str(response.status)):
@@ -279,12 +296,7 @@ class PersistentStealthyFetcher(_StealthMixin):
                 else:
                     logger.error(f"[PersistentFetcher] Attempt {attempt+1} failed: {e}")
                 
-                if context:
-                    try:
-                        await context.close()
-                    except Exception:
-                        pass
-                context = None
+                self._rotate_ip()
                 
                 if attempt == retries - 1:
                     logger.warning("[PersistentFetcher] All retries exhausted — resetting binary.")
@@ -292,7 +304,13 @@ class PersistentStealthyFetcher(_StealthMixin):
                     return Response(content="", headers={}, status=0,
                                     url=url, ok=False, error=str(e))
                 
-                await asyncio.sleep(random.uniform(1.0, 2.0))
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+            finally:
+                if context:
+                    try:
+                        await context.close()
+                    except Exception:
+                        pass
 
         return Response(content="", headers={}, status=0, url=url,
                          ok=False, error="Max retries exhausted")
