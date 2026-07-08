@@ -129,7 +129,8 @@ def _collect_sitemap_urls(
     collected: Set[str],
     lock: threading.Lock,
     homepage_text: str = "",
-    proxy_dict: Optional[dict] = None
+    proxy_dict: Optional[dict] = None,
+    limit: int = MAX_URLS,
 ) -> None:
     """
     Discover URLs from all sitemaps using a BFS queue + thread pool.
@@ -138,7 +139,7 @@ def _collect_sitemap_urls(
     - Fallback paths (/sitemap.xml etc.) are only probed if robots.txt gave nothing
     - Child sitemaps are fetched IN PARALLEL (up to _MAX_WORKERS threads)
     - Subdomain child sitemaps are skipped entirely (no HTTP fetch)
-    - Stops as soon as MAX_URLS unique URLs are in `collected`
+    - Stops as soon as limit unique URLs are in `collected`
     """
     origin = _origin(base_url)
 
@@ -175,8 +176,8 @@ def _collect_sitemap_urls(
 
     while queue:
         with lock:
-            if len(collected) >= MAX_URLS:
-                logger.info(f"⛔ Limit {MAX_URLS} reached — aborting sitemap BFS")
+            if len(collected) >= limit:
+                logger.info(f"⛔ Limit {limit} reached — aborting sitemap BFS")
                 break
 
         # Take up to _MAX_WORKERS sitemaps from the queue and fetch them in parallel
@@ -217,7 +218,7 @@ def _collect_sitemap_urls(
                 with lock:
                     added = 0
                     for url in page_urls:
-                        if len(collected) >= MAX_URLS:
+                        if len(collected) >= limit:
                             logger.info(f"  ⛔ Limit reached — stopping URL addition")
                             break
                         if url not in collected:

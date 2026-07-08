@@ -132,11 +132,10 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             attempt = idx + 1
             logger.info("\n" + "="*30 + f"\nAttempt {attempt}/3 - Provider: {provider_name}\n" + "="*30)
             
-            use_high_speed = True
-            proxy_attempt_count += 1
-            if proxy_attempt_count > 1:
-                use_high_speed = False
-                logger.info("Fallback proxy attempt: Disabling high-speed ISP targeting to use the full residential pool.")
+            # Enable high-speed ISP targeting for high-speed supporting providers
+            use_high_speed = (provider_id in {"nodemaven", "evomi_premium"})
+            if not use_high_speed:
+                logger.info(f"Disabling high-speed ISP targeting for provider {provider_name}.")
             
             result = self.crawl_with_cloakbrowser(
                 url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, provider_id,

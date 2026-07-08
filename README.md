@@ -3,6 +3,7 @@
   <img
     src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/Crawl%20Logo.svg"
     height="200"
+    alt="GcrawlAI Logo"
   >
 </h3>
 
@@ -28,309 +29,215 @@
 
 ---
 
-## ✨ Why GcrawlAI?
+## 🚀 Welcome to GcrawlAI
+**GcrawlAI** is a high-performance, enterprise-grade distributed web crawler, scraper, and AI-agent extraction platform. Designed to feed retrieval-augmented generation (RAG) pipelines, LLMs, and semantic search indexes, it converts complex, noisy web structures into clean Markdown, structured JSON metadata, and full-page screenshots.
 
-Most web crawlers dump raw HTML on your lap. GcrawlAI gives your LLM exactly what it needs — clean Markdown, structured metadata, and zero noise.
-
-Here's what you can build with it:
-
-🔍 **RAG Pipelines** — Feed your retrieval-augmented generation system with clean, structured web content instead of tag soup.
-
-🤖 **AI Search Tools** — Index the web semantically. GcrawlAI extracts what matters, so your search understands context, not just keywords.
-
-📄 **Document Intelligence Systems** — Turn web-based reports, filings, and articles into structured data your models can actually reason over.
-
-💰 **Price Monitoring Engines** — Track competitor pricing across e-commerce platforms in real time, without a single broken XPath selector.
-
-📊 **Competitor Intelligence Dashboards** — Continuously extract product updates, hiring signals, and announcements from competitor websites automatically.
-
-🌐 **Market Research Aggregators** — Collect and synthesize data from hundreds of sources into clean, analysis-ready datasets.
-
-🎯 **Lead Generation Pipelines** — Scrape company directories, job boards, and industry listings to build targeted, enriched prospect lists.
-
-📰 **News & Regulatory Trackers** — Monitor policy changes, regulatory updates, and industry news without the noise of irrelevant content.
-
-🛍️ **Product Catalog Enrichers** — Pull product descriptions, specs, and images from supplier sites and normalize them into your schema automatically.
-
-No brittle CSS selectors. No HTML parsing headaches. No maintenance nightmares when a site redesigns overnight.
-
-GcrawlAI handles the messy web so you don't have to.
-
-- ⚡ **Instant or Deep** — Single page real-time extraction or full-site distributed crawling at scale
-- 🧹 **LLM-Native Output** — Auto Markdown conversion, clean enough to feed directly into your vector store
-- 🥷 **Stealth by Default** — Playwright stealth mode + automatic browser fallback to bypass bot detection
-- 📊 **Real-Time Visibility** — Live WebSocket progress tracking and an interactive dashboard
-- 🔐 **Secure Auth** — JWT + Email OTP, production-ready from day one
-- 🌍 **Fully Open Source** — MIT licensed. Fork it, extend it, ship it
+GcrawlAI automates browser steering, stealth obfuscation, anti-bot evasion, and distributed scaling so that you can focus on building AI features rather than managing crawling blockages.
 
 ---
 
-## 🚀 Features
+## ✨ Core Platforms & Modules
 
-| Feature                       | Description                                                                             |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| **Single Page Crawl**         | Direct, real-time extraction from any individual URL — instant results                  |
-| **Full Site Crawl**           | Distributed crawling of entire websites via Celery workers — handles thousands of pages |
-| **LLM-Ready Markdown**        | Auto-converts web content into clean Markdown optimized for LLM consumption             |
-| **HTML & Screenshot Capture** | Captures raw HTML and full-page screenshots for visual and structural analysis          |
-| **SEO Metadata Extraction**   | Extracts title, description, keywords, and Open Graph tags automatically                |
-| **Stealth & Anti-Bot**        | Playwright with stealth plugins; auto-fallback (Chromium → Firefox/Camoufox)            |
-| **Real-Time Progress**        | Live crawl updates via WebSockets with an interactive dashboard                         |
-| **Secure Auth**               | JWT-based auth, Email OTP signup/verification, and password reset flow                  |
+### 1. 🥷 Anti-Bot Evasion & Stealth Crawling Engine
+Built directly into the core browser stack, GcrawlAI implements state-of-the-art fingerprint evasion techniques:
+* **CloakBrowser & Custom Stealth Drivers**: Seamless integration with premium browser stealth extensions to mask automated runtimes, user-agents, canvas fingerprints, and WebGL signatures.
+* **Stepped Residential Proxy Rotation**: Multi-tier automatic proxy escalation (`Evomi Premium` ➔ `Nodemaven` ➔ `Evomi Core`). It leverages geo-IP targeting to match the site's local region and dynamically generates clean residential ISP sessions.
+* **Cinematic Human-Like Auto-Scrolling**: A physics-based, constant-speed scroll mechanism (`600px/second` or `24px` increments at `40ms` / 25 FPS) mimicking real human reading trajectories. It budgets and waits for the full configured `scroll_delay` between steps to force lazy-loaded images, assets, and scripts to initialize without causing blur or motion glitches in screenshots.
+* **Automated Interaction & Bypass**: Proactively cleans and closes cookie consent banners, popups, and screen overlays before taking screenshots or processing HTML to ensure a clean capture.
+
+### 2. 🤖 LLM-Powered Agentic Extraction Pipeline
+For highly ambiguous or dynamic tasks, GcrawlAI features a complete multi-step agentic search and extraction system:
+* **LLM Planner & Reasoner**: Utilizing state-of-the-art models (GPT-4o, Claude 3.5 Sonnet) to analyze user extraction schemas and plan query strategies.
+* **Autonomous Web Search**: Resolves relevant content in real-time utilizing integrations like Tavily, DuckDuckGo, and SerpAPI.
+* **Semantic Extractor**: Parses scraped page content into custom schemas, converting raw, unstructured HTML into clean, validated JSON output.
+* **Credit Billing system**: Built-in billing metrics to calculate exact token usage, search operations, and scraping queries, deducting credits relative to plan structures.
+
+### 3. 📦 Distributed Scale Crawling Engine
+For large-scale, full-site crawling:
+* **Celery Task Queue**: Out-of-the-box parallel crawling using Celery backed by Redis.
+* **Sitemap XML Parsing**: Automated discovery of sitemaps to map and scrape thousands of internal URLs rapidly.
+* **AWS S3 / Cloud Artifact Storage**: Automatically uploads HTML outputs, screenshots, and metadata to cloud object storage.
+* **Real-time Live Progress tracking**: Streams real-time progress indicators, title updates, and page metrics back to the client via WebSockets.
+
+### 4. 🔒 Enterprise Auth, Pricing & Billing API
+A complete, production-ready SaaS administration layer:
+* **FastAPI Gateways**: Secure API key issuance, rate limiting, and route security.
+* **User Authentication**: JWT-based security flow coupled with reliable SMTP Email OTP verification for signups and password resets.
+* **Subcription Pricing Plans**: Pre-built plans (Free, Starter, Growth, Pro) integrated with Stripe payments, plan expiry dates, usage tracking, and concurrency limits.
+* **PostgreSQL Range Partitioning**: `job_results` table is range partitioned daily to support rapid queries and autovacuum performance under high-concurrency loads.
+
+---
 
 ## 🛠️ Technology Stack
 
-- **Backend**: FastAPI, Python 3.9+
-- **Frontend**: Angular
-- **Database**: PostgreSQL
-- **Task Queue**: Celery + Redis
-- **Browser Automation**: Playwright
-- **Authentication**: JWT, BCrypt
+* **Backend Framework**: [FastAPI](https://github.com/tiangolo/fastapi) (Python 3.9+)
+* **Frontend Admin Dashboard**: [Angular](https://github.com/angular/angular)
+* **Distributed Task Queue**: [Celery](https://github.com/celery/celery)
+* **Cache / Message Broker**: [Redis](https://github.com/redis/redis)
+* **Relational Database**: [PostgreSQL](https://www.postgresql.org) (with partitioning and custom indexing)
+* **Browser Automation**: [Playwright](https://github.com/microsoft/playwright) / CloakBrowser
+* **AI Framework & LLMs**: OpenAI GPT, Anthropic Claude
+
+---
 
 ## 📋 Prerequisites
 
-- **Python 3.9+**
-- **PostgreSQL** (running on default port 5432)
-- **Redis** (running on default port 6379)
-- **Git**
+* **Python 3.9+**
+* **PostgreSQL** (running on default port 5432)
+* **Redis** (running on default port 6379)
+* **Git**
 
 ### Linux System Dependencies
-
-If you are running on Linux (Debian/Ubuntu), you will need to install the following system dependencies for the automated browsers to function correctly:
-
+If you are running on a Linux (Debian/Ubuntu) server, install the following browser runtimes dependencies:
 ```bash
 sudo apt update
-
-sudo apt install -y \
-libnss3 \
-libatk1.0-0t64 \
-libatk-bridge2.0-0t64 \
-libcups2t64 \
-libxcomposite1 \
-libxdamage1 \
-libxrandr2 \
-libgbm1 \
-libasound2t64 \
-libpangocairo-1.0-0 \
-libgtk-3-0t64
+sudo apt install -y libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+                   libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2t64 \
+                   libpangocairo-1.0-0 libgtk-3-0t64
 ```
+
+---
 
 ## ⚙️ Installation
 
-1. **Clone the repository**
-
+1. **Clone the Repository**
    ```bash
    git clone https://github.com/GramosoftAI/GcrawlAI.git
    cd GcrawlAI
    ```
 
-2. **Create and activate virtual environment**
-
+2. **Create and Activate a Virtual Environment**
    ```bash
    python -m venv venv
    source venv/bin/activate  # Linux/Mac
    venv\Scripts\activate     # Windows
    ```
 
-3. **Install dependencies**
-
+3. **Install Dependencies**
    ```bash
    pip install -r requirements.txt
-   ```
-
-4. **Install Playwright browsers**
-   ```bash
    playwright install
    ```
 
-## 🔧 Configuration
+4. **Configuration Settings**
+   * Copy the `.env.example` file to `.env` and fill in your details:
+     ```bash
+     cp .env.example .env
+     ```
+   * Ensure `config.yaml` has the correct PostgreSQL database connection details.
 
-1. **Database Config**: Update `config.yaml` with your PostgreSQL credentials.
-
-   ```yaml
-   postgres:
-     host: "localhost"
-     port: 5432
-     database: "crawlerdb"
-     user: "postgres"
-     password: "your_password"
-   ```
-
-2. **Initialize Database Tables**:
+5. **Initialize Database Schema**
+   Initialize all 19 PostgreSQL tables, indexes, and range partitions, and optionally pre-seed the Evomi and Nodemaven ISP codes:
    ```bash
-   python -m api.db_setup
+   python -m api.core.db_setup
    # OR
-   python api/db_setup.py
+   python api/core/db_setup.py
    ```
 
-## �‍♂️ Running the Application
+---
 
-You need to run 4 separate processes. It's recommended to use separate terminal windows.
+## 🚦 Running the Application
 
-**1. Start Redis Server** (if not running as a service)
+For development/production runs, launch the following 4 processes:
 
+**1. Redis Server**
 ```bash
 redis-server
 ```
 
-> **⚠️ Windows Users:** Redis does not run natively on Windows. Use WSL (Windows Subsystem for Linux) or Docker instead.
-
-**2. Start Celery Worker**
-
+**2. Celery Queue Workers**
 ```bash
-# Linux (User Recommended)
-celery -A web_crawler.celery_config worker -l info
+# Linux
+celery -A web_crawler.crawler.celery_config worker -l info
 
 # Windows
-celery -A web_crawler.celery_config.celery_app worker --loglevel=info --pool=solo
+celery -A web_crawler.crawler.celery_config.celery_app worker --loglevel=info --pool=solo
 ```
 
-**3. Start Backend API**
-
+**3. Backend FastAPI Server**
 ```bash
-# Windows / Development
-uvicorn api.api:app --port 8000
+# Development Reload
+uvicorn api.api:app --port 8000 --reload
 
-# Linux / Production (User Recommended)
+# Production (Multi-workers)
 uvicorn api.api:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-keep-alive 120
 ```
+Interactive documentation is served at: `http://localhost:8000/docs`
 
-API Docs will be available at: http://localhost:8000/docs
+**4. Frontend Dashboard**
+See the [Angular Frontend README](https://github.com/GramosoftAI/GcrawlAI/blob/main/frontend/README.md) for UI build instructions.
 
-**4. Start Frontend Dashboard**
+---
 
-<a href="https://github.com/GramosoftAI/GcrawlAI/blob/main/frontend/README.md">ReadMe for Angular Frontend</a>
-
-## Project Structure
+## 📂 Project Directory Structure
 
 ```
 .
-├── api/                    # FastAPI backend
-│   ├── api.py              # Main API entry point
-│   ├── auth_manager.py     # Authentication logic
-│   └── db_setup.py         # Database initialization
-├── web_crawler/            # Crawler logic
-│   ├── web_crawler.py      # Core crawler orchestrator
-│   ├── page_crawler.py     # Individual page processing
-│   └── celery_config.py    # Celery configuration
-├── config.yaml             # Application configuration
-└── requirements.txt        # Python dependencies
+├── agent/                      # AI Agent planning & extraction
+│   ├── core/                   # Agent queue tasks and database access
+│   ├── models/                 # State and payload structured models
+│   ├── pipeline/               # Planning, search, and scraper orchestration
+│   └── services/               # Scraper, search, planner, and LLM providers
+├── api/                        # FastAPI Gateway
+│   ├── auth/                   # JWT & OTP authentication utilities
+│   ├── core/                   # Database pool, payment migrations, db_setup
+│   ├── models/                 # Pydantic request & response models
+│   ├── routes/                 # REST API & WebSocket routes
+│   └── services/               # Queue manager, WebSocket and Email utilities
+├── web_crawler/                # Crawler Engine
+│   ├── common/                 # Configs, S3 wrappers, proxy and Redis brokers
+│   ├── crawler/                # Orchestrators and distributed queues
+│   │   ├── helpers/            # Popups removal, captcha bypass, screenshots, SEO
+│   │   ├── map/                # Sitemap XML discovery & map crawlers
+│   │   └── page/               # Multi-tier page crawlers (1, 2, 3, Cloak)
+│   └── search/                 # Search engine retrievers
+├── scripts/                    # Database ISPs and billing utility scripts
+├── config.yaml                 # Core configuration profile
+└── requirements.txt            # Python requirements manifest
 ```
 
-## 🔐 API Endpoints
+---
 
-- `POST /crawler`: Start a new crawl job (single or all).
-- `GET /crawler/status/{task_id}`: Check Celery task status.
-- `GET /crawl/get/content`: Retrieve generated content.
-- `POST /v1/agent`: Start an agentic extraction job (async).
-- `GET /v1/agent/{job_id}`: Check agent job status/result.
-- `DELETE /v1/agent/{job_id}`: Cancel an agent job.
-- `POST /auth/signup/send-otp`: reliable email-based signup.
-- `POST /auth/signup/verify-otp`: reliable email-based signup.
-- `POST /auth/signin`: reliable email-based signin.
-- `POST /auth/forgot-password`: reliable email-based forgot password.
-- `POST /auth/reset-password`: reliable email-based reset password.
+## 🔐 Core API Endpoints
 
-Full interactive API docs available at `http://localhost:8000/docs` when running locally.
-
-## 🤖 Agent API Setup
-
-To use the `/v1/agent` endpoints, configure LLM and search providers in `.env`:
-
-```bash
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_claude_key
-PLANNER_MODEL=gpt-4o
-EXTRACTION_MODEL=gpt-4o-mini
-FALLBACK_MODEL=claude-3-5-sonnet
-
-SEARCH_PROVIDER=duckduckgo
-TAVILY_API_KEY=
-SERPAPI_API_KEY=
-```
-
-Start Redis, the Celery worker, and the API server as usual. The agent job worker runs
-in the same Celery process (`agent_queue`).
+* **Scraper & Crawler API**:
+  * `POST /api/v1/scrape`: Instant single page rendering & extraction (HTML, Markdown, screenshots, images, SEO).
+  * `POST /api/v1/crawl`: Distributed asynchronous crawling of deep websites.
+  * `POST /api/v1/links`: Rapid link mapping of target domains.
+  * `POST /api/v1/screenshot`: High-resolution stealth page screenshots.
+  * `GET /crawler/status/{task_id}`: Celery task progress lookup.
+  * `GET /crawler/data/{crawl_id}`: Fetch crawled output results.
+  * `GET /crawl/get/content`: Fetch parsed HTML/Markdown artifacts.
+* **AI Agent API**:
+  * `POST /api/v1/agent`: Launch an asynchronous schema-driven extraction job.
+  * `GET /api/v1/agent/{job_id}`: Lookup agent execution status & results.
+  * `DELETE /api/v1/agent/{job_id}`: Cancel a running agent pipeline.
+* **SaaS Auth API**:
+  * `POST /api/v1/auth/signup/send-otp`: Dispatches validation code to sign up.
+  * `POST /api/v1/auth/signup/verify-otp`: Confirms validation and activates account.
+  * `POST /api/v1/auth/signin`: Validates credentials and returns JWT bearer token.
+  * `POST /api/v1/auth/forgot-password` / `/reset-password`: Account recovery endpoints.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome and appreciated! Here's how to get involved:
-
-1. Fork the repository
-2. Create a feature branch — `git checkout -b feature/YourFeature`
-3. Commit your changes — `git commit -m 'Add YourFeature'`
-4. Push to your branch — `git push origin feature/YourFeature`
-5. Open a Pull Request
-
-Please ensure your code follows the existing style and includes relevant tests. For large changes, open an issue first to discuss your proposal.
-
----
-
-## 🙌 Credits & Inspiration
-
-GcrawlAI was built by the team at **Gramosoft Private Limited**, inspired by the incredible open-source web scraping and AI ecosystem. We stand on the shoulders of giants:
-
-| Project                                                          | What We Learned                                                                            |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [🔥 Firecrawl](https://github.com/mendableai/firecrawl)          | LLM-ready markdown output, distributed crawling architecture, and benchmark-driven quality |
-| [🕷️ ScrapeGraphAI](https://github.com/VinciGit00/Scrapegraph-ai) | Graph-based pipeline design and LLM-powered structured extraction                          |
-| [🎭 Playwright](https://github.com/microsoft/playwright)         | Browser automation, stealth crawling, and anti-bot bypass strategies                       |
-| [⚡ FastAPI](https://github.com/tiangolo/fastapi)                | High-performance async API design patterns                                                 |
-| [🌿 Celery](https://github.com/celery/celery)                    | Distributed task queue architecture for large-scale crawling                               |
-| [🔴 Redis](https://github.com/redis/redis)                       | In-memory message brokering for task queue management                                      |
-| [🐘 PostgreSQL](https://www.postgresql.org)                      | Reliable relational data storage for crawl results and auth                                |
-
-> **Disclaimer:** GcrawlAI is an independent open-source project built by Gramosoft Private Limited. All referenced projects are the intellectual property of their respective owners and contributors. GcrawlAI is not affiliated with, derived from, or endorsed by any of the above projects. We simply admire their work and credit them accordingly.
+We welcome community contributions! Please review the following workflow:
+1. Fork this repository.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 ---
 
 ## 📄 License
-
-GcrawlAI is released under the **MIT License**.
-
-```
-MIT License
-
-Copyright (c) 2026 Gramosoft Private Limited
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-See the [LICENSE](./LICENSE) file for full details.
-
----
-
-## 🙏 Acknowledgements
-
-- Thank you to all contributors and the open-source community for your continued support
-- GcrawlAI is intended for legitimate data extraction, AI development, and research purposes only
-- Users are responsible for respecting websites' `robots.txt` directives, terms of service, and applicable privacy policies when crawling
-
----
+GcrawlAI is open-source software licensed under the **[MIT License](./LICENSE)**.
 
 <p align="center">
   Built with ❤️ by <a href="https://gramosoft.tech">Gramosoft Private Limited</a>
   <br><br>
-  ⭐ If GcrawlAI saves you time, please <strong>star the repo</strong> — it helps others discover it!
+  ⭐ If GcrawlAI saves you time, please <strong>star this repo</strong> — it helps others find it!
   <br><br>
   <a href="#readme-top">↑ Back to Top ↑</a>
 </p>

@@ -293,6 +293,8 @@ class BrowserManager:
                     res = random.choice([(1920, 1080, 0), (1366, 768, 0)])
                     
                 width, height, taskbar = res
+                local.width = width
+                local.height = height
                 
                 fingerprint_args = [
                     f"--fingerprint={seed}",

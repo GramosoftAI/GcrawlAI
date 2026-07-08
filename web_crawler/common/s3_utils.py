@@ -42,15 +42,9 @@ def upload_to_s3(file_bytes: bytes, crawl_id: str, filename: str, content_type: 
             ContentType=content_type
         )
         
-        # Generate 7-day presigned URL (604800 seconds)
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={
-                "Bucket": bucket,
-                "Key": key
-            },
-            ExpiresIn=604800
-        )
+        # Use the CloudFront domain to construct a shorter, clean URL
+        cloudfront_domain = "https://d2q4gipm2ebkzp.cloudfront.net"
+        url = f"{cloudfront_domain}/{key}"
         return url
     except Exception as e:
         logger.error(f"Failed to upload {filename} to S3: {e}")

@@ -32,8 +32,13 @@ class CloakCrawlerMixin:
             proxy_settings = self._resolve_playwright_proxy(target_url=url, provider=provider, use_high_speed=use_high_speed)
             browser = browser_manager.get_clock_browser(self.config, direct=(proxy_settings is None))
             
+            # Align viewport size to the launched browser screen size to avoid empty spaces
+            local_data = browser_manager._get_local_data()
+            v_width = getattr(local_data, "width", 1920)
+            v_height = getattr(local_data, "height", 1080)
+            
             context_kwargs = dict(
-                viewport={"width": 1920, "height": 1080},
+                viewport={"width": v_width, "height": v_height},
                 java_script_enabled=True,
                 ignore_https_errors=True
             )
@@ -179,55 +184,53 @@ class CloakCrawlerMixin:
                                 """
                                 async (args) => {
                                     const { delay, maxScrolls } = args;
-                                    const getTallestScrollable = () => {
-                                        const elements = document.querySelectorAll('*');
-                                        let tallest = document.scrollingElement || document.documentElement;
-                                        let maxH = tallest.scrollHeight;
-                                        for (const el of elements) {
-                                            const h = el.scrollHeight;
-                                            if (h > maxH && getComputedStyle(el).overflowY !== 'hidden') {
-                                                maxH = h;
-                                                tallest = el;
-                                            }
-                                        }
-                                        return tallest;
-                                    };
-
-                                    const scrollTarget = getTallestScrollable();
-                                    let lastHeight = scrollTarget.scrollHeight || document.documentElement.scrollHeight;
                                     let currentY = 0;
-                                    let reachedBottom = false;
-                                    let consecutiveNoChange = 0;
                                     let stepCount = 0;
 
-                                    while (!reachedBottom && consecutiveNoChange < 5 && stepCount < maxScrolls) {
-                                        const clientHeight = scrollTarget.clientHeight || window.innerHeight;
-                                        const scrollHeight = scrollTarget.scrollHeight || document.documentElement.scrollHeight;
+                                    // Slow constant scroll speed: 600 pixels per second (extremely readable/slow)
+                                    const scrollSpeed = 600; 
+                                    const subStepDelay = 40; // 40ms interval (25 FPS smooth rendering)
+
+                                    while (stepCount < maxScrolls) {
+                                        const clientHeight = window.innerHeight;
+                                        const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
                                         const maxScrollPos = scrollHeight - clientHeight;
-                                        const step = Math.max(300, Math.floor(clientHeight * 0.8));
-                                        currentY = Math.min(currentY + step, maxScrollPos);
 
-                                        if (scrollTarget === window || scrollTarget === document.documentElement || scrollTarget === document.body) {
-                                            window.scrollTo({ top: currentY, behavior: 'smooth' });
-                                        } else {
-                                            scrollTarget.scrollTo({ top: currentY, behavior: 'smooth' });
+                                        if (maxScrollPos <= 0) {
+                                            break;
                                         }
 
+                                        const remainingSteps = maxScrolls - stepCount;
+                                        const targetY = Math.min(currentY + (maxScrollPos - currentY) / remainingSteps, maxScrollPos);
+                                        const startY = currentY;
+                                        const distance = targetY - startY;
+
+                                        // Slowly slide down from startY to targetY at 600px/second
+                                        if (distance > 0) {
+                                            const animDuration = (distance / scrollSpeed) * 1000; // in milliseconds
+                                            const subSteps = Math.max(1, Math.floor(animDuration / subStepDelay));
+                                            for (let i = 1; i <= subSteps; i++) {
+                                                const intermediateY = startY + (distance * (i / subSteps));
+                                                window.scrollTo({ top: Math.floor(intermediateY), behavior: 'auto' });
+                                                await new Promise(r => setTimeout(r, subStepDelay));
+                                            }
+                                        } else {
+                                            window.scrollTo({ top: targetY, behavior: 'auto' });
+                                        }
+
+                                        currentY = targetY;
                                         stepCount++;
+                                        
+                                        // Wait the full scroll_delay (e.g. 1500ms) at the target position to let content stabilize
                                         await new Promise(r => setTimeout(r, delay));
-
-                                        const newHeight = scrollTarget.scrollHeight || document.documentElement.scrollHeight;
-                                        if (newHeight === lastHeight) {
-                                            consecutiveNoChange++;
-                                        } else {
-                                            consecutiveNoChange = 0;
-                                            lastHeight = newHeight;
-                                        }
-
-                                        const currentScrollTop = (scrollTarget === window) ? window.scrollY : (scrollTarget.scrollTop || window.scrollY);
-                                        if (currentY >= maxScrollPos || currentScrollTop >= maxScrollPos - 10) {
-                                            reachedBottom = true;
-                                        }
+                                    }
+                                    
+                                    // A final clean scroll to absolute bottom (using native smooth scroll to finish slowly)
+                                    const finalScrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+                                    const finalMax = finalScrollHeight - window.innerHeight;
+                                    if (finalMax > 0 && window.scrollY < finalMax) {
+                                        window.scrollTo({ top: finalMax, behavior: 'smooth' });
+                                        await new Promise(r => setTimeout(r, 800));
                                     }
                                 }
                                 """,

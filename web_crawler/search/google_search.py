@@ -216,7 +216,8 @@ def _build_proxy_config(session_id: Optional[str] = None, proxy_geo: Optional[st
             provider="nodemaven",
             session_id=session_id,
             use_high_speed=True,
-            proxy_geo=proxy_geo
+            proxy_geo=proxy_geo,
+            is_search=True
         )
 
     # Switched to Nodemaven residential proxy for higher IP quality and fewer CAPTCHAs

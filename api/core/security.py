@@ -178,3 +178,32 @@ def increment_used_requests(user_id: Union[int, str], amount: int = 1):
             conn.commit()
     except Exception as e:
         logger.error(f"Failed to increment used requests by {amount} for user {user_id}: {e}")
+
+
+def check_endpoint_active(endpoint_name: str) -> None:
+    """
+    Checks if an API endpoint is currently active.
+    If the endpoint status is 'Maintenance' or is_active is False, raises HTTP 503.
+    """
+    from api.core.database import get_pooled_connection
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT status, is_active FROM api_endpoints WHERE endpoint_name = %s",
+                    (endpoint_name,)
+                )
+                row = cur.fetchone()
+        
+        if row:
+            status_val, is_active = row[0], row[1]
+            if not is_active or status_val.lower() == 'maintenance':
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"{endpoint_name} is currently under maintenance. Please try again later."
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking endpoint active state for {endpoint_name}: {e}")
+

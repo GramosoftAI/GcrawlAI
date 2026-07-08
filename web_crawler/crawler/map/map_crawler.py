@@ -44,6 +44,7 @@ def _parse_homepage_html(
     base_url: str,
     collected: Set[str],
     lock: threading.Lock,
+    limit: int = MAX_URLS,
 ) -> int:
     """
     Parse homepage HTML from an already-fetched Response.
@@ -84,7 +85,7 @@ def _parse_homepage_html(
     added = 0
     with lock:
         for url in new_urls:
-            if len(collected) >= MAX_URLS:
+            if len(collected) >= limit:
                 break
             if url not in collected:
                 collected.add(url)
@@ -98,13 +99,14 @@ def _collect_homepage_links_from_resp(
     base_url: str,
     collected: Set[str],
     lock: threading.Lock,
+    limit: int = MAX_URLS,
 ) -> int:
     """
     Use a pre-fetched homepage Response to extract links.
     Skips the HTTP request entirely — resp is already in memory.
     """
     with lock:
-        if len(collected) >= MAX_URLS:
+        if len(collected) >= limit:
             logger.info("⛔ Limit already reached — skipping homepage link extraction")
             return 0
 
@@ -112,7 +114,7 @@ def _collect_homepage_links_from_resp(
         logger.warning("Homepage pre-fetch failed — skipping link extraction")
         return 0
 
-    added = _parse_homepage_html(resp, base_url, collected, lock)
+    added = _parse_homepage_html(resp, base_url, collected, lock, limit)
     logger.info(f"  → added {added} new URLs from homepage (pool: {len(collected)})")
     return added
 
@@ -121,14 +123,15 @@ def _collect_homepage_links(
     base_url: str, 
     collected: Set[str], 
     lock: threading.Lock,
-    proxy_dict: Optional[dict] = None
+    proxy_dict: Optional[dict] = None,
+    limit: int = MAX_URLS,
 ) -> int:
     """
     Fetch the homepage and extract internal links.
     (Used as fallback when pre-fetching is not used.)
     """
     with lock:
-        if len(collected) >= MAX_URLS:
+        if len(collected) >= limit:
             logger.info("⛔ Limit already reached — skipping homepage link extraction")
             return 0
 
@@ -138,7 +141,7 @@ def _collect_homepage_links(
         logger.warning("Homepage fetch failed — skipping link extraction")
         return 0
 
-    added = _parse_homepage_html(resp, base_url, collected, lock)
+    added = _parse_homepage_html(resp, base_url, collected, lock, limit)
     logger.info(f"  → added {added} new URLs from homepage (pool: {len(collected)})")
     return added
 
@@ -149,48 +152,83 @@ def _browser_extract_links(
     start_url: str,
     collected: Set[str],
     lock: threading.Lock,
+    limit: int = MAX_URLS,
+    proxy_dict: Optional[dict] = None,
 ) -> int:
     """
     Render the homepage with Playwright/ClockBrowser and extract internal links
-    from the fully-rendered DOM.  This catches JS-loaded navigation (e.g.
-    sites that fetch header/footer HTML fragments at runtime).
+    from the fully-rendered DOM using multiple rotated proxy attempts running in parallel.
 
     Returns the number of NEW URLs added to `collected`.
     """
-    logger.info("🌐 Browser fallback — rendering homepage with ClockBrowser...")
-    added = 0
-    try:
-        from playwright.sync_api import sync_playwright
+    logger.info("🌐 Browser fallback — rendering homepage with CloakBrowser...")
+    added_links = []
+    success_event = threading.Event()
+    success_lock = threading.Lock()
 
-        base_host = urlparse(start_url).netloc.lower()
+    def _worker_attempt(attempt_idx):
+        if success_event.is_set():
+            return
+        
+        browser = None
+        try:
+            import cloakbrowser
+            import random
+            import re
+            from web_crawler.common.proxy_manager import parse_proxy_for_playwright
 
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--disable-blink-features=AutomationControlled',
-                    '--dns-over-https-server=https://cloudflare-dns.com/dns-query'
-                ]
-            )
-            context = browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                user_agent=_HEADERS["User-Agent"],
-                java_script_enabled=True,
-                ignore_https_errors=True,
-            )
-            page = context.new_page()
+            base_host = urlparse(start_url).netloc.lower()
 
-            try:
-                page.goto(start_url, wait_until="domcontentloaded", timeout=30_000)
-            except Exception as nav_err:
-                logger.warning(f"  ⚠ Browser navigation error: {nav_err}")
-                # Even on timeout, the page may have partially loaded
+            # Parse proxy settings if available and rotate session ID to get a clean IP
+            pw_proxy = None
+            if proxy_dict:
+                proxy_url = proxy_dict.get("https") or proxy_dict.get("http")
+                if proxy_url:
+                    new_session = "".join(random.choices("0123456789abcdef", k=8))
+                    proxy_url = re.sub(r'session-[a-zA-Z0-9]+', f'session-{new_session}', proxy_url)
+                    pw_proxy = parse_proxy_for_playwright(proxy_url)
 
-            # Extract all <a href> from the rendered DOM
+            # Generate human-like random fingerprint configuration for CloakBrowser
+            platform_choice = random.choices(["windows", "macos", "linux"], weights=[85, 10, 5])[0]
+            seed = random.randint(100000, 9999999)
+            width, height = 1920, 1080
+            fingerprint_args = [
+                f"--fingerprint={seed}",
+                f"--fingerprint-platform={platform_choice}",
+                f"--fingerprint-screen-width={width}",
+                f"--fingerprint-screen-height={height}",
+            ]
+
+            launch_args = {
+                "headless": True,
+                "timezone": "America/Los_Angeles",
+                "locale": "en-US",
+                "args": fingerprint_args,
+            }
+            if pw_proxy:
+                launch_args["proxy"] = pw_proxy
+
+            logger.info(f"🌐 Threaded browser fallback: Launching Parallel Attempt {attempt_idx}...")
+            browser = cloakbrowser.launch(humanize=True, **launch_args)
+            page = browser.new_page()
+
+            # Block heavy/unnecessary resources for ultra-fast loading
+            def block_resources(route):
+                req_type = route.request.resource_type
+                if req_type in ["image", "stylesheet", "font", "media"]:
+                    return route.abort()
+                route.continue_()
+
+            page.route("**/*", block_resources)
+
+            if success_event.is_set():
+                browser.close()
+                return
+
+            page.goto(start_url, wait_until="domcontentloaded", timeout=20_000)
+            page_title = page.title()
+            
+            # Extract links
             raw_links = page.evaluate("""
                 () => Array.from(document.querySelectorAll('a[href]'))
                           .map(a => a.href)
@@ -198,47 +236,82 @@ def _browser_extract_links(
 
             browser.close()
 
-        new_urls: list = []
-        for href in raw_links:
-            if not href or not href.startswith("http"):
-                continue
-            parsed = urlparse(href)
-            # Accept same host OR www variant
-            link_host = parsed.netloc.lower()
-            base_bare = base_host.replace("www.", "")
-            link_bare = link_host.replace("www.", "")
-            if link_bare != base_bare:
-                continue
-            if not _is_page_url(href):
-                continue
-            clean = _clean_url(href)
-            new_urls.append(clean)
+            if page_title and len(raw_links) > 0:
+                with success_lock:
+                    if not success_event.is_set():
+                        success_event.set()
+                        logger.info(f"  ✓ Parallel Attempt {attempt_idx} succeeded! Title: {page_title}, Links: {len(raw_links)}")
+                        
+                        # Process links inside the lock to avoid concurrency issues
+                        for href in raw_links:
+                            if not href or not href.startswith("http"):
+                                continue
+                            parsed = urlparse(href)
+                            link_host = parsed.netloc.lower()
+                            base_bare = base_host.replace("www.", "")
+                            link_bare = link_host.replace("www.", "")
+                            if link_bare != base_bare:
+                                continue
+                            if not _is_page_url(href):
+                                continue
+                            clean = _clean_url(href)
+                            added_links.append(clean)
+            else:
+                logger.warning(f"  ⚠ Parallel Attempt {attempt_idx} got blocked (Title empty or 0 links found).")
 
-        with lock:
-            for url in new_urls:
-                if len(collected) >= MAX_URLS:
-                    break
-                if url not in collected:
-                    collected.add(url)
-                    added += 1
+        except ImportError:
+            logger.warning(f"  ⚠ Parallel Attempt {attempt_idx} failed: Playwright or cloakbrowser not installed")
+        except Exception as e:
+            logger.warning(f"  ⚠ Parallel Attempt {attempt_idx} failed: {e}")
+            if browser:
+                try:
+                    browser.close()
+                except:
+                    pass
 
-        logger.info(f"  → Browser fallback added {added} new URLs (pool: {len(collected)})")
+    # Try up to 2 rounds of parallel attempts (total 6 attempts)
+    for round_idx in range(1, 3):
+        logger.info(f"🌐 Threaded browser fallback: Starting Round {round_idx}/2...")
+        threads = []
+        for idx in range(1, 4):
+            attempt_idx = (round_idx - 1) * 3 + idx
+            t = threading.Thread(target=_worker_attempt, args=(attempt_idx,))
+            threads.append(t)
+            t.start()
+            # Stagger the thread starts slightly to prevent Playwright process spawning race conditions in uvloop
+            time.sleep(1.5)
 
-    except ImportError:
-        logger.warning("  ⚠ Playwright not installed — skipping browser fallback")
-    except Exception as e:
-        logger.warning(f"  ⚠ Browser fallback failed: {e}")
+        # Wait for all attempts in this round to finish/terminate
+        for t in threads:
+            t.join()
 
+        # If any attempt succeeded in this round, break the round loop early!
+        if success_event.is_set():
+            logger.info(f"  ✓ Threaded browser fallback: Success in Round {round_idx}!")
+            break
+        else:
+            logger.warning(f"  ⚠ Round {round_idx} failed to retrieve any links.")
+
+    added = 0
+    with lock:
+        for url in added_links:
+            if len(collected) >= limit:
+                break
+            if url not in collected:
+                collected.add(url)
+                added += 1
+
+    logger.info(f"  → Browser fallback added {added} new URLs (pool: {len(collected)})")
     return added
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
-def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
+def map_website(start_url: str, limit: int = MAX_URLS, proxy_dict: Optional[dict] = None) -> dict:
     """
     Firecrawl-style map mode: discover page URLs on a site.
     """
-    logger.info(f"🗺️  Map mode started for: {start_url} (limit: {MAX_URLS} URLs)")
+    logger.info(f"🗺️  Map mode started for: {start_url} (limit: {limit} URLs)")
 
     # Shared mutable state — all steps write into this single set
     collected: Set[str] = set()
@@ -272,18 +345,24 @@ def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
         logger.info("robots.txt not found or inaccessible")
     logger.info(f"⏱  robots.txt parsed: {time.perf_counter()-t0:.2f}s ({len(sitemap_hints)} sitemap(s))")
 
-    # ── Step 2: XML sitemaps (parallel child fetching) ───────────────────────
+    # ── Step 2: Homepage link extraction (use pre-fetched response) ─────────
+    t0 = time.perf_counter()
+    from_homepage = _collect_homepage_links_from_resp(homepage_resp, start_url, collected, lock, limit)
+    logger.info(f"⏱  homepage: {time.perf_counter()-t0:.2f}s → {from_homepage} new URLs (pool: {len(collected)})")
+
+    # ── Step 3: XML sitemaps (parallel child fetching) ───────────────────────
+    # If the homepage yielded 0 links, we are either blocked by a WAF or it is a headless JS site.
+    # In either case, skip XML sitemaps probe to avoid wasting time on timeout checks.
     before_sitemap = len(collected)
     t0 = time.perf_counter()
-    homepage_text = homepage_resp.text if homepage_resp else ""
-    _collect_sitemap_urls(start_url, sitemap_hints, collected, lock, homepage_text, proxy_dict)
-    from_sitemap = len(collected) - before_sitemap
-    logger.info(f"⏱  sitemaps: {time.perf_counter()-t0:.2f}s → {from_sitemap} URLs (pool: {len(collected)})")
-
-    # ── Step 3: Homepage link extraction (use pre-fetched response) ─────────
-    t0 = time.perf_counter()
-    from_homepage = _collect_homepage_links_from_resp(homepage_resp, start_url, collected, lock)
-    logger.info(f"⏱  homepage: {time.perf_counter()-t0:.2f}s → {from_homepage} new URLs (pool: {len(collected)})")
+    if homepage_resp and from_homepage > 0:
+        homepage_text = homepage_resp.text
+        _collect_sitemap_urls(start_url, sitemap_hints, collected, lock, homepage_text, proxy_dict, limit)
+        from_sitemap = len(collected) - before_sitemap
+        logger.info(f"⏱  sitemaps: {time.perf_counter()-t0:.2f}s → {from_sitemap} URLs (pool: {len(collected)})")
+    else:
+        from_sitemap = 0
+        logger.info("  ⚠ Static homepage yielded 0 links. Skipping sitemaps probe to save time.")
 
     # ── Step 4: Browser fallback (if too few URLs found) ─────────────────────
     from_browser = 0
@@ -293,17 +372,17 @@ def map_website(start_url: str, proxy_dict: Optional[dict] = None) -> dict:
             f"(threshold={_BROWSER_FALLBACK_THRESHOLD}) — trying browser fallback"
         )
         t0 = time.perf_counter()
-        from_browser = _browser_extract_links(start_url, collected, lock)
+        from_browser = _browser_extract_links(start_url, collected, lock, limit, proxy_dict)
         logger.info(f"⏱  browser: {time.perf_counter()-t0:.2f}s → {from_browser} new URLs (pool: {len(collected)})")
 
     # ── Build result ─────────────────────────────────────────────────────────
     sorted_urls = sorted(collected)
     total = len(sorted_urls)
-    capped = total >= MAX_URLS
+    capped = total >= limit
 
     logger.info(
         f"✅ Map complete — {total} unique URLs"
-        + (f" (limit of {MAX_URLS} reached during extraction)" if capped else "")
+        + (f" (limit of {limit} reached during extraction)" if capped else "")
     )
 
     return {

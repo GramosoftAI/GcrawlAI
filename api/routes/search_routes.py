@@ -55,7 +55,7 @@ async def search(
     """Perform a search using engine fallback configured in `web_crawler.search_engine`."""
     recaptcha_header = request.headers.get("recaptcha_token") or request.headers.get("recaptcha-token")
     api_key_header = x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
-    from api.core.security import validate_recaptcha_or_jwt, check_plan_limits_and_get_details, increment_used_requests
+    from api.core.security import validate_recaptcha_or_jwt, check_plan_limits_and_get_details, increment_used_requests, check_endpoint_active
     from api.services.queue_manager import queue_manager
     
     user_id = validate_recaptcha_or_jwt(
@@ -64,7 +64,12 @@ async def search(
         api_key_header=api_key_header
     )
     
+    check_endpoint_active("Search API")
+    
     plan_type, concurrency_limit = check_plan_limits_and_get_details(user_id)
+    
+    import time
+    start_time = time.time()
     
     # Extract client IP with fallback logic
     # 1. Check X-Forwarded-For (standard for multi-hop proxies)
@@ -116,7 +121,9 @@ async def search(
         logger.exception("Search route failed")
         from api.core.database import log_activity
         try:
-            log_activity(user_id, "/SEARCH", search_req.query, "FAILED", job_id=search_id if 'search_id' in locals() else None)
+            elapsed = time.time() - start_time
+            time_taken_str = f"{int(elapsed//60)}m {int(elapsed%60)}s"
+            log_activity(user_id, "/SEARCH", search_req.query, "FAILED", job_id=search_id if 'search_id' in locals() else None, time_taken=time_taken_str)
             with get_pooled_connection() as conn:
                 cur = conn.cursor()
                 cur.execute(
@@ -154,7 +161,9 @@ async def search(
 
     from api.core.database import log_activity
     try:
-        log_activity(user_id, "/SEARCH", search_req.query, "COMPLETED", job_id=search_id)
+        elapsed = time.time() - start_time
+        time_taken_str = f"{int(elapsed//60)}m {int(elapsed%60)}s"
+        log_activity(user_id, "/SEARCH", search_req.query, "COMPLETED", job_id=search_id, time_taken=time_taken_str)
     except Exception:
         pass
 

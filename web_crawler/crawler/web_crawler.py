@@ -15,6 +15,7 @@ from time import perf_counter
 from typing import Set, List, Dict, Optional
 from urllib.parse import urlparse
 from threading import Semaphore, Thread
+from concurrent.futures import ThreadPoolExecutor
 
 from web_crawler.common.config import CrawlConfig
 from web_crawler.crawler.helpers.file_manager import FileManager
@@ -85,8 +86,7 @@ class WebCrawler:
         lock,
         user_id,
         seen_raw,
-        queue,
-        semaphore
+        queue
     ):
         try:
             proxy_type = self._effective_proxy_mode()
@@ -169,14 +169,8 @@ class WebCrawler:
 
                         if normalize_host(urlparse(link).netloc) == normalize_host(urlparse(url).netloc):
                             queue.append((link, url))
-
-        finally:
-            try:
-                from web_crawler.crawler.page.page_crawler1 import browser_manager
-                browser_manager.shutdown()
-            except Exception as shutdown_err:
-                logger.warning(f"Error shutting down browser manager in crawl_worker thread: {shutdown_err}")
-            semaphore.release()
+        except Exception as e:
+            logger.error(f"Error in _crawl_worker for {url}: {e}")
 
     def crawl(
         self,
@@ -242,11 +236,13 @@ class WebCrawler:
             for attempt, (provider_name, provider_id) in enumerate(providers, 1):
                 logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/3)...")
                 proxy_geo = getattr(self.config, "proxy_geo", None)
+                use_hs = (provider_id in {"nodemaven", "evomi_premium"})
                 p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
-                    target_url=start_url, provider=provider_id, use_high_speed=(attempt == 1), proxy_geo=proxy_geo
+                    target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
                 )
                 if p_dict:
-                    map_result = map_website(start_url, proxy_dict=p_dict)
+                    map_limit = self.config.max_pages if self.config.max_pages else 5000
+                    map_result = map_website(start_url, limit=map_limit, proxy_dict=p_dict)
                     if map_result["total"] > 1:
                         logger.info(f"  ✓ Map discovery succeeded with {provider_name}")
                         break
@@ -284,8 +280,19 @@ class WebCrawler:
             query = _extract_search_query(start_url)
             logger.info(f"🔍 Search URL detected. Routing query '{query}' through search engine router...")
             
+            import asyncio
             from web_crawler.search.search_engine import execute_search_router
-            search_results = execute_search_router(query, limit=10)
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                search_results = asyncio.run_coroutine_threadsafe(
+                    execute_search_router(query, limit=10), loop
+                ).result()
+            else:
+                search_results = asyncio.run(execute_search_router(query, limit=10))
             elapsed = perf_counter() - start_perf
             
             if search_results:
@@ -445,61 +452,72 @@ class WebCrawler:
             return summary
 
         # =========================================================
-        # MAIN SEMAPHORE-BASED CRAWL LOOP
+        # MAIN THREADPOOL-BASED CRAWL LOOP
         # =========================================================
-        while (queue or semaphore._value < self.config.max_workers) and self.attempted_pages < max_pages:
-
-            if queue:
-                url, source = queue.popleft()
-                url = normalize_url(url)
-
-                with lock:
-                    if url in self.visited:
-                        continue
-                    self.visited.add(url)
-                    self.attempted_pages += 1
-                    page_no = self.attempted_pages
-
-                logger.info(f"Queued [{self.attempted_pages}/{max_pages}]: {url}")
-
-                semaphore.acquire()
-
-                t = Thread(
-                    target=self._crawl_worker,
-                    args=(
-                        url,
-                        page_no,
-                        enable_md,
-                        enable_html,
-                        enable_ss,
-                        enable_seo,
-                        enable_images,
-                        enable_json,
-                        client_id,
-                        websocket_manager,
-                        crawl_mode,
-                        start_time,
-                        start_perf,
-                        lock,
-                        user_id,
-                        seen_raw,
-                        queue,
-                        semaphore
-                    ),
-                    daemon=True,
+        active_tasks = 0
+        
+        def worker_task(task_url, task_page_no):
+            nonlocal active_tasks
+            try:
+                self._crawl_worker(
+                    url=task_url,
+                    page_no=task_page_no,
+                    enable_md=enable_md,
+                    enable_html=enable_html,
+                    enable_ss=enable_ss,
+                    enable_seo=enable_seo,
+                    enable_images=enable_images,
+                    enable_json=enable_json,
+                    client_id=client_id,
+                    websocket_manager=websocket_manager,
+                    crawl_mode=crawl_mode,
+                    start_time=start_time,
+                    start_perf=start_perf,
+                    lock=lock,
+                    user_id=user_id,
+                    seen_raw=seen_raw,
+                    queue=queue
                 )
-                t.start()
-                threads.append(t)
+            finally:
+                with lock:
+                    active_tasks -= 1
 
-            else:
-                threading.Event().wait(0.05)
+        with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
+            while (queue or active_tasks > 0) and self.attempted_pages < max_pages:
+                if queue:
+                    url, source = queue.popleft()
+                    url = normalize_url(url)
 
+                    with lock:
+                        if url in self.visited:
+                            continue
+                        self.visited.add(url)
+                        self.attempted_pages += 1
+                        page_no = self.attempted_pages
+                        active_tasks += 1
 
-        # =========================================================
-        # WAIT FOR ALL THREADS
-        # =========================================================
-        for t in threads:
-            t.join()
+                    logger.info(f"Queued [{self.attempted_pages}/{max_pages}]: {url}")
+                    executor.submit(worker_task, url, page_no)
+                else:
+                    threading.Event().wait(0.05)
+
+            # Submit cleanup tasks to all threads in the pool to close the browsers cleanly
+            cleanup_futures = []
+            for _ in range(self.config.max_workers):
+                def shutdown_task():
+                    try:
+                        from web_crawler.crawler.page.page_crawler1 import browser_manager
+                        browser_manager.shutdown()
+                    except Exception as e:
+                        logger.warning(f"Error shutting down browser in thread cleanup: {e}")
+                cleanup_futures.append(executor.submit(shutdown_task))
+            
+            # Wait for all cleanups to complete
+            for future in cleanup_futures:
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.warning(f"Error waiting for browser manager cleanup future: {e}")
 
         # =========================================================
         # SUMMARY & DATA CONSOLIDATION

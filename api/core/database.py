@@ -98,14 +98,14 @@ def get_db_connection():
     global _db_pool
     return _db_pool.getconn()
 
-def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str, job_id: str = None) -> None:
+def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str, job_id: str = None, time_taken: str = None) -> None:
     """Log an activity to the activity_logs table"""
     try:
         with get_pooled_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO activity_logs (user_id, endpoint, url, status, job_id) VALUES (%s, %s, %s, %s, %s)",
-                    (user_id, endpoint, url, status, job_id)
+                    "INSERT INTO activity_logs (user_id, endpoint, url, status, job_id, time_taken) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (user_id, endpoint, url, status, job_id, time_taken)
                 )
             conn.commit()
     except Exception as e:
@@ -117,7 +117,7 @@ def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = N
         with get_pooled_connection() as conn:
             with conn.cursor() as cursor:
                 query = """
-                    SELECT a.job_id, a.endpoint, a.url, a.status, a.created_at, j.json_content 
+                    SELECT a.job_id, a.endpoint, a.url, a.status, a.time_taken, a.created_at, j.json_content 
                     FROM activity_logs a
                     LEFT JOIN job_results j ON a.job_id = j.job_id
                     WHERE a.user_id = %s AND a.created_at >= CURRENT_DATE - INTERVAL '%s days'
@@ -130,7 +130,7 @@ def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = N
                     
                 query += """
                     ORDER BY a.created_at DESC
-                    LIMIT 100
+                    LIMIT 1000
                 """
                 
                 cursor.execute(query, tuple(params))
@@ -139,6 +139,19 @@ def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = N
     except Exception as e:
         logger.error(f"Failed to fetch activity logs for user {user_id}: {e}")
         return []
+
+def update_activity_log_time(job_id: str, time_taken: str) -> None:
+    """Update the time_taken column for a specific job in the activity_logs table"""
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE activity_logs SET time_taken = %s WHERE job_id = %s",
+                    (time_taken, job_id)
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update activity log time for job {job_id}: {e}")
 
 import json
 
@@ -167,3 +180,69 @@ def upsert_job_result(job_id: str, payload: dict, user_id: str = None) -> None:
             logger.info(f"✅ Successfully saved/updated job result in Postgres DB for job_id: {job_id}")
     except Exception as e:
         logger.error(f"Failed to upsert job result for job {job_id}: {e}")
+
+def get_usage_summary(user_id: Union[int, str], start_dt, end_dt) -> list:
+    """Fetch daily request counts segmented by endpoint for a user in a date range"""
+    import datetime
+    try:
+        # Convert dates to timestamp limits
+        start_ts = datetime.datetime.combine(start_dt, datetime.time.min)
+        end_ts = datetime.datetime.combine(end_dt, datetime.time.max)
+        
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                query = """
+                    SELECT 
+                        DATE(created_at) AS date_only,
+                        COUNT(*) FILTER (WHERE UPPER(endpoint) = '/SCRAPE') AS scrape_count,
+                        COUNT(*) FILTER (WHERE UPPER(endpoint) = '/CRAWL') AS crawl_count,
+                        COUNT(*) FILTER (WHERE UPPER(endpoint) = '/SEARCH') AS search_count,
+                        COUNT(*) FILTER (WHERE UPPER(endpoint) = '/SCREENSHOT') AS screenshot_count,
+                        COUNT(*) FILTER (WHERE UPPER(endpoint) = '/LINKS') AS links_count,
+                        COUNT(*) AS total_count
+                    FROM activity_logs
+                    WHERE user_id = %s AND created_at >= %s AND created_at <= %s
+                    GROUP BY DATE(created_at)
+                    ORDER BY date_only ASC
+                """
+                cursor.execute(query, (str(user_id), start_ts, end_ts))
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "date": row[0].strftime("%Y-%m-%d") if isinstance(row[0], datetime.date) else str(row[0]),
+                        "scrape_count": int(row[1] or 0),
+                        "crawl_count": int(row[2] or 0),
+                        "search_count": int(row[3] or 0),
+                        "screenshot_count": int(row[4] or 0),
+                        "links_count": int(row[5] or 0),
+                        "total_count": int(row[6] or 0)
+                    })
+                return results
+    except Exception as e:
+        logger.error(f"Failed to fetch usage summary for user {user_id}: {e}")
+        return []
+
+def get_user_remaining_credits(user_id: Union[int, str]) -> int:
+    """Fetch remaining credits (total_requests - used_requests) for a user"""
+    try:
+        # Try to convert to int since user_plans.user_id is integer
+        try:
+            db_user_id = int(user_id)
+        except ValueError:
+            return 0
+            
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT total_requests, used_requests FROM user_plans WHERE user_id = %s",
+                    (db_user_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    total, used = row[0], row[1]
+                    remaining = total - used
+                    return max(0, remaining)
+                return 0
+    except Exception as e:
+        logger.error(f"Failed to fetch remaining credits for user {user_id}: {e}")
+        return 0

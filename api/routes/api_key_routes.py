@@ -328,7 +328,7 @@ async def create_api_key(current_user: Dict[str, Any] = Depends(get_current_user
 
         # Generate new API key using First Level Encryption
         api_key = generate_api_key(user_id)
-        key_prefix = api_key[:12]
+        key_prefix = api_key
 
         # Hash the API key (one-way, for fast authentication lookups)
         key_hash = hash_api_key(api_key)
@@ -426,7 +426,7 @@ async def get_api_keys(current_user: Dict[str, Any] = Depends(get_current_user_f
                     raise ValueError("DB_SECRET_KEY missing")
                 fernet_db = Fernet(db_secret_key.encode())
                 decrypted_api_key = fernet_db.decrypt(result['encrypted_key'].encode()).decode()
-                key_prefix = decrypted_api_key[:12]
+                key_prefix = decrypted_api_key
             except Exception:
                 key_prefix = "<decryption error>"
             api_keys.append(ApiKeyListResponse(

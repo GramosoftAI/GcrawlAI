@@ -21,89 +21,79 @@ def _get_isp_from_db(table_name: str, country: str) -> Optional[str]:
     if table_name not in ("nodemaven_isps", "evomi_isps"):
         return None
     
-    conn = None
-    is_pooled = False
+    # 1. Try pooled connection
     try:
         from api.core.database import get_pooled_connection
         conn_ctx = get_pooled_connection()
-        is_pooled = True
-    except Exception:
-        import psycopg2
-        try:
-            conn = psycopg2.connect(
-                host=os.getenv("POSTGRES_HOST", "localhost"),
-                port=os.getenv("POSTGRES_PORT", "5432"),
-                database=os.getenv("POSTGRES_DATABASE", "Dev_tamil"),
-                user=os.getenv("POSTGRES_USER", "postgres"),
-                password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
-            )
-        except Exception as e:
-            logger.error(f"[ProxyManager] Failed to connect to DB for ISP fetch: {e}")
-            return None
-
-    try:
-        if is_pooled:
-            with conn_ctx as conn:
-                with conn.cursor() as cur:
-                    cur.execute(f"SELECT isp_code FROM {table_name} WHERE country_code = %s", (country.upper(),))
-                    row = cur.fetchone()
-                    return row[0] if row else None
-        else:
-            with conn:
-                with conn.cursor() as cur:
-                    cur.execute(f"SELECT isp_code FROM {table_name} WHERE country_code = %s", (country.upper(),))
-                    row = cur.fetchone()
-                    return row[0] if row else None
+        with conn_ctx as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT isp_code FROM {table_name} WHERE country_code = %s", (country.upper(),))
+                row = cur.fetchone()
+                return row[0] if row else None
     except Exception as e:
-        logger.error(f"[ProxyManager] Error reading {table_name} for country={country}: {e}")
+        logger.info(f"[ProxyManager] Pooled DB connection failed, trying direct connection: {e}")
+
+    # 2. Fall back to direct psycopg2 connection
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            port=os.getenv("POSTGRES_PORT", "5432"),
+            database=os.getenv("POSTGRES_DATABASE", "Dev_tamil"),
+            user=os.getenv("POSTGRES_USER", "postgres"),
+            password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
+        )
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT isp_code FROM {table_name} WHERE country_code = %s", (country.upper(),))
+                row = cur.fetchone()
+                return row[0] if row else None
+    except Exception as ex:
+        logger.error(f"[ProxyManager] Error reading {table_name} for country={country} (direct connection): {ex}")
         return None
 
 def _save_isp_to_db(table_name: str, country: str, isp_code: str):
     if table_name not in ("nodemaven_isps", "evomi_isps"):
         return
         
-    conn = None
-    is_pooled = False
+    # 1. Try pooled connection
     try:
         from api.core.database import get_pooled_connection
         conn_ctx = get_pooled_connection()
-        is_pooled = True
-    except Exception:
-        import psycopg2
-        try:
-            conn = psycopg2.connect(
-                host=os.getenv("POSTGRES_HOST", "localhost"),
-                port=os.getenv("POSTGRES_PORT", "5432"),
-                database=os.getenv("POSTGRES_DATABASE", "Dev_tamil"),
-                user=os.getenv("POSTGRES_USER", "postgres"),
-                password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
-            )
-        except Exception as e:
-            return
-
-    try:
-        if is_pooled:
-            with conn_ctx as conn:
-                with conn.cursor() as cur:
-                    cur.execute(f"""
-                    INSERT INTO {table_name} (country_code, isp_code, updated_at)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (country_code) DO UPDATE
-                    SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                    """, (country.upper(), isp_code, datetime.datetime.now()))
-                    conn.commit()
-        else:
-            with conn:
-                with conn.cursor() as cur:
-                    cur.execute(f"""
-                    INSERT INTO {table_name} (country_code, isp_code, updated_at)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (country_code) DO UPDATE
-                    SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                    """, (country.upper(), isp_code, datetime.datetime.now()))
-                    conn.commit()
+        with conn_ctx as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                INSERT INTO {table_name} (country_code, isp_code, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (country_code) DO UPDATE
+                SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
+                """, (country.upper(), isp_code, datetime.datetime.now()))
+                conn.commit()
+                return
     except Exception as e:
-        logger.error(f"[ProxyManager] Error saving to {table_name} for country={country}: {e}")
+        logger.info(f"[ProxyManager] Pooled DB save failed, trying direct connection: {e}")
+
+    # 2. Fall back to direct psycopg2 connection
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            port=os.getenv("POSTGRES_PORT", "5432"),
+            database=os.getenv("POSTGRES_DATABASE", "Dev_tamil"),
+            user=os.getenv("POSTGRES_USER", "postgres"),
+            password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
+        )
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                INSERT INTO {table_name} (country_code, isp_code, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (country_code) DO UPDATE
+                SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
+                """, (country.upper(), isp_code, datetime.datetime.now()))
+                conn.commit()
+    except Exception as ex:
+        logger.error(f"[ProxyManager] Error saving to {table_name} for country={country} (direct connection): {ex}")
 
 _geoip_cache = {}
 
@@ -204,6 +194,8 @@ def build_nodemaven_proxy(geo: dict, session_id: Optional[str] = None, isp_code:
         
     if session_id:
         parts.append(f"session-{session_id}")
+    
+    parts.append("filter-medium-speed-fast")
 
     username = "-".join(parts)
     proxy_url = f"http://{username}:{NODEMAVEN_PASS}@{NODEMAVEN_HOST}:{NODEMAVEN_PORT}"
@@ -231,6 +223,10 @@ def build_evomi_premium_proxy(geo: dict, session_id: Optional[str] = None, isp_c
             password = f"{EVOMI_PREMIUM_PASS_CLEAN}_country-{country.upper()}"
     else:
         password = EVOMI_PREMIUM_PASS_CLEAN
+    
+    # Append mode-speed for speed optimization
+    password = f"{password}_mode-speed"
+    
     if session_id:
         password = f"{password}_session-{session_id}"
     proxy_url = f"https://{EVOMI_PREMIUM_USER}:{password}@{EVOMI_PREMIUM_HOST}:{EVOMI_PREMIUM_PORT}"
@@ -481,7 +477,7 @@ class ProxyManager:
             logger.info(f"[ProxyManager] Dynamic Evomi ISP selected for country={country}: {selected}")
         return selected
         
-    def get_requests_proxies(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None) -> dict:
+    def get_requests_proxies(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
         if provider == "direct":
             return None
         if proxy_geo and proxy_geo.strip().lower() != "default":
@@ -491,6 +487,31 @@ class ProxyManager:
         if not session_id:
             session_id = "".join(random.choices("0123456789abcdef", k=8))
             
+        target_country = geo.get("country", "").upper() if geo else ""
+        
+        if is_search:
+            provider = "nodemaven"
+            if target_country:
+                in_nodemaven = _get_isp_from_db("nodemaven_isps", target_country) is not None
+                if not in_nodemaven:
+                    geo["country"] = "in"
+            else:
+                geo["country"] = "in"
+        else:
+            if target_country:
+                in_nodemaven = _get_isp_from_db("nodemaven_isps", target_country) is not None
+                in_evomi = _get_isp_from_db("evomi_isps", target_country) is not None
+                
+                if in_nodemaven:
+                    pass
+                elif in_evomi:
+                    if provider == "nodemaven":
+                        provider = "evomi_premium"
+                else:
+                    geo["country"] = "us"
+            else:
+                geo["country"] = "us"
+
         isp_code = None
         if use_high_speed and geo.get("country"):
             if provider == "nodemaven":
@@ -506,7 +527,7 @@ class ProxyManager:
             proxy_url = build_nodemaven_proxy(geo, session_id, isp_code)
         return {"http": proxy_url, "https": proxy_url}
 
-    def get_playwright_proxy(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None) -> dict:
+    def get_playwright_proxy(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
         if provider == "direct":
             return None
         if proxy_geo and proxy_geo.strip().lower() != "default":
@@ -516,6 +537,31 @@ class ProxyManager:
         if not session_id:
             session_id = "".join(random.choices("0123456789abcdef", k=8))
             
+        target_country = geo.get("country", "").upper() if geo else ""
+        
+        if is_search:
+            provider = "nodemaven"
+            if target_country:
+                in_nodemaven = _get_isp_from_db("nodemaven_isps", target_country) is not None
+                if not in_nodemaven:
+                    geo["country"] = "in"
+            else:
+                geo["country"] = "in"
+        else:
+            if target_country:
+                in_nodemaven = _get_isp_from_db("nodemaven_isps", target_country) is not None
+                in_evomi = _get_isp_from_db("evomi_isps", target_country) is not None
+                
+                if in_nodemaven:
+                    pass
+                elif in_evomi:
+                    if provider == "nodemaven":
+                        provider = "evomi_premium"
+                else:
+                    geo["country"] = "us"
+            else:
+                geo["country"] = "us"
+
         isp_code = None
         if use_high_speed and geo.get("country"):
             if provider == "nodemaven":

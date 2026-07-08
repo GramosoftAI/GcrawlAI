@@ -1,6 +1,6 @@
 import logging
 from typing import Tuple, Optional, Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote, quote, parse_qsl, urlencode
 import primp
 
 logger = logging.getLogger(__name__)
@@ -18,9 +18,9 @@ _HEADERS = {
 }
 
 # (connect_timeout, read_timeout) — fail fast on dead hosts
-_SITEMAP_TIMEOUT: Tuple[int, int] = (5, 8)   # sitemap XML fetches
-_PAGE_TIMEOUT:    Tuple[int, int] = (5, 10)  # homepage HTML fetch
-_ROBOTS_TIMEOUT:  Tuple[int, int] = (5, 5)   # robots.txt is tiny
+_SITEMAP_TIMEOUT: Tuple[int, int] = (3, 4)   # sitemap XML fetches
+_PAGE_TIMEOUT:    Tuple[int, int] = (3, 4)  # homepage HTML fetch
+_ROBOTS_TIMEOUT:  Tuple[int, int] = (3, 3)   # robots.txt is tiny
 
 MAX_URLS        = 5_000   # stop extracting once this many unique URLs are collected
 _MAX_WORKERS    = 8       # parallel threads for child sitemap fetching
@@ -86,9 +86,15 @@ def _same_host(url: str, base_url: str) -> bool:
 
 
 def _clean_url(url: str) -> str:
-    """Strip query string, fragment, .html extension and normalise trailing slash."""
-    p = urlparse(url)
-    path = p.path
+    """
+    Normalize trailing slash, .html extension, and convert non-ASCII chars to uppercase percent-encoding.
+    Filters out tracking parameters while keeping critical routing query parameters (e.g. node, id, page).
+    """
+    # First decode any existing encoding to clean characters
+    unquoted = unquote(url)
+    p = urlparse(unquoted)
+    path = p.path.lower()
+    
     # Strip .html extension (Firecrawl normalises these away)
     if path.endswith(".html"):
         path = path[:-5]  # "/about/about.html" → "/about/about"
@@ -96,7 +102,30 @@ def _clean_url(url: str) -> str:
         path = path.rstrip("/")
     if not path:
         path = "/"
-    return f"{p.scheme}://{p.netloc}{path}".lower()
+        
+    # Quote the path back to standard UPPERCASE percent-encoding (ASCII safe)
+    # We pass safe="/" so that path slashes are preserved
+    quoted_path = quote(path, safe="/")
+    
+    # Filter query parameters to drop tracking params while keeping routing/functional params
+    tracking_params = {
+        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+        "gclid", "fbclid", "ie", "sprefix", "sr", "qid", "crid"
+    }
+    
+    query_str = ""
+    if p.query:
+        qsl = parse_qsl(p.query)
+        filtered = []
+        for k, v in qsl:
+            kl = k.lower()
+            if kl in tracking_params or kl.startswith("ref_") or kl.startswith("ref"):
+                continue
+            filtered.append((k, v))
+        if filtered:
+            query_str = "?" + urlencode(filtered)
+            
+    return f"{p.scheme}://{p.netloc.lower()}{quoted_path}{query_str}"
 
 
 def _is_page_url(url: str) -> bool:
