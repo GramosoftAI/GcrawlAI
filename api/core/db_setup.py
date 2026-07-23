@@ -93,13 +93,20 @@ class DatabaseSetup:
         user = user or "postgres"
         password = password or ""
 
-        return psycopg2.connect(
+        conn = psycopg2.connect(
             host=host,
             port=port,
             database=database,
             user=user,
             password=password
         )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to set session timezone to Asia/Kolkata: {e}")
+        return conn
 
     def execute_query(self, query: str, params: Optional[tuple] = None, commit: bool = True) -> bool:
         """Helper to safely execute a SQL query"""
@@ -212,12 +219,30 @@ class DatabaseSetup:
             url_affected TEXT NOT NULL,
             issue_related_to TEXT[] NOT NULL,
             explanation TEXT NOT NULL,
-            email TEXT,
+            email TEXT NOT NULL,
+            user_id VARCHAR(255),
+            status VARCHAR(50) NOT NULL DEFAULT 'Pending',
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_reported_issues_created_at ON reported_issues(created_at);
         """
-        return self.execute_query(query)
+        success = self.execute_query(query)
+        if success:
+            conn = None
+            try:
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);")
+                cursor.execute("ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'Pending';")
+                cursor.execute("ALTER TABLE reported_issues ALTER COLUMN email SET NOT NULL;")
+                conn.commit()
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Failed to run migration query for reported_issues table: {e}")
+            finally:
+                if conn:
+                    conn.close()
+        return success
 
     def create_api_keys_table(self) -> bool:
         """Create api_keys table and indexes"""
@@ -278,6 +303,28 @@ class DatabaseSetup:
         """
         return self.execute_query(query)
 
+    def create_admin_error_logs_table(self) -> bool:
+        """Create admin_error_logs table and indexes"""
+        query = """
+        CREATE TABLE IF NOT EXISTS admin_error_logs (
+            id SERIAL PRIMARY KEY,
+            log_id VARCHAR(64) NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            source_tool VARCHAR(50) NOT NULL,
+            target_domain TEXT NOT NULL,
+            error_type VARCHAR(100) NOT NULL,
+            severity VARCHAR(50) NOT NULL,
+            proxy_ip TEXT,
+            error_details TEXT,
+            request_params JSONB,
+            stack_trace TEXT,
+            user_id VARCHAR(255)
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_error_logs_log_id ON admin_error_logs(log_id);
+        CREATE INDEX IF NOT EXISTS idx_admin_error_logs_created_at ON admin_error_logs(timestamp DESC);
+        """
+        return self.execute_query(query)
+
     def create_job_results_table(self) -> bool:
         """Create job_results table (partitioned by range on created_at) and daily partition shards"""
         create_table_query = """
@@ -297,25 +344,53 @@ class DatabaseSetup:
             cursor.execute(create_table_query)
             
             # Pre-create daily partitions for yesterday, today, and the next 10 days
-            for i in range(-2, 11):
-                d = (datetime.datetime.now() + datetime.timedelta(days=i)).date()
-                d_next = d + datetime.timedelta(days=1)
-                part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
+            try:
+                for i in range(-2, 11):
+                    d = (datetime.datetime.now() + datetime.timedelta(days=i)).date()
+                    d_next = d + datetime.timedelta(days=1)
+                    part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
+                    
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {part_name} PARTITION OF job_results 
+                        FOR VALUES FROM ('{d.strftime('%Y-%m-%d')} 00:00:00+05:30') TO ('{d_next.strftime('%Y-%m-%d')} 00:00:00+05:30')
+                    """)
+                    cursor.execute(f"""
+                        ALTER TABLE {part_name} SET (
+                            autovacuum_vacuum_scale_factor = 0.01,
+                            autovacuum_analyze_scale_factor = 0.01,
+                            autovacuum_vacuum_cost_delay = 2,
+                            autovacuum_vacuum_threshold = 50
+                        )
+                    """)
+                conn.commit()
+            except Exception as partition_err:
+                conn.rollback()
+                logger.warning(f"⚠ Partition creation failed ({partition_err}). Dropping job_results table to re-align timezone partitions...")
+                cursor.execute("DROP TABLE IF EXISTS job_results CASCADE;")
+                conn.commit()
                 
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {part_name} PARTITION OF job_results 
-                    FOR VALUES FROM ('{d.strftime('%Y-%m-%d')}') TO ('{d_next.strftime('%Y-%m-%d')}')
-                """)
-                cursor.execute(f"""
-                    ALTER TABLE {part_name} SET (
-                        autovacuum_vacuum_scale_factor = 0.01,
-                        autovacuum_analyze_scale_factor = 0.01,
-                        autovacuum_vacuum_cost_delay = 2,
-                        autovacuum_vacuum_threshold = 50
-                    )
-                """)
+                # Re-create table and retry partition registration
+                cursor.execute(create_table_query)
+                for i in range(-2, 11):
+                    d = (datetime.datetime.now() + datetime.timedelta(days=i)).date()
+                    d_next = d + datetime.timedelta(days=1)
+                    part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
+                    
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {part_name} PARTITION OF job_results 
+                        FOR VALUES FROM ('{d.strftime('%Y-%m-%d')} 00:00:00+05:30') TO ('{d_next.strftime('%Y-%m-%d')} 00:00:00+05:30')
+                    """)
+                    cursor.execute(f"""
+                        ALTER TABLE {part_name} SET (
+                            autovacuum_vacuum_scale_factor = 0.01,
+                            autovacuum_analyze_scale_factor = 0.01,
+                            autovacuum_vacuum_cost_delay = 2,
+                            autovacuum_vacuum_threshold = 50
+                        )
+                    """)
+                conn.commit()
+                logger.info("✓ Re-created partitioned job_results table and partitions successfully after timezone alignment.")
                 
-            conn.commit()
             cursor.close()
             return True
         except Exception as e:
@@ -401,22 +476,44 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
-    def create_subscription_plans_table(self) -> bool:
-        """Create subscription_plans table and seed default pricing plans"""
-        create_table_query = """
-        CREATE TABLE IF NOT EXISTS subscription_plans (
+    def create_subscription_plans_tables(self) -> bool:
+        """Create monthly and yearly subscription plans tables and seed default pricing plans"""
+        drop_old_query = """
+        DROP TABLE IF EXISTS subscription_plans CASCADE;
+        DROP TABLE IF EXISTS monthly_subscription_plans CASCADE;
+        DROP TABLE IF EXISTS yearly_subscription_plans CASCADE;
+        """
+
+        create_monthly_query = """
+        CREATE TABLE IF NOT EXISTS monthly_subscription_plans (
             id SERIAL PRIMARY KEY,
             plan_name VARCHAR(100) UNIQUE NOT NULL,
             plan_key VARCHAR(100) UNIQUE NOT NULL,
             price VARCHAR(100) NOT NULL,
             credits_included INTEGER NOT NULL,
             max_concurrency INTEGER NOT NULL,
+            monthly_product_id VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
-        seed_query = """
-        INSERT INTO subscription_plans (plan_name, plan_key, price, credits_included, max_concurrency)
+        
+        create_yearly_query = """
+        CREATE TABLE IF NOT EXISTS yearly_subscription_plans (
+            id SERIAL PRIMARY KEY,
+            plan_name VARCHAR(100) UNIQUE NOT NULL,
+            plan_key VARCHAR(100) UNIQUE NOT NULL,
+            price VARCHAR(100) NOT NULL,
+            credits_included INTEGER NOT NULL,
+            max_concurrency INTEGER NOT NULL,
+            yearly_product_id VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        
+        seed_monthly_query = """
+        INSERT INTO monthly_subscription_plans (plan_name, plan_key, price, credits_included, max_concurrency)
         VALUES 
             ('Free', 'free', '$0/mo', 500, 2),
             ('Starter', 'starter', '$19/mo', 3000, 5),
@@ -424,23 +521,70 @@ class DatabaseSetup:
             ('Pro', 'pro', '$49/mo', 150000, 25)
         ON CONFLICT (plan_key) DO NOTHING;
         """
+        
+        seed_yearly_query = """
+        INSERT INTO yearly_subscription_plans (plan_name, plan_key, price, credits_included, max_concurrency)
+        VALUES 
+            ('Free', 'free', '$0/yr', 500, 2),
+            ('Starter', 'starter', '$190/yr', 36000, 5),
+            ('Growth', 'growth', '$290/yr', 600000, 15),
+            ('Pro', 'pro', '$490/yr', 1800000, 25)
+        ON CONFLICT (plan_key) DO NOTHING;
+        """
+        
         conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(create_table_query)
-            cursor.execute(seed_query)
+            cursor.execute(drop_old_query)
+            cursor.execute(create_monthly_query)
+            cursor.execute(create_yearly_query)
+            cursor.execute(seed_monthly_query)
+            cursor.execute(seed_yearly_query)
             conn.commit()
             cursor.close()
             return True
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"✗ Failed to create/seed subscription_plans: {e}", exc_info=True)
+            logger.error(f"✗ Failed to create/seed monthly/yearly subscription plans: {e}", exc_info=True)
             return False
         finally:
             if conn:
                 conn.close()
+    def create_custom_requests_table(self) -> bool:
+        """Create custom_requests table for storing public custom scraping requests"""
+        query = """
+        CREATE TABLE IF NOT EXISTS custom_requests (
+            id SERIAL PRIMARY KEY,
+            full_name VARCHAR(255) NOT NULL,
+            work_email VARCHAR(255) NOT NULL,
+            company VARCHAR(255),
+            expected_volume VARCHAR(100) NOT NULL,
+            request_type VARCHAR(100) NOT NULL,
+            target_websites TEXT NOT NULL,
+            description TEXT NOT NULL,
+            status VARCHAR(50) DEFAULT 'New',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(query)
+            conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"✗ Failed to create custom_requests table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
 
     def create_payment_tables(self) -> bool:
         """Create billing and plans tables (user_plans, payment_requests, plan_expiry, subscriptions)"""
@@ -450,9 +594,7 @@ class DatabaseSetup:
                 id BIGSERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
                 plan_type VARCHAR(50) NOT NULL DEFAULT 'free',
-                total_requests BIGINT NOT NULL,
                 used_requests BIGINT NOT NULL DEFAULT 0,
-                concurrency_limit INTEGER NOT NULL DEFAULT 2,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id)
             );
@@ -506,6 +648,11 @@ class DatabaseSetup:
             cursor = conn.cursor()
             for q in queries:
                 cursor.execute(q)
+            
+            # Drop obsolete columns from user_plans if they exist
+            cursor.execute("ALTER TABLE user_plans DROP COLUMN IF EXISTS total_requests;")
+            cursor.execute("ALTER TABLE user_plans DROP COLUMN IF EXISTS concurrency_limit;")
+            
             conn.commit()
             
             # Post-check: ensure all existing users are assigned a free plan limits entry
@@ -516,8 +663,8 @@ class DatabaseSetup:
                 cursor.execute("SELECT id FROM user_plans WHERE user_id = %s", (uid,))
                 if not cursor.fetchone():
                     cursor.execute("""
-                        INSERT INTO user_plans (user_id, plan_type, total_requests, used_requests, concurrency_limit)
-                        VALUES (%s, 'free', 500, 0, 2)
+                        INSERT INTO user_plans (user_id, plan_type, used_requests)
+                        VALUES (%s, 'free', 0)
                     """, (uid,))
                     cursor.execute("""
                         INSERT INTO plan_expiry (user_id, plan_type, subscript_type, expiry_date, is_active)
@@ -736,12 +883,14 @@ class DatabaseSetup:
         if not self.create_job_results_table(): return False
         if not self.create_activity_logs_table(): return False
         if not self.create_reported_issues_table(): return False
+        if not self.create_admin_error_logs_table(): return False
 
         # 4. System config & payment tables
         if not self.create_api_endpoints_table(): return False
-        if not self.create_subscription_plans_table(): return False
+        if not self.create_subscription_plans_tables(): return False
         if not self.create_payment_tables(): return False
         if not self.create_isp_tables(): return False
+        if not self.create_custom_requests_table(): return False
 
         # 5. Dynamic population of ISP config tables (conditional)
         self.populate_isps_if_keys_exist()
@@ -750,13 +899,14 @@ class DatabaseSetup:
         return True
 
     def verify_tables_exist(self) -> bool:
-        """Verify existence of all 19 target system database tables"""
+        """Verify existence of all 20 target system database tables"""
         required_tables = [
             'users', 'signup_otps', 'crawl_jobs', 'crawl_artifacts', 
             'reported_issues', 'api_keys', 'crawl_errors', 'activity_logs', 
             'job_results', 'search_jobs', 'search_errors', 'api_endpoints', 
-            'subscription_plans', 'user_plans', 'payment_requests', 
-            'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps'
+            'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
+            'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
+            'admin_error_logs', 'custom_requests'
         ]
         
         verify_query = """
@@ -795,8 +945,9 @@ class DatabaseSetup:
         tables = [
             'signup_otps', 'users', 'crawl_jobs', 'crawl_artifacts', 'reported_issues', 
             'api_keys', 'crawl_errors', 'activity_logs', 'job_results', 'search_jobs', 
-            'search_errors', 'api_endpoints', 'subscription_plans', 'user_plans', 
-            'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps'
+            'search_errors', 'api_endpoints', 'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
+            'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
+            'admin_error_logs', 'custom_requests'
         ]
         
         conn = None

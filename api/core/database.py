@@ -41,10 +41,10 @@ def get_pooled_connection(max_retries: int = 3):
         try:
             conn = _db_pool.getconn()
             
-            # Execute a lightweight query to verify the connection is active and stable.
-            # This detects stale/closed SSL connections before yielding them to the caller.
+            # Set connection timezone to Asia/Kolkata (IST).
+            # This also serves as a lightweight health check to verify the connection is active.
             with conn.cursor() as test_cursor:
-                test_cursor.execute("SELECT 1")
+                test_cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
             
             # Connection is valid, exit the retry loop
             break
@@ -153,6 +153,19 @@ def update_activity_log_time(job_id: str, time_taken: str) -> None:
     except Exception as e:
         logger.error(f"Failed to update activity log time for job {job_id}: {e}")
 
+def update_activity_log_status(job_id: str, status: str) -> None:
+    """Update the status column for a specific job in the activity_logs table"""
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE activity_logs SET status = %s WHERE job_id = %s",
+                    (status.upper(), job_id)
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update activity log status for job {job_id}: {e}")
+
 import json
 
 def upsert_job_result(job_id: str, payload: dict, user_id: str = None) -> None:
@@ -233,10 +246,16 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
             
         with get_pooled_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT total_requests, used_requests FROM user_plans WHERE user_id = %s",
-                    (db_user_id,)
-                )
+                cursor.execute("""
+                    SELECT 
+                        CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                        u.used_requests
+                    FROM user_plans u
+                    LEFT JOIN plan_expiry e ON u.user_id = e.user_id
+                    LEFT JOIN monthly_subscription_plans ms ON u.plan_type = ms.plan_key
+                    LEFT JOIN yearly_subscription_plans ys ON u.plan_type = ys.plan_key
+                    WHERE u.user_id = %s
+                """, (db_user_id,))
                 row = cursor.fetchone()
                 if row:
                     total, used = row[0], row[1]

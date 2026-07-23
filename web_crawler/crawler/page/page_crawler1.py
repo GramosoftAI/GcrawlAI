@@ -142,11 +142,13 @@ def _store_crawl_artifact(
 
 
 def _record_crawl_error(
-    crawl_id: Optional[str],
+    crawl_id: str,
     url: str,
     error_source: str,
     reason: str,
-    blocked_message: Optional[str] = None,
+    blocked_message: str,
+    proxy_attempts: Optional[list] = None,
+    request_params: Optional[dict] = None
 ) -> None:
     """
     Insert a row into crawl_errors table.
@@ -161,16 +163,18 @@ def _record_crawl_error(
 
         # 2. Record to DB
     conn = None
+    user_id = None
+    crawl_mode = None
     try:
         conn = _get_db_conn()
         cur = conn.cursor()
         
-        # Look up user_id from crawl_jobs
-        user_id = None
-        cur.execute("SELECT user_id FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
+        # Look up user_id and crawl_mode from crawl_jobs
+        cur.execute("SELECT user_id, crawl_mode FROM crawl_jobs WHERE crawl_id = %s", (crawl_id,))
         row = cur.fetchone()
         if row:
             user_id = row[0]
+            crawl_mode = row[1]
             
         cur.execute(
             """
@@ -191,6 +195,82 @@ def _record_crawl_error(
                 conn.close()
             except Exception:
                 pass
+
+    # 3. Log to admin error logs
+    try:
+        from api.core.admin_logger import log_admin_error, resolve_proxy_ips_for_attempts
+        
+        # Determine target domain
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc if parsed.netloc else url
+        
+        # Classify error type and severity
+        err_msg = (blocked_message or "").lower()
+        if any(kw in err_msg for kw in ["captcha", "block", "cloudflare", "datadome", "forbidden", "403"]):
+            error_type = "Anti-bot Block"
+            severity = "Critical"
+        elif any(kw in err_msg for kw in ["timeout", "navigation timeout", "page load timeout"]):
+            error_type = "JS Timeout"
+            severity = "Error"
+        elif any(kw in err_msg for kw in ["rate limit", "429", "too many requests"]):
+            error_type = "Rate Limit"
+            severity = "Warning"
+        elif any(kw in err_msg for kw in ["proxy", "tunnel", "proxy connection", "proxy auth"]):
+            error_type = "Proxy Error"
+            severity = "Critical"
+        elif any(kw in err_msg for kw in ["ssl", "tls", "cert", "handshake"]):
+            error_type = "TLS Handshake"
+            severity = "Error"
+        else:
+            error_type = "Internal Error"
+            severity = "Error"
+
+        # Resolve proxy IPs for all attempts
+        resolved_proxies_str = resolve_proxy_ips_for_attempts(proxy_attempts or [])
+
+        # Build request parameters summary
+        if not request_params:
+            request_params = {
+                "url": url,
+                "error_source": error_source,
+                "reason": reason
+            }
+
+        # Retrieve stack trace if any exception active, otherwise capture execution call stack
+        import sys
+        import traceback
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        if exc_traceback:
+            stack_trace = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        else:
+            stack_trace = "".join(traceback.format_stack())
+
+        # Determine source_tool from crawl_mode
+        source_tool = "Crawl"
+        if crawl_mode == "single":
+            source_tool = "Scrape"
+        elif crawl_mode == "all":
+            source_tool = "Crawl"
+        elif crawl_mode == "links":
+            source_tool = "Links"
+        elif crawl_mode == "screenshot":
+            source_tool = "Screenshot"
+
+        log_admin_error(
+            log_id=crawl_id,
+            source_tool=source_tool,
+            target_domain=domain,
+            error_type=error_type,
+            severity=severity,
+            error_details=f"{reason} | {blocked_message}",
+            request_params=request_params,
+            stack_trace=stack_trace,
+            proxy_ip=resolved_proxies_str,
+            user_id=user_id
+        )
+    except Exception as log_err:
+        logger.warning(f"⚠ Could not write to admin_error_logs: {log_err}")
 
 
 def _send_crawl_error_notification(

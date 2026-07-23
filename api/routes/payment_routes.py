@@ -1,724 +1,370 @@
+import os
 from fastapi import APIRouter, HTTPException, Depends, Request, Header
-
-
-
 from pydantic import BaseModel, Field
-
-
-
 from typing import Dict, Any, Optional
-
-
-
 import psycopg2
-
-
-
 from psycopg2.extras import RealDictCursor
-
-
-
 from datetime import datetime, timedelta
-
-
-
 import logging
-
-
-
-
-
-
-
 from api.routes.api_key_routes import get_db_connection, get_current_user_from_token
-
-
-
-
-
-
+from dodopayments import AsyncDodoPayments
 
 logger = logging.getLogger(__name__)
 
-
-
-
-
-
-
 router = APIRouter(prefix="/payment", tags=["Payments"])
-
-
-
-
-
-
 
 # Plan Definitions
 
-
-
-PLAN_LIMITS = {
-
-
-
-    "free": {"requests": 500, "concurrency": 2},
-
-
-
-    "starter": {"requests": 30000, "concurrency": 5},
-
-
-
-    "growth": {"requests": 50000, "concurrency": 15},
-
-
-
-    "pro": {"requests": 150000, "concurrency": 25}
-
-
-
-}
-
-
-
-
-
-
-
-class DummyUpgradeRequest(BaseModel):
-
-
-
+class CheckoutSessionRequest(BaseModel):
+    product_id: str = Field(..., description="Dodo Payments product ID")
     plan_type: str = Field(..., description="Plan name (e.g. starter, growth, pro)")
-
-
-
     billing_cycle: str = Field(..., description="Billing cycle: MONTHLY or YEARLY")
+    return_url: Optional[str] = Field(None, description="Dynamic redirect URL after successful payment")
 
 
-
-    amount: float = Field(..., description="Amount paid in USD")
-
-
-
-
-
-
-
-@router.post("/dummy-upgrade")
-
-
-
-async def dummy_upgrade_plan(
-
-
-
-    request: DummyUpgradeRequest,
-
-
-
+@router.post("/create-checkout-session")
+async def create_checkout_session(
+    request: CheckoutSessionRequest,
     current_user: Dict[str, Any] = Depends(get_current_user_from_token)
-
-
-
 ):
-
-
-
     """
-
-
-
-    Dummy endpoint to simulate payment and plan upgrade.
-
-
-
-    Updates the database with the new plan and credit limits.
-
-
-
+    Creates a Dodo Payments checkout session and returns the checkout URL.
     """
-
-
+    api_key = os.getenv("DODO_PAYMENTS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Dodo Payments API Key is not configured.")
 
     plan = request.plan_type.lower()
-
-
-
     cycle = request.billing_cycle.upper()
 
-
-
-    
-
-
-
     if cycle not in ["MONTHLY", "YEARLY"]:
-
-
-
         raise HTTPException(status_code=400, detail="Invalid billing cycle. Must be MONTHLY or YEARLY")
 
-
-
-        
-
-
-
     user_id = current_user.get('user_id')
+    user_email = current_user.get('email')
 
-
-
-    
-
-
-
-    conn = None
-
-
+    # Resolve return URL dynamically or use default
+    target_return_url = request.return_url or "https://gcrawlai.com/summary?payment=success"
 
     try:
-
-
-
-        conn = get_db_connection()
-
-
-
-        cursor = conn.cursor()
-
-
-
-        
-
-
-
-        # Query target plan specifications dynamically from subscription_plans
-
-
-
-        cursor.execute("""
-
-
-
-            SELECT credits_included, max_concurrency 
-
-
-
-            FROM subscription_plans 
-
-
-
-            WHERE plan_key = %s
-
-
-
-        """, (plan,))
-
-
-
-        plan_row = cursor.fetchone()
-
-
-
-        if not plan_row:
-
-
-
-            cursor.close()
-
-
-
-            # Fetch valid plans to show in error message
-
-
-
-            cursor2 = conn.cursor()
-
-
-
-            cursor2.execute("SELECT plan_key FROM subscription_plans")
-
-
-
-            valid_keys = [r[0] for r in cursor2.fetchall()]
-
-
-
-            cursor2.close()
-
-
-
-            raise HTTPException(
-
-
-
-                status_code=400, 
-
-
-
-                detail=f"Invalid plan type. Must be one of: {valid_keys}"
-
-
-
-            )
-
-
-
-            
-
-
-
-        credits_val = plan_row[0]
-
-
-
-        concurrency_val = plan_row[1]
-
-
-
-        
-
-
-
-        # 1. Insert into payment_requests (Dummy Transaction)
-
-
-
-        cursor.execute("""
-
-
-
-            INSERT INTO payment_requests 
-
-
-
-            (user_id, plan_type, subscript_type, amount, currency, status)
-
-
-
-            VALUES (%s, %s, %s, %s, 'USD', 'success')
-
-
-
-        """, (user_id, plan, cycle, request.amount))
-
-
-
-        
-
-
-
-        # 2. Update or Insert into user_plans (UPSERT)
-
-
-
-        cursor.execute("""
-
-
-
-            INSERT INTO user_plans (user_id, plan_type, total_requests, used_requests, concurrency_limit, updated_at)
-
-
-
-            VALUES (%s, %s, %s, 0, %s, CURRENT_TIMESTAMP)
-
-
-
-            ON CONFLICT (user_id) DO UPDATE SET 
-
-
-
-                plan_type = EXCLUDED.plan_type, 
-
-
-
-                total_requests = EXCLUDED.total_requests, 
-
-
-
-                used_requests = EXCLUDED.used_requests, 
-
-
-
-                concurrency_limit = EXCLUDED.concurrency_limit,
-
-
-
-                updated_at = EXCLUDED.updated_at
-
-
-
-        """, (user_id, plan, credits_val, concurrency_val))
-
-
-
-        
-
-
-
-        # 3. Update or Insert into plan_expiry (UPSERT)
-
-
-
-        days = 30 if cycle == "MONTHLY" else 365
-
-
-
-        cursor.execute("""
-
-
-
-            INSERT INTO plan_expiry (user_id, plan_type, subscript_type, expiry_date, is_active, updated_at)
-
-
-
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP + interval '%s days', TRUE, CURRENT_TIMESTAMP)
-
-
-
-            ON CONFLICT (user_id) DO UPDATE SET
-
-
-
-                plan_type = EXCLUDED.plan_type,
-
-
-
-                subscript_type = EXCLUDED.subscript_type,
-
-
-
-                expiry_date = EXCLUDED.expiry_date,
-
-
-
-                is_active = EXCLUDED.is_active,
-
-
-
-                updated_at = EXCLUDED.updated_at
-
-
-
-        """, (user_id, plan, cycle, days))
-
-
-
-        
-
-
-
-        conn.commit()
-
-
-
-        cursor.close()
-
-
-
-        
-
-
-
-        logger.info(f"✅ User {user_id} successfully upgraded to {plan} ({cycle})")
-
-
-
-        
-
-
+        env = os.getenv("DODO_PAYMENTS_ENVIRONMENT")
+        if not env:
+            api_env = os.getenv("API_ENV", "development").lower()
+            env = "live_mode" if api_env == "production" else "test_mode"
+        client = AsyncDodoPayments(bearer_token=api_key, environment=env)
+        session = await client.checkout_sessions.create(
+            product_cart=[
+                {
+                    "product_id": request.product_id,
+                    "quantity": 1
+                }
+            ],
+            customer={
+                "email": user_email,
+            },
+            return_url=target_return_url,
+            metadata={
+                "user_id": str(user_id),
+                "plan_type": plan,
+                "billing_cycle": cycle
+            }
+        )
 
         return {
-
-
-
             "success": True,
-
-
-
-            "message": f"Successfully upgraded to {plan} plan.",
-
-
-
-            "new_limits": {
-
-
-
-                "total_requests": credits_val,
-
-
-
-                "concurrency": concurrency_val,
-
-
-
-                "expiry_days": days
-
-
-
-            }
-
-
-
+            "checkout_url": session.checkout_url,
+            "session_id": session.session_id
         }
 
+    except Exception as e:
+        logger.error(f"Error creating checkout session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create checkout session.")
 
 
+
+@router.get("/subscription-summary/{subscription_id}")
+async def get_subscription_summary(
+    subscription_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_from_token)
+):
+    """
+    Retrieves the billing and transaction details for a specific Subscription ID.
+    """
+    api_key = os.getenv("DODO_PAYMENTS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Dodo Payments API Key is not configured.")
+
+    try:
+        env = os.getenv("DODO_PAYMENTS_ENVIRONMENT")
+        if not env:
+            api_env = os.getenv("API_ENV", "development").lower()
+            env = "live_mode" if api_env == "production" else "test_mode"
+            
+        client = AsyncDodoPayments(bearer_token=api_key, environment=env)
         
-
-
+        # 1. Fetch subscription details
+        subscription = await client.subscriptions.retrieve(subscription_id)
+        
+        summary = {
+            "subscription_id": subscription_id,
+            "status": subscription.status,
+            "customer": {
+                "name": current_user.get("username"),
+                "email": current_user.get("email"),
+                "phone": None
+            },
+            "billing_address": None,
+            "amount_details": None
+        }
+        
+        # Update customer details from subscription object if they exist
+        if subscription.customer:
+            summary["customer"]["name"] = subscription.customer.name or summary["customer"]["name"]
+            summary["customer"]["email"] = subscription.customer.email or summary["customer"]["email"]
+            
+        # Extract billing address
+        if getattr(subscription, "billing", None):
+            b = subscription.billing
+            summary["billing_address"] = {
+                "street": getattr(b, "street", None),
+                "city": getattr(b, "city", None),
+                "state": getattr(b, "state", None),
+                "country": getattr(b, "country", None),
+                "zipcode": getattr(b, "zipcode", None)
+            }
+            
+        # 2. Fetch payments list to get amount details
+        payments_list = await client.payments.list(subscription_id=subscription_id)
+        if payments_list and payments_list.items:
+            latest_payment_summary = payments_list.items[0]
+            
+            # Retrieve full payment details to get billing address and tax breakdown
+            payment = await client.payments.retrieve(latest_payment_summary.payment_id)
+            
+            # Extract customer info from payment if available
+            if payment.customer:
+                summary["customer"]["name"] = payment.customer.name or summary["customer"]["name"]
+                summary["customer"]["email"] = payment.customer.email or summary["customer"]["email"]
+                summary["customer"]["phone"] = payment.customer.phone_number
+ 
+            # Extract billing address from payment if not set
+            if payment.billing and not summary["billing_address"]:
+                b = payment.billing
+                summary["billing_address"] = {
+                    "street": b.street,
+                    "city": b.city,
+                    "state": b.state,
+                    "country": b.country,
+                    "zipcode": b.zipcode
+                }
+ 
+            # Extract breakdown and convert cents to major currency unit
+            total = (payment.total_amount or 0) / 100
+            tax = (payment.tax or 0) / 100
+            subtotal = total - tax
+            
+            summary["amount_details"] = {
+                "subtotal": round(subtotal, 2),
+                "tax_gst": round(tax, 2),
+                "total": round(total, 2),
+                "currency": payment.currency
+            }
+            
+        return {
+            "success": True,
+            "data": summary
+        }
 
     except Exception as e:
+        logger.error(f"Error fetching subscription summary for {subscription_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch subscription summary.")
 
 
 
+@router.post("/webhook")
+async def dodo_webhook(
+    request: Request,
+    webhook_signature: str = Header(..., alias="webhook-signature")
+):
+    """
+    Webhook receiver for Dodo Payments.
+    Verifies the signature and updates the user plan when checkout completes.
+    """
+    webhook_secret = os.getenv("DODO_PAYMENTS_WEBHOOK_SECRET")
+    if not webhook_secret:
+        logger.error("Dodo Payments Webhook Secret is not configured.")
+        raise HTTPException(status_code=500, detail="Webhook Secret is not configured.")
+
+    payload = await request.body()
+    payload_str = payload.decode("utf-8")
+
+    # 1. Verify and Parse Webhook Event
+    try:
+        api_key = os.getenv("DODO_PAYMENTS_API_KEY") or "dummy"
+        env = os.getenv("DODO_PAYMENTS_ENVIRONMENT")
+        if not env:
+            api_env = os.getenv("API_ENV", "development").lower()
+            env = "live_mode" if api_env == "production" else "test_mode"
+        client = AsyncDodoPayments(bearer_token=api_key, environment=env)
+        # Note: We must convert headers to a plain dict for the verify helper
+        headers = dict(request.headers)
+        event = client.webhooks.unwrap(payload_str, headers=headers, key=webhook_secret)
+        
+        # Convert Pydantic object to dict for safe access
+        if hasattr(event, "model_dump"):
+            event_dict = event.model_dump()
+        else:
+            event_dict = event.dict()
+    except Exception as verify_err:
+        logger.warning(f"Webhook verification failed: {verify_err}")
+        raise HTTPException(status_code=400, detail="Invalid signature or payload")
+
+    event_type = event_dict.get("type")
+    if event_type != "payment.succeeded":
+        # Return 200 OK so Dodo Payments knows we received it, even if we ignore it
+        return {"success": True, "message": f"Ignored event type: {event_type}"}
+
+    data = event_dict.get("data", {})
+    metadata = data.get("metadata", {}) or {}
+    
+    user_id = metadata.get("user_id")
+    plan = metadata.get("plan_type")
+    cycle = metadata.get("billing_cycle")
+    
+    # Convert amount from cents to USD
+    amount = data.get("total_amount", 0) / 100
+
+    if not user_id or not plan or not cycle:
+        logger.error(f"Webhook metadata missing: user_id={user_id}, plan={plan}, cycle={cycle}")
+        raise HTTPException(status_code=400, detail="Missing required metadata")
+
+    plan = plan.lower()
+    cycle = cycle.upper()
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Query target plan specifications dynamically from subscription_plans
+        if cycle == 'YEARLY':
+            cursor.execute("SELECT credits_included, max_concurrency FROM yearly_subscription_plans WHERE plan_key = %s", (plan,))
+        else:
+            cursor.execute("SELECT credits_included, max_concurrency FROM monthly_subscription_plans WHERE plan_key = %s", (plan,))
+        plan_row = cursor.fetchone()
+        if not plan_row:
+            logger.error(f"Invalid plan type '{plan}' received in webhook metadata.")
+            raise HTTPException(status_code=400, detail=f"Invalid plan type: {plan}")
+
+        credits_val = plan_row[0]
+        concurrency_val = plan_row[1]
+
+        # 1. Insert into payment_requests (Transaction Log)
+        cursor.execute("""
+            INSERT INTO payment_requests 
+            (user_id, plan_type, subscript_type, amount, currency, status)
+            VALUES (%s, %s, %s, %s, 'USD', 'success')
+        """, (user_id, plan, cycle, amount))
+
+        # 2. Update or Insert into user_plans (UPSERT)
+        cursor.execute("""
+            INSERT INTO user_plans (user_id, plan_type, used_requests, updated_at)
+            VALUES (%s, %s, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) DO UPDATE SET 
+                plan_type = EXCLUDED.plan_type, 
+                used_requests = EXCLUDED.used_requests, 
+                updated_at = EXCLUDED.updated_at
+        """, (user_id, plan))
+
+        # 3. Update or Insert into plan_expiry (UPSERT)
+        days = 30 if cycle == "MONTHLY" else 365
+        cursor.execute("""
+            INSERT INTO plan_expiry (user_id, plan_type, subscript_type, expiry_date, is_active, updated_at)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP + (%s * interval '1 day'), TRUE, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) DO UPDATE SET
+                plan_type = EXCLUDED.plan_type,
+                subscript_type = EXCLUDED.subscript_type,
+                expiry_date = EXCLUDED.expiry_date,
+                is_active = EXCLUDED.is_active,
+                updated_at = EXCLUDED.updated_at
+        """, (user_id, plan, cycle, days))
+
+        conn.commit()
+        cursor.close()
+
+        logger.info(f"✅ User {user_id} successfully upgraded to {plan} ({cycle}) via Dodo Payments Webhook")
+        return {"success": True, "message": f"Successfully upgraded user {user_id} to {plan} plan."}
+
+    except Exception as e:
         if conn:
-
-
-
             conn.rollback()
-
-
-
-        logger.error(f"Error processing dummy payment: {e}", exc_info=True)
-
-
-
-        raise HTTPException(status_code=500, detail="Failed to process payment upgrade.")
-
-
-
+        logger.error(f"Error processing webhook database update: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to process webhook upgrade.")
     finally:
-
-
-
         if conn:
-
-
-
             conn.close()
-
-
-
-
-
-
 
 @router.get("/my-plan")
 
-
-
 async def get_my_plan(
-
-
-
     request: Request,
-
-
-
     authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
-
-
-
     x_api_key: Optional[str] = Header(None, alias="X-API-Key", description="API key for client access")
-
-
 
 ):
 
-
-
     """
-
-
-
     Fetch the active subscription plan, request limits, and expiration date for the authenticated user.
-
-
-
     """
-
-
-
     from api.core.security import validate_recaptcha_or_jwt
 
-
-
-
-
-
-
     try:
-
-
-
         user_id = validate_recaptcha_or_jwt(
-
-
-
             auth_header=authorization,
-
-
-
             recaptcha_header=None,
-
-
-
             api_key_header=x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
-
-
-
         )
 
-
-
     except Exception as e:
-
-
-
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
-
-
-
-
-
-
-
     conn = None
-
-
-
     try:
-
-
-
         conn = get_db_connection()
-
-
-
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-
-
-        
-
-
-
         cursor.execute("""
-
-
-
-            SELECT p.plan_type, p.total_requests, p.used_requests, e.expiry_date, e.subscript_type
-
-
-
+            SELECT p.plan_type, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                   p.used_requests, e.expiry_date, e.subscript_type
             FROM user_plans p
-
-
-
             LEFT JOIN plan_expiry e ON p.user_id = e.user_id
-
-
-
+            LEFT JOIN monthly_subscription_plans ms ON p.plan_type = ms.plan_key
+            LEFT JOIN yearly_subscription_plans ys ON p.plan_type = ys.plan_key
             WHERE p.user_id = %s
-
-
-
         """, (user_id,))
 
-
-
-        
-
-
-
         result = cursor.fetchone()
-
-
-
         cursor.close()
 
-
-
-        
-
-
-
         if not result:
-
-
-
             raise HTTPException(status_code=404, detail="Plan details not found for this user.")
 
-
-
-            
-
-
-
         return {
-
-
-
             "plan_type": result["plan_type"],
-
-
-
             "total_requests": result["total_requests"],
-
-
-
             "used_requests": result["used_requests"],
-
-
-
             "expiry_date": result["expiry_date"].isoformat() if result["expiry_date"] else None,
-
-
-
             "subscript_type": result["subscript_type"]
-
-
-
         }
 
-
-
-        
-
-
-
     except HTTPException:
-
-
-
         raise
 
-
-
     except Exception as e:
-
-
-
         logger.error(f"Error fetching user plan details: {e}", exc_info=True)
-
-
-
         raise HTTPException(status_code=500, detail="Failed to fetch plan details.")
 
-
-
     finally:
-
-
-
         if conn:
-
-
-
             conn.close()
-
-
 

@@ -106,9 +106,10 @@ def crawl_website(
         
         # Add task metadata
         summary['task_id'] = task_id
-        summary['status'] = 'completed'
+        if summary.get('status') != 'failed':
+            summary['status'] = 'completed'
 
-        from api.core.database import get_pooled_connection
+        from api.core.database import get_pooled_connection, update_activity_log_status, update_activity_log_time
         from datetime import datetime
         try:
             with get_pooled_connection() as conn:
@@ -118,12 +119,18 @@ def crawl_website(
                         (datetime.now(), task_id)
                     )
                     if user_id and user_id != "demo":
-                        charge_amount = 1 if crawl_mode == "links" else config.max_pages
+                        charge_amount = 1 if crawl_mode == "links" else min(config.max_pages, summary.get("pages_crawled", 1))
                         cur.execute(
                             "UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s",
                             (charge_amount, user_id)
                         )
                 conn.commit()
+            
+            # Update activity log status and latency
+            status = "FAILED" if summary.get("status") == "failed" else "COMPLETED"
+            update_activity_log_status(task_id, status)
+            if summary.get("time_taken"):
+                update_activity_log_time(task_id, summary.get("time_taken"))
         except Exception as db_e:
             logger.error(f"Failed to update database records for task {task_id}: {db_e}")
 

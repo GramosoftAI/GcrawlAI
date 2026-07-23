@@ -145,6 +145,10 @@ class CloakCrawlerMixin:
                     return result
 
                 try:
+                    page.wait_for_load_state("networkidle", timeout=4000)
+                except:
+                    pass
+                try:
                     page.wait_for_selector("body", state="visible", timeout=5000)
                 except Exception as wait_err:
                     logger.warning(f"Error during initial wait: {wait_err}")
@@ -177,65 +181,156 @@ class CloakCrawlerMixin:
 
                 if self.config.js_render:
                     logger.info("[Stealth Layer] JS Rendering: Stabilizing dynamic DOM elements and triggering lazy-loaded assets before extraction.")
+                    
+                    # Move mouse to top-left corner (0, 0) to prevent triggering hover states/popups on page scroll
+                    try:
+                        page.mouse.move(0, 0)
+                    except Exception as mouse_err:
+                        logger.debug(f"Failed to move mouse to (0, 0) before scrolling: {mouse_err}")
+                        
                     if self.config.auto_scroll:
                         logger.info(f"Performing custom auto-scroll: delay={self.config.scroll_delay}ms, max_scrolls={self.config.max_scrolls}")
                         try:
-                            page.evaluate(
+                            # Allow page layout, scroll scripts, and animations to initialize and warm up fully
+                            page.wait_for_timeout(2000)
+                            
+                            metrics = page.evaluate(
                                 """
                                 async (args) => {
                                     const { delay, maxScrolls } = args;
-                                    let currentY = 0;
-                                    let stepCount = 0;
+                                    const metrics = {
+                                        initialScrollHeight: 0,
+                                        maxScrollPos: 0,
+                                        steps: [],
+                                        finalScrollY: 0
+                                    };
 
-                                    // Slow constant scroll speed: 600 pixels per second (extremely readable/slow)
-                                    const scrollSpeed = 600; 
-                                    const subStepDelay = 40; // 40ms interval (25 FPS smooth rendering)
-
-                                    while (stepCount < maxScrolls) {
-                                        const clientHeight = window.innerHeight;
-                                        const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-                                        const maxScrollPos = scrollHeight - clientHeight;
-
-                                        if (maxScrollPos <= 0) {
-                                            break;
-                                        }
-
-                                        const remainingSteps = maxScrolls - stepCount;
-                                        const targetY = Math.min(currentY + (maxScrollPos - currentY) / remainingSteps, maxScrollPos);
-                                        const startY = currentY;
-                                        const distance = targetY - startY;
-
-                                        // Slowly slide down from startY to targetY at 600px/second
-                                        if (distance > 0) {
-                                            const animDuration = (distance / scrollSpeed) * 1000; // in milliseconds
-                                            const subSteps = Math.max(1, Math.floor(animDuration / subStepDelay));
-                                            for (let i = 1; i <= subSteps; i++) {
-                                                const intermediateY = startY + (distance * (i / subSteps));
-                                                window.scrollTo({ top: Math.floor(intermediateY), behavior: 'auto' });
-                                                await new Promise(r => setTimeout(r, subStepDelay));
+                                    const getScrollContainer = () => {
+                                        const containers = [];
+                                        const all = document.querySelectorAll('*');
+                                        all.forEach(el => {
+                                            const computed = window.getComputedStyle(el);
+                                            if ((computed.overflowY === 'auto' || computed.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 50) {
+                                                containers.push(el);
                                             }
-                                        } else {
-                                            window.scrollTo({ top: targetY, behavior: 'auto' });
+                                        });
+                                        containers.sort((a, b) => b.scrollHeight - a.scrollHeight);
+                                        return containers[0] || null;
+                                    };
+
+                                    const container = getScrollContainer();
+
+                                    // Custom smooth scroll animation (immune to headless requestAnimationFrame throttling and event overloading)
+                                    const smoothScrollTo = (targetY, duration) => {
+                                        return new Promise(async (resolve) => {
+                                            const startY = container ? container.scrollTop : window.scrollY;
+                                            const difference = targetY - startY;
+                                            const startTime = performance.now();
+
+                                            if (difference === 0 || duration <= 0) {
+                                                if (container) {
+                                                    container.scrollTop = targetY;
+                                                } else {
+                                                    window.scrollTo(0, targetY);
+                                                }
+                                                resolve();
+                                                return;
+                                            }
+
+                                            // Limit steps dynamically to avoid layout thrashing and scroll-listener locks on slow scrolls
+                                            const maxSteps = 20;
+                                            const stepDelay = Math.max(30, Math.floor(duration / maxSteps));
+
+                                            while (true) {
+                                                const now = performance.now();
+                                                const progress = Math.min((now - startTime) / duration, 1);
+                                                
+                                                // Quadratic easing in/out
+                                                const ease = progress < 0.5 
+                                                    ? 2 * progress * progress 
+                                                    : -1 + (4 - 2 * progress) * progress;
+
+                                                const currentScrollVal = Math.floor(startY + difference * ease);
+                                                if (container) {
+                                                    container.scrollTop = currentScrollVal;
+                                                } else {
+                                                    window.scrollTo(0, currentScrollVal);
+                                                }
+
+                                                if (progress >= 1) {
+                                                    break;
+                                                }
+
+                                                await new Promise(r => setTimeout(r, stepDelay));
+                                            }
+                                            resolve();
+                                        });
+                                    };
+                                    
+                                    const initialScrollHeight = container ? container.scrollHeight : (document.documentElement.scrollHeight || document.body.scrollHeight);
+                                    const clientHeight = container ? container.clientHeight : window.innerHeight;
+                                    const initialMaxScrollPos = initialScrollHeight - clientHeight;
+                                    metrics.initialScrollHeight = initialScrollHeight;
+                                    metrics.maxScrollPos = initialMaxScrollPos;
+
+                                    if (maxScrolls > 0) {
+                                        let currentY = 0;
+                                        let stepCount = 0;
+
+                                        while (stepCount < maxScrolls) {
+                                            const currentClientHeight = container ? container.clientHeight : window.innerHeight;
+                                            const currentScrollHeight = container ? container.scrollHeight : (document.documentElement.scrollHeight || document.body.scrollHeight);
+                                            const maxScrollPos = currentScrollHeight - currentClientHeight;
+
+                                            if (maxScrollPos <= 0) {
+                                                break;
+                                            }
+
+                                            const remainingSteps = maxScrolls - stepCount;
+                                            const targetY = Math.min(currentY + (maxScrollPos - currentY) / remainingSteps, maxScrollPos);
+                                            
+                                            // Scroll to target position over the specified delay duration
+                                            await smoothScrollTo(Math.floor(targetY), delay);
+                                            metrics.steps.push({ step: stepCount, y: container ? container.scrollTop : window.scrollY });
+                                            
+                                            // Small stabilization wait after reaching the target
+                                            await new Promise(r => setTimeout(r, 300));
+
+                                            currentY = targetY;
+                                            stepCount++;
                                         }
 
-                                        currentY = targetY;
-                                        stepCount++;
-                                        
-                                        // Wait the full scroll_delay (e.g. 1500ms) at the target position to let content stabilize
-                                        await new Promise(r => setTimeout(r, delay));
+                                        // Wait at the final position to let count-up and transition animations finish fully
+                                        await new Promise(r => setTimeout(r, Math.max(1500, delay)));
+                                    } else {
+                                        // maxScrolls === 0: scroll from top to bottom directly
+                                        if (initialMaxScrollPos > 0) {
+                                            // Scroll to bottom over 2x delay duration (or at least 1500ms) for smooth coverage
+                                            const duration = Math.max(1500, delay * 2);
+                                            await smoothScrollTo(initialMaxScrollPos, duration);
+                                            metrics.steps.push({ step: 0, y: container ? container.scrollTop : window.scrollY });
+                                            
+                                            // Wait at the bottom to trigger lazy loaded items
+                                            await new Promise(r => setTimeout(r, 1500));
+                                        }
                                     }
-                                    
-                                    // A final clean scroll to absolute bottom (using native smooth scroll to finish slowly)
-                                    const finalScrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-                                    const finalMax = finalScrollHeight - window.innerHeight;
-                                    if (finalMax > 0 && window.scrollY < finalMax) {
-                                        window.scrollTo({ top: finalMax, behavior: 'smooth' });
-                                        await new Promise(r => setTimeout(r, 800));
+
+                                    metrics.finalScrollY = container ? container.scrollTop : window.scrollY;
+
+                                    // Always scroll back to the top fast (instantly) and wait a brief moment for headers to stabilize
+                                    if (container) {
+                                        container.scrollTop = 0;
+                                    } else {
+                                        window.scrollTo({ top: 0, behavior: 'auto' });
                                     }
+                                    await new Promise(r => setTimeout(r, 600));
+
+                                    return metrics;
                                 }
                                 """,
                                 {"delay": self.config.scroll_delay, "maxScrolls": self.config.max_scrolls}
                             )
+                            logger.info(f"Custom auto-scroll completed. Metrics: {metrics}")
                         except Exception as scroll_err:
                             logger.warning(f"Custom scroll failed: {scroll_err}")
                             if "Execution context was destroyed" in str(scroll_err) or "Target closed" in str(scroll_err):
@@ -270,4 +365,4 @@ class CloakCrawlerMixin:
                 except Exception as close_err:
                     logger.error(f"Failed to close browser during recycling: {close_err}")
                     
-            return None
+            return {"url": url, "error": str(e), "status_code": 500}

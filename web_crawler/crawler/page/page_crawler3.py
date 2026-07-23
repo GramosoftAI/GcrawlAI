@@ -127,6 +127,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
 
         result = None
         proxy_attempt_count = 0
+        proxy_attempts = []
 
         for idx, (provider_name, provider_id) in enumerate(providers):
             attempt = idx + 1
@@ -137,6 +138,29 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             if not use_high_speed:
                 logger.info(f"Disabling high-speed ISP targeting for provider {provider_name}.")
             
+            # Resolve proxy settings for recording
+            proxy_geo = getattr(self.config, "proxy_geo", None)
+            proxy_settings = self.proxy_manager.get_playwright_proxy(
+                target_url=url,
+                provider=provider_id,
+                use_high_speed=use_high_speed,
+                proxy_geo=proxy_geo
+            )
+            if proxy_settings:
+                proxy_attempts.append({
+                    "provider": provider_name,
+                    "server": proxy_settings.get("server", ""),
+                    "username": proxy_settings.get("username", ""),
+                    "password": proxy_settings.get("password", "")
+                })
+            else:
+                proxy_attempts.append({
+                    "provider": "Direct Connection",
+                    "server": "direct",
+                    "username": "",
+                    "password": ""
+                })
+
             result = self.crawl_with_cloakbrowser(
                 url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, provider_id,
                 use_high_speed=use_high_speed
@@ -175,12 +199,53 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
         except Exception as e:
             logger.error(f"Failed to send alert email for proxy exhaustion: {e}")
             
+        # Retrieve the original dynamic request payload from the config if available
+        request_params = getattr(self.config, "raw_payload", None)
+        if not request_params:
+            request_params = {
+                "url": url,
+                "proxy": {
+                    "geo": self.config.proxy_geo if self.config.proxy_geo else "IN"
+                },
+                "markdown": {
+                    "enabled": enable_md,
+                    "clean": getattr(self.config, "markdown_clean", True)
+                },
+                "html": {
+                    "enabled": enable_html,
+                    "clean": getattr(self.config, "html_clean", True),
+                    "remove_external_links": getattr(self.config, "html_remove_external_links", False),
+                    "relative_to_absolute_links": getattr(self.config, "html_relative_to_absolute_links", True),
+                    "remove_data_images": getattr(self.config, "html_remove_data_images", False),
+                    "ignore_tags": getattr(self.config, "html_ignore_tags", [])
+                },
+                "screenshot": {
+                    "enabled": enable_ss,
+                    "full_page": getattr(self.config, "screenshot_full_page", True),
+                    "format": getattr(self.config, "screenshot_format", "png"),
+                    "quality": getattr(self.config, "screenshot_quality", 90),
+                    "js_render": getattr(self.config, "js_render", True),
+                    "render_timeout": getattr(self.config, "render_timeout", 30000),
+                    "auto_scroll": getattr(self.config, "auto_scroll", True),
+                    "scroll_delay": getattr(self.config, "scroll_delay", 500),
+                    "max_scrolls": getattr(self.config, "max_scrolls", 10)
+                },
+                "seo": {
+                    "enabled": enable_seo
+                },
+                "images": {
+                    "enabled": enable_images
+                }
+            }
+
         _record_crawl_error(
             crawl_id=client_id,
             url=url,
             error_source="Crawler Orchestrator",
             reason=f"Exhausted all proxy providers without success.",
-            blocked_message=result.get("error") if result else "All attempts failed with no specific error message."
+            blocked_message=result.get("error") if result else "All attempts failed with no specific error message.",
+            proxy_attempts=proxy_attempts,
+            request_params=request_params
         )
         
         return result

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from web_crawler.search.search_engine import execute_search_router
 import uuid
 import pytz
+import json
 from datetime import datetime
 from api.core.database import get_pooled_connection
 
@@ -117,6 +118,23 @@ async def search(
         limit_val = search_req.limit if search_req.limit is not None else 10
         credits_to_deduct = (limit_val + 9) // 10
         increment_used_requests(user_id, amount=credits_to_deduct)
+
+        if not results:
+            try:
+                from api.core.admin_logger import log_admin_error
+                log_admin_error(
+                    log_id=search_id,
+                    source_tool="Search",
+                    target_domain=search_req.query,
+                    error_type="Anti-bot Block",
+                    severity="Warning",
+                    error_details="Search returned empty results. Potential search engine block or no matches.",
+                    request_params=json.loads(search_req.json()),
+                    proxy_ip="Nodemaven (Rotated)",
+                    user_id=user_id
+                )
+            except Exception as log_err:
+                logger.warning(f"Could not log search empty warning: {log_err}")
     except Exception as exc:
         logger.exception("Search route failed")
         from api.core.database import log_activity
@@ -136,6 +154,44 @@ async def search(
                 conn.commit()
         except Exception:
             pass
+            
+        try:
+            from api.core.admin_logger import log_admin_error
+            err_msg = str(exc).lower()
+            if any(kw in err_msg for kw in ["captcha", "block", "cloudflare", "forbidden", "403"]):
+                error_type = "Anti-bot Block"
+                severity = "Critical"
+            elif any(kw in err_msg for kw in ["timeout", "connection timeout"]):
+                error_type = "JS Timeout"
+                severity = "Error"
+            elif any(kw in err_msg for kw in ["rate limit", "429"]):
+                error_type = "Rate Limit"
+                severity = "Warning"
+            elif any(kw in err_msg for kw in ["proxy", "tunnel"]):
+                error_type = "Proxy Error"
+                severity = "Critical"
+            elif any(kw in err_msg for kw in ["ssl", "tls", "handshake"]):
+                error_type = "TLS Handshake"
+                severity = "Error"
+            else:
+                error_type = "Internal Error"
+                severity = "Error"
+
+            stack_trace = traceback.format_exc()
+            log_admin_error(
+                log_id=search_id,
+                source_tool="Search",
+                target_domain=search_req.query,
+                error_type=error_type,
+                severity=severity,
+                error_details=str(exc),
+                request_params=json.loads(search_req.json()),
+                stack_trace=stack_trace,
+                proxy_ip="Nodemaven (Rotated)",
+                user_id=user_id
+            )
+        except Exception as log_err:
+            logger.warning(f"Could not log search error to admin_error_logs: {log_err}")
             
         try:
             from api.core.config_setup import load_config

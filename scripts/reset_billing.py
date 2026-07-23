@@ -52,9 +52,7 @@ def reset_billing_and_free_plans():
             cursor.execute("""
                 UPDATE user_plans 
                 SET plan_type = 'free', 
-                    total_requests = 500, 
                     used_requests = 0, 
-                    concurrency_limit = 2,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = %s
             """, (uid,))
@@ -69,25 +67,30 @@ def reset_billing_and_free_plans():
             """, (uid,))
         
         # 2. Reset ALL Free Plans (Reset used_requests to 0 and set expiry to End of Month)
-        logger.info("Resetting all 'free' plans for the new calendar month...")
-        
-        # Reset limits
-        cursor.execute("""
-            UPDATE user_plans 
-            SET used_requests = 0,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE plan_type = 'free'
-        """)
-        
-        # Extend expiry to End of current month
-        cursor.execute("""
-            UPDATE plan_expiry 
-            SET expiry_date = date_trunc('month', CURRENT_TIMESTAMP) + interval '1 month' - interval '1 second',
-                is_active = TRUE,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE plan_type = 'free'
-        """)
-        
+        # ONLY run this part if today is the 1st of the month
+        today = datetime.now()
+        if today.day == 1:
+            logger.info("Today is the 1st of the month. Resetting all 'free' plans for the new calendar month...")
+            
+            # Reset limits
+            cursor.execute("""
+                UPDATE user_plans 
+                SET used_requests = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE plan_type = 'free'
+            """)
+            
+            # Extend expiry to End of current month
+            cursor.execute("""
+                UPDATE plan_expiry 
+                SET expiry_date = date_trunc('month', CURRENT_TIMESTAMP) + interval '1 month' - interval '1 second',
+                    is_active = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE plan_type = 'free'
+            """)
+        else:
+            logger.info(f"Today is {today.strftime('%Y-%m-%d')}. Skipping free plan monthly reset.")
+            
         conn.commit()
         logger.info("✅ Billing & Free Plan Reset completed successfully!")
         

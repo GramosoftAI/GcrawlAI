@@ -377,24 +377,10 @@ class AuthManager:
                 user_data = cursor.fetchone()
                 
                 # Fetch default Free plan limits from subscription_plans
-                cursor.execute("""
-                    SELECT credits_included, max_concurrency 
-                    FROM subscription_plans 
-                    WHERE plan_key = 'free'
-                """)
-                free_plan_row = cursor.fetchone()
-                if free_plan_row:
-                    default_credits = free_plan_row['credits_included']
-                    default_concurrency = free_plan_row['max_concurrency']
-                else:
-                    default_credits = 1000
-                    default_concurrency = 1
-                
-                # Assign Default "Free" Plan
-                cursor.execute("""
-                    INSERT INTO user_plans (user_id, plan_type, total_requests, used_requests, concurrency_limit)
-                    VALUES (%s, 'free', %s, 0, %s)
-                """, (user_data['user_id'], default_credits, default_concurrency))
+                cursor.execute("""
+                    INSERT INTO user_plans (user_id, plan_type, used_requests)
+                    VALUES (%s, 'free', 0)
+                """, (user_data['user_id'],))
                 
                 cursor.execute("""
                     INSERT INTO plan_expiry (user_id, plan_type, subscript_type, expiry_date, is_active)

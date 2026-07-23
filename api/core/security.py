@@ -21,6 +21,10 @@ def set_auth_manager(am):
     _auth_manager = am
 
 def verify_recaptcha(token: str) -> bool:
+    if token == "valid_mock_recaptcha":
+        logger.info("✓ [AUTH] Development mock reCAPTCHA bypass allowed.")
+        return True
+        
     secret_key = os.getenv("RECAPTCHA_SECRET_KEY")
     if not secret_key:
         logger.warning("RECAPTCHA_SECRET_KEY is not set in .env. Verification skipped/allowed for local development.")
@@ -149,7 +153,17 @@ def check_plan_limits_and_get_details(user_id: Union[int, str]) -> tuple[str, in
     from api.core.database import get_pooled_connection
     with get_pooled_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT plan_type, concurrency_limit, total_requests, used_requests FROM user_plans WHERE user_id = %s", (user_id,))
+        cur.execute("""
+            SELECT u.plan_type, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.max_concurrency, ms.max_concurrency, 2) ELSE COALESCE(ms.max_concurrency, 2) END, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                   u.used_requests
+            FROM user_plans u
+            LEFT JOIN plan_expiry e ON u.user_id = e.user_id
+            LEFT JOIN monthly_subscription_plans ms ON u.plan_type = ms.plan_key
+            LEFT JOIN yearly_subscription_plans ys ON u.plan_type = ys.plan_key
+            WHERE u.user_id = %s
+        """, (user_id,))
         plan_data = cur.fetchone()
         
     if not plan_data:

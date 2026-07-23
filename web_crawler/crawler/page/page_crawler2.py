@@ -279,7 +279,10 @@ class BasePageCrawler:
                         _store_crawl_artifact(client_id, "screenshot", screenshot_b64, content_kind="binary", page_url=url, title=page_title)
                         
                         from web_crawler.common.s3_utils import upload_to_s3
-                        s3_url = upload_to_s3(screenshot_bytes, client_id, f"{file_prefix}.jpg", "image/jpeg")
+                        fmt = self.config.screenshot_format.lower()
+                        ext = "png" if fmt == "png" else "jpg"
+                        content_type = "image/png" if fmt == "png" else "image/jpeg"
+                        s3_url = upload_to_s3(screenshot_bytes, client_id, f"{file_prefix}.{ext}", content_type)
                         return s3_url
                     except Exception as e:
                         logger.error(f"Screenshot Upload Error: {e}")

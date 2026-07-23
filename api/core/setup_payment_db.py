@@ -24,9 +24,7 @@ def setup_db():
                 id BIGSERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
                 plan_type VARCHAR(50) NOT NULL DEFAULT 'free',
-                total_requests BIGINT NOT NULL,
                 used_requests BIGINT NOT NULL DEFAULT 0,
-                concurrency_limit INTEGER NOT NULL DEFAULT 2,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id)
             );
@@ -79,6 +77,10 @@ def setup_db():
             );
         """)
 
+        # Drop obsolete columns from user_plans if they exist
+        cursor.execute("ALTER TABLE user_plans DROP COLUMN IF EXISTS total_requests;")
+        cursor.execute("ALTER TABLE user_plans DROP COLUMN IF EXISTS concurrency_limit;")
+
         print("Tables created successfully!")
         
         # Check existing users and assign free plan if they don't have one
@@ -90,8 +92,8 @@ def setup_db():
             if not cursor.fetchone():
                 print(f"Assigning free plan to existing user {uid}...")
                 cursor.execute("""
-                    INSERT INTO user_plans (user_id, plan_type, total_requests, used_requests, concurrency_limit)
-                    VALUES (%s, 'free', 500, 0, 2)
+                    INSERT INTO user_plans (user_id, plan_type, used_requests)
+                    VALUES (%s, 'free', 0)
                 """, (uid,))
                 
                 cursor.execute("""

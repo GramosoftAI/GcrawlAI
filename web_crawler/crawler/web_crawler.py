@@ -56,17 +56,13 @@ class WebCrawler:
         self.attempted_pages = 0
 
     def _effective_proxy_mode(self) -> str:
-        mode = (self.config.proxy_mode or "auto").strip().lower()
-        if mode in {"basic", "stealth", "enhanced", "auto"}:
-            return mode
         return "auto"
 
     def _initial_proxy_type(self) -> str:
         """
         In auto mode, start with basic and escalate later only if needed.
         """
-        mode = self._effective_proxy_mode()
-        return "basic" if mode == "auto" else mode
+        return "basic"
 
     def _crawl_worker(
         self,
@@ -258,15 +254,52 @@ class WebCrawler:
 
             pass
 
-            summary = {
-                "start_url": start_url,
-                "pages_crawled": 0,
-                "pages_failed": 0,
-                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
-                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
-                "crawl_mode": crawl_mode,
-                "links": discovered_urls,
-            }
+            error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
+            if not discovered_urls or len(discovered_urls) <= 1:
+                summary = {
+                    "start_url": start_url,
+                    "pages_crawled": 0,
+                    "pages_failed": 1,
+                    "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                    "crawl_mode": crawl_mode,
+                    "status": "failed",
+                    "error": error_msg,
+                    "links": []
+                }
+                
+                # Record links discovery error in DB tables
+                try:
+                    from web_crawler.crawler.page.page_crawler1 import _record_crawl_error
+                    proxy_attempts = []
+                    for p_name, p_id in providers:
+                        proxy_attempts.append({
+                            "provider": p_name,
+                            "error": "Failed to discover links (yielded <= 1 URL)"
+                        })
+                    
+                    request_params = getattr(self.config, "raw_payload", None)
+                    _record_crawl_error(
+                        crawl_id=client_id,
+                        url=start_url,
+                        error_source="Links Discoverer",
+                        reason="Exhausted all proxy providers without success.",
+                        blocked_message=error_msg,
+                        proxy_attempts=proxy_attempts,
+                        request_params=request_params
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to record links discovery error: {log_err}")
+            else:
+                summary = {
+                    "start_url": start_url,
+                    "pages_crawled": 0,
+                    "pages_failed": 0,
+                    "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                    "crawl_mode": crawl_mode,
+                    "links": discovered_urls,
+                }
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Map crawl finished")
@@ -411,6 +444,7 @@ class WebCrawler:
                 crawl_mode=crawl_mode
             )
 
+            error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
             if result and "error" not in result:
                 self.successful_pages = 1
 
@@ -445,6 +479,17 @@ class WebCrawler:
                             
                         summary["seo_md"] = result.get("seo_md")
                         summary["seo_xlsx_s3_url"] = result.get("seo_xlsx_s3_url")
+            else:
+                summary["status"] = "failed"
+                summary["error"] = error_msg
+                summary["html_content"] = None
+                summary["markdown_content"] = None
+                summary["screenshot_s3_url"] = None
+                summary["images_json"] = None
+                summary["seo_json"] = None
+                summary["seo_md"] = None
+                summary["seo_xlsx_s3_url"] = None
+                summary["links"] = []
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Single-page crawl finished")
@@ -524,39 +569,62 @@ class WebCrawler:
         # =========================================================
         elapsed = perf_counter() - start_perf
 
-        summary = {
-            "start_url": start_url,
-            "pages_attempted": self.attempted_pages,
-            "pages_crawled": self.successful_pages,
-            "pages_failed": len(self.failed),
-            "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
-            "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
-        }
-        
-        if enable_seo and self.pages_data:
-            try:
-                from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
-                writer = CrawlReportWriter(self.config.output_dir)
-                domain = urlparse(start_url).netloc
-                all_links_list = sorted(list(self.all_links))
-                
-                summary["seo_aggregated_json"] = json.loads(writer.render_json(self.pages_data, all_links_list))
-                summary["seo_aggregated_md"] = writer.render_markdown(domain, self.pages_data, all_links_list)
-                
-                from web_crawler.common.s3_utils import upload_to_s3
-                seo_excel_b64 = writer.render_excel_base64(self.pages_data)
-                seo_excel_url = upload_to_s3(
-                    base64.b64decode(seo_excel_b64),
-                    client_id if client_id else "unknown_crawl",
-                    f"{domain}_seo.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-                summary["seo_aggregated_xlsx_s3_url"] = seo_excel_url
-            except Exception as e:
-                logger.error(f"Failed to generate SEO report in memory: {e}")
+        error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
+        if self.successful_pages == 0:
+            summary = {
+                "start_url": start_url,
+                "pages_attempted": self.attempted_pages,
+                "pages_crawled": 0,
+                "pages_failed": len(self.failed) if len(self.failed) > 0 else 1,
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "status": "failed",
+                "error": error_msg,
+                "html_content": None,
+                "markdown_content": None,
+                "screenshot_s3_url": None,
+                "images_json": None,
+                "seo_json": None,
+                "seo_md": None,
+                "seo_xlsx_s3_url": None,
+                "links": []
+            }
+            # For all modes, if it fails completely (no successful pages), save it to DB
+            upsert_job_result(client_id, summary, str(user_id) if user_id else None)
+        else:
+            summary = {
+                "start_url": start_url,
+                "pages_attempted": self.attempted_pages,
+                "pages_crawled": self.successful_pages,
+                "pages_failed": len(self.failed),
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+            }
+            
+            if enable_seo and self.pages_data:
+                try:
+                    from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
+                    writer = CrawlReportWriter(self.config.output_dir)
+                    domain = urlparse(start_url).netloc
+                    all_links_list = sorted(list(self.all_links))
+                    
+                    summary["seo_aggregated_json"] = json.loads(writer.render_json(self.pages_data, all_links_list))
+                    summary["seo_aggregated_md"] = writer.render_markdown(domain, self.pages_data, all_links_list)
+                    
+                    from web_crawler.common.s3_utils import upload_to_s3
+                    seo_excel_b64 = writer.render_excel_base64(self.pages_data)
+                    seo_excel_url = upload_to_s3(
+                        base64.b64decode(seo_excel_b64),
+                        client_id if client_id else "unknown_crawl",
+                        f"{domain}_seo.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    summary["seo_aggregated_xlsx_s3_url"] = seo_excel_url
+                except Exception as e:
+                    logger.error(f"Failed to generate SEO report in memory: {e}")
 
-        if crawl_mode != "all":
-            upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
+            if crawl_mode != "all":
+                upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
 
         logger.info("✅ Crawl finished")
         logger.info(json.dumps(summary, indent=2))
