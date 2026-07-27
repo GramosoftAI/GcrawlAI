@@ -18,7 +18,6 @@ from threading import Semaphore, Thread
 from concurrent.futures import ThreadPoolExecutor
 
 from web_crawler.common.config import CrawlConfig
-from web_crawler.crawler.helpers.file_manager import FileManager
 from web_crawler.crawler.page_crawler import PageCrawler
 from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
 from web_crawler.common.utils import normalize_url
@@ -32,7 +31,6 @@ from web_crawler.crawler.helpers.crawler_search import (
     _format_search_results_markdown,
     _format_search_results_html,
 )
-from web_crawler.crawler.helpers.crawler_canonical import resolve_canonical_url
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +39,9 @@ class WebCrawler:
     """Main crawler orchestrator"""
 
     def __init__(self, config: CrawlConfig):
+        """Init."""
         self.config = config
-        self.file_manager = FileManager()
-        self.page_crawler = PageCrawler(config, self.file_manager)
+        self.page_crawler = PageCrawler(config)
 
         # Shared state
         self.visited: Set[str] = set()
@@ -56,13 +54,8 @@ class WebCrawler:
         self.attempted_pages = 0
 
     def _effective_proxy_mode(self) -> str:
+        """Effective proxy mode."""
         return "auto"
-
-    def _initial_proxy_type(self) -> str:
-        """
-        In auto mode, start with basic and escalate later only if needed.
-        """
-        return "basic"
 
     def _crawl_worker(
         self,
@@ -84,6 +77,7 @@ class WebCrawler:
         seen_raw,
         queue
     ):
+        """Crawl worker."""
         try:
             proxy_type = self._effective_proxy_mode()
             result = self.page_crawler.crawl_page(
@@ -160,6 +154,7 @@ class WebCrawler:
                         self.all_links.add(link)
 
                         def normalize_host(h):
+                            """Normalize host."""
                             h = h.lower()
                             return h[4:] if h.startswith("www.") else h
 
@@ -502,6 +497,7 @@ class WebCrawler:
         active_tasks = 0
         
         def worker_task(task_url, task_page_no):
+            """Worker task."""
             nonlocal active_tasks
             try:
                 self._crawl_worker(
@@ -550,6 +546,7 @@ class WebCrawler:
             cleanup_futures = []
             for _ in range(self.config.max_workers):
                 def shutdown_task():
+                    """Shutdown task."""
                     try:
                         from web_crawler.crawler.page.page_crawler1 import browser_manager
                         browser_manager.shutdown()

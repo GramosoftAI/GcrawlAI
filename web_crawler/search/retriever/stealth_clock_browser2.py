@@ -17,10 +17,7 @@ import cloakbrowser
 from .response import Response
 from .stealth_clock_browser import (
     _StealthMixin,
-    _human_pre_navigation_async,
-    _human_post_navigation_async,
     _build_context_options,
-    HARMFUL_ARGS,
     ALL_LAUNCH_ARGS,
     BLOCK_RESOURCE_TYPES,
     _get_random_stealth_ua,
@@ -49,6 +46,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         solve_cloudflare: bool = True,
         use_random_fingerprint: bool = True,
     ):
+        """Init."""
         self.headless = headless
         self.user_agent = user_agent or _get_random_stealth_ua()
         self.locale = locale
@@ -71,6 +69,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         self._browser = None
 
     async def _is_alive(self) -> bool:
+        """Return True if alive."""
         try:
             return (
                 self._browser is not None
@@ -80,6 +79,7 @@ class PersistentStealthyFetcher(_StealthMixin):
             return False
 
     async def _start(self) -> None:
+        """Start."""
         if await self._is_alive():
             return
 
@@ -133,6 +133,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         self._browser = None
 
     async def close(self) -> None:
+        """Close."""
         async with self._lock:
             await self._reset()
 
@@ -165,6 +166,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         referer: str = "https://www.google.com/",
         retries: int = 3,
     ) -> Response:
+        """Fetch."""
         await self._start()
 
         for attempt in range(retries):
@@ -215,6 +217,7 @@ class PersistentStealthyFetcher(_StealthMixin):
 
                 if self.block_resources:
                     async def _block(route):
+                        """Block."""
                         if route.request.resource_type in BLOCK_RESOURCE_TYPES:
                             await route.abort()
                         else:
@@ -316,6 +319,4 @@ class PersistentStealthyFetcher(_StealthMixin):
                          ok=False, error="Max retries exhausted")
 
 
-class AsyncStealthyFetcher(PersistentStealthyFetcher):
-    """Alias for consistency."""
-    pass
+

@@ -87,6 +87,7 @@ def get_detected_locale(ip: Optional[str] = None) -> dict:
 
 
 def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
+    """Searxng search."""
     global _SEARXNG_LAST_FAILURE
     url = os.getenv("SEARXNG_ENDPOINT")
     if not url:
@@ -164,6 +165,7 @@ def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dic
 
 
 def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
+    """Ddg search."""
     try:
         location_data = get_detected_locale(ip)
         city = location_data["city"]
@@ -236,6 +238,7 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
     start_time = time.time()
 
     def _finalize(res):
+        """Finalize."""
         elapsed = time.time() - start_time
         logger.info(f"⏱️ [SEARCH] Total execution time: {elapsed:.2f} seconds")
         return filter_and_deduplicate(res, limit)
@@ -313,6 +316,7 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
 
 
 def filter_and_deduplicate(results: List[Dict[str, str]], limit: int) -> List[Dict[str, str]]:
+    """Filter and deduplicate."""
     seen_urls = set()
     filtered = []
 

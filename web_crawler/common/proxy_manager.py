@@ -18,6 +18,7 @@ load_dotenv(dotenv_path, override=True)
 import datetime
 
 def _get_isp_from_db(table_name: str, country: str) -> Optional[str]:
+    """Return isp from db."""
     if table_name not in ("nodemaven_isps", "evomi_isps"):
         return None
     
@@ -53,6 +54,7 @@ def _get_isp_from_db(table_name: str, country: str) -> Optional[str]:
         return None
 
 def _save_isp_to_db(table_name: str, country: str, isp_code: str):
+    """Save isp to db."""
     if table_name not in ("nodemaven_isps", "evomi_isps"):
         return
         
@@ -104,6 +106,7 @@ GENERIC_CCTLDS = {
 }
 
 def get_domain_geo(url_str: str) -> dict:
+    """Return domain geo."""
     domain = urlparse(url_str).netloc.split(":")[0].lower()
 
     if domain in ("localhost", "127.0.0.1", "::1"):
@@ -185,6 +188,7 @@ PRIORITY_ISPS = [
 ]
 
 def build_nodemaven_proxy(geo: dict, session_id: Optional[str] = None, isp_code: Optional[str] = None) -> str:
+    """Build nodemaven proxy."""
     parts = [NODEMAVEN_BASE_USER]
     if geo.get("country"):
         parts.append(f"country-{geo['country'].lower()}")
@@ -203,6 +207,7 @@ def build_nodemaven_proxy(geo: dict, session_id: Optional[str] = None, isp_code:
     return proxy_url
 
 def build_evomi_proxy(geo: dict, session_id: Optional[str] = None) -> str:
+    """Build evomi proxy."""
     country = geo.get("country")
     if country and country != "any":
         password = f"{EVOMI_PASS_CLEAN}_country-{country.upper()}"
@@ -215,6 +220,7 @@ def build_evomi_proxy(geo: dict, session_id: Optional[str] = None) -> str:
     return proxy_url
 
 def build_evomi_premium_proxy(geo: dict, session_id: Optional[str] = None, isp_code: Optional[str] = None) -> str:
+    """Build evomi premium proxy."""
     country = geo.get("country")
     if country and country != "any":
         if isp_code:
@@ -237,6 +243,7 @@ def build_evomi_premium_proxy(geo: dict, session_id: Optional[str] = None, isp_c
     return proxy_url
 
 def parse_proxy_for_playwright(proxy_url: str) -> dict:
+    """Parse proxy for playwright."""
     if not proxy_url:
         return None
 
@@ -267,9 +274,11 @@ class ProxyManager:
     _evomi_settings_data = None
 
     def __init__(self, **kwargs):
+        """Init."""
         pass
 
     def _fetch_nodemaven_isp(self, country_code: str) -> Optional[str]:
+        """Fetch and return nodemaven isp."""
         if not country_code:
             country_code = "US"
         country = country_code.lower()
@@ -398,6 +407,7 @@ class ProxyManager:
         return selected
 
     def _fetch_evomi_isp(self, country_code: str) -> Optional[str]:
+        """Fetch and return evomi isp."""
         if not country_code:
             country_code = "US"
         country = country_code.upper()
@@ -478,6 +488,7 @@ class ProxyManager:
         return selected
         
     def get_requests_proxies(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
+        """Return requests proxies."""
         if provider == "direct":
             return None
         if proxy_geo and proxy_geo.strip().lower() != "default":
@@ -528,6 +539,7 @@ class ProxyManager:
         return {"http": proxy_url, "https": proxy_url}
 
     def get_playwright_proxy(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
+        """Return playwright proxy."""
         if provider == "direct":
             return None
         if proxy_geo and proxy_geo.strip().lower() != "default":

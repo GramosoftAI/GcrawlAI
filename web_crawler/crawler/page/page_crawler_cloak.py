@@ -60,6 +60,7 @@ class CloakCrawlerMixin:
             
             # Block heavy tracking/analytics scripts and heavy media to speed up loads and prevent timeouts
             def block_useless_resources(route):
+                """Block useless resources."""
                 req_type = route.request.resource_type
                 req_url = route.request.url.lower()
                 trackers = {

@@ -42,12 +42,14 @@ def _post_process_markdown(md: str) -> str:
     import re
     
     def fix_link_formatting(match):
+        """Fix link formatting."""
         content = match.group(1)
         # 1. Handle existing newlines
         content = content.replace("\n", "\\\\\n")
         # 2. Add extra breaks before internal elements (image/bold/headers)
         # We look for a position that is NOT the start of the content.
         def add_break(m):
+            """Add break."""
             return f"{m.group(1)}\\\\\n{m.group(2)}"
         
         # If there's an image or bold text preceded by anything, insert a break
@@ -101,6 +103,7 @@ class ContentProcessor:
 
             # Only keep links from the same domain (ignore www vs non-www)
             def normalize_host(h):
+                """Normalize host."""
                 h = h.lower()
                 return h[4:] if h.startswith("www.") else h
 
@@ -157,6 +160,7 @@ class ContentProcessor:
     def extract_seo(soup: BeautifulSoup, page_url: str) -> Dict:
         """Extract SEO metadata (sync with seo.py)"""
         def get_meta(name=None, prop=None):
+            """Return meta."""
             if name:
                 tag = soup.find("meta", attrs={"name": name})
             else:

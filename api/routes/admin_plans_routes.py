@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from psycopg2.extras import RealDictCursor
-from api.routes.api_key_routes import get_db_connection
+from api.core.database import get_db_connection
 from api.routes.admin_users_routes import verify_admin_user, verify_admin_user_optional
 from api.models.payloads import (
     AdminPlanResponse,

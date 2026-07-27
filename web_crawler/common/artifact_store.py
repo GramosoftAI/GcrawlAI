@@ -9,57 +9,14 @@ ARTIFACT_REF_PREFIX = "artifact://"
 
 
 def make_artifact_ref(artifact_id: str) -> str:
+    """Make artifact ref."""
     return f"{ARTIFACT_REF_PREFIX}{artifact_id}"
 
 
-def parse_artifact_ref(ref: Optional[str]) -> Optional[str]:
-    if not ref or not isinstance(ref, str):
-        return None
-    if not ref.startswith(ARTIFACT_REF_PREFIX):
-        return None
-    artifact_id = ref[len(ARTIFACT_REF_PREFIX):].strip()
-    return artifact_id or None
-
-
-def ensure_crawl_job(
-    conn,
-    *,
-    crawl_id: str,
-    url: str,
-    crawl_mode: str,
-    enable_seo: bool = False,
-    enable_html: bool = False,
-    enable_ss: bool = False,
-    enable_md: bool = False,
-    enable_images: bool = False,
-    task_id: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> None:
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO crawl_jobs
-            (crawl_id, url, crawl_mode, created_at, updated_at, task_id, SEO, HTML, Screenshot, Markdown, Images, user_id)
-        VALUES (%s, %s, %s, CURRENT_TIMESTAMP, NULL, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (crawl_id) DO NOTHING
-        """,
-        (
-            crawl_id,
-            url,
-            crawl_mode,
-            task_id,
-            enable_seo,
-            enable_html,
-            enable_ss,
-            enable_md,
-            enable_images,
-            user_id,
-        ),
-    )
-    cur.close()
 
 
 def _serialize_content(content: Any, content_kind: str) -> str:
+    """Serialize content."""
     if content_kind == "json":
         return json.dumps(content, ensure_ascii=False, indent=2)
     if content_kind == "binary":
@@ -74,6 +31,7 @@ def _serialize_content(content: Any, content_kind: str) -> str:
 
 
 def _wait_for_crawl_job(conn, crawl_id: str, retries: int = 15, delay_s: float = 0.2):
+    """Wait for crawl job."""
     for attempt in range(retries):
         cur = conn.cursor()
         cur.execute(
@@ -104,6 +62,7 @@ def upsert_crawl_artifact(
     page_url: Optional[str] = None,
     title: Optional[str] = None,
 ) -> str:
+    """Upsert crawl artifact."""
     artifact_id = str(uuid.uuid4())
     payload = _serialize_content(content, content_kind)
     normalized_page_url = page_url or ""
@@ -139,32 +98,4 @@ def upsert_crawl_artifact(
     return make_artifact_ref(stored_id)
 
 
-def get_crawl_artifact(conn, artifact_ref: str) -> Optional[Dict[str, Any]]:
-    artifact_id = parse_artifact_ref(artifact_ref)
-    if not artifact_id:
-        return None
 
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT artifact_id, crawl_id, page_url, artifact_type, content_kind, title, content
-        FROM crawl_artifacts
-        WHERE artifact_id = %s
-        """,
-        (artifact_id,),
-    )
-    row = cur.fetchone()
-    cur.close()
-
-    if not row:
-        return None
-
-    return {
-        "artifact_id": row[0],
-        "crawl_id": row[1],
-        "page_url": row[2],
-        "artifact_type": row[3],
-        "content_kind": row[4],
-        "title": row[5],
-        "content": row[6],
-    }

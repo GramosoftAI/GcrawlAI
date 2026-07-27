@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_s3_client():
+    """Return s3 client."""
     region = os.getenv("AWS_REGION", "ap-south-1")
     access_key = os.getenv("AWS_ACCESS_KEY_ID")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")

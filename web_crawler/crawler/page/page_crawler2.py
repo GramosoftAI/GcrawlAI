@@ -13,7 +13,6 @@ from playwright.sync_api import Page
 from concurrent.futures import ThreadPoolExecutor
 
 from web_crawler.common.config import CrawlConfig
-from web_crawler.crawler.helpers.file_manager import FileManager
 
 from web_crawler.crawler.helpers.content_processor import ContentProcessor
 from web_crawler.common.utils import normalize_url
@@ -28,7 +27,6 @@ from web_crawler.crawler.page.page_crawler1 import (
 
 # Import delegates
 from web_crawler.crawler.helpers.crawler_helpers import (
-    simulate_human_mouse,
     get_filename_from_url,
     is_screenshot_blank,
     is_page_content_blank,
@@ -42,39 +40,36 @@ logger = logging.getLogger(__name__)
 class BasePageCrawler:
     """Base configurations and extractors for PageCrawler"""
 
-    def __init__(self, config: CrawlConfig, file_manager: FileManager):
+    def __init__(self, config: CrawlConfig):
+        """Init."""
         self.config = config
-        self.file_manager = file_manager
         self.content_processor = ContentProcessor()
         self.proxy_manager = ProxyManager()
 
-    def _move_human(self, page, target_x, target_y):
-        """
-        Simulates advanced human-like mouse movement using a Cubic Bezier curve
-        with variable speed, organic jitter, and acceleration/deceleration.
-        """
-        if not hasattr(self, '_mouse_x') or not hasattr(self, '_mouse_y'):
-            self._mouse_x = random.randint(10, 500)
-            self._mouse_y = random.randint(10, 500)
-        self._mouse_x, self._mouse_y = simulate_human_mouse(page, target_x, target_y, self._mouse_x, self._mouse_y)
 
     def _get_filename_from_url(self, url: str) -> str:
+        """Return filename from url."""
         return get_filename_from_url(url)
 
     def _is_screenshot_blank(self, screenshot_bytes: bytes) -> bool:
+        """Return True if screenshot blank."""
         return is_screenshot_blank(screenshot_bytes)
 
     def _is_page_content_blank(self, title: str, text_content: str, links_count: int) -> bool:
+        """Return True if page content blank."""
         return is_page_content_blank(title, text_content, links_count)
 
     def _is_likely_proxy_failure(self, result: Optional[Dict]) -> bool:
+        """Return True if likely proxy failure."""
         return is_likely_proxy_failure(result)
 
     def _resolve_playwright_proxy(self, target_url: str, provider: str = "nodemaven", use_high_speed: bool = True) -> Optional[Dict]:
+        """Resolve playwright proxy."""
         proxy_geo = getattr(self.config, "proxy_geo", None)
         return self.proxy_manager.get_playwright_proxy(target_url=target_url, provider=provider, use_high_speed=use_high_speed, proxy_geo=proxy_geo)
 
     def is_captcha_page(self, page: Page) -> bool:
+        """Return True if captcha page."""
         return is_captcha_page(page)
 
     def process_page(
@@ -223,6 +218,7 @@ class BasePageCrawler:
             with ThreadPoolExecutor(max_workers=5) as executor:
                 # 1. SEO Processing
                 def _do_seo():
+                    """Do seo."""
                     if not enable_seo: return None
                     try:
                         seo_data = self.content_processor.extract_seo(soup, url)
@@ -251,6 +247,7 @@ class BasePageCrawler:
 
                 # 2. Markdown Processing
                 def _do_md():
+                    """Do md."""
                     if not enable_md: return None
                     try:
                         md = self.content_processor.convert_to_markdown(html, url, only_main_content=self.config.markdown_clean, ignore_tags=self.config.html_ignore_tags)
@@ -262,6 +259,7 @@ class BasePageCrawler:
 
                 # 3. Image Extraction
                 def _do_images():
+                    """Do images."""
                     if not enable_images: return None
                     try:
                         imgs = self.content_processor.extract_image_urls(soup, url)
@@ -273,6 +271,7 @@ class BasePageCrawler:
 
                 # 4. Screenshot upload to S3 / Artifact storage
                 def _do_screenshot_upload():
+                    """Do screenshot upload."""
                     if not (enable_ss and screenshot_bytes): return None
                     try:
                         screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")

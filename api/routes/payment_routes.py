@@ -6,7 +6,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import logging
-from api.routes.api_key_routes import get_db_connection, get_current_user_from_token
+from api.core.database import get_db_connection
+from api.core.security import get_current_user_from_token
 from dodopayments import AsyncDodoPayments
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,33 @@ async def dodo_webhook(
             VALUES (%s, %s, %s, %s, 'USD', 'success')
         """, (user_id, plan, cycle, amount))
 
+        # 1.5 Rollover Logic: Save remaining credits from old paid plan
+        cursor.execute("""
+            SELECT p.plan_type, p.used_requests, e.expiry_date, e.subscript_type
+            FROM user_plans p 
+            JOIN plan_expiry e ON p.user_id = e.user_id 
+            WHERE p.user_id = %s AND e.expiry_date > CURRENT_TIMESTAMP
+        """, (user_id,))
+        old_plan_data = cursor.fetchone()
+        
+        if old_plan_data:
+            old_plan_type, old_used, old_expiry, old_cycle = old_plan_data
+            if old_plan_type != 'free':
+                if old_cycle == 'YEARLY':
+                    cursor.execute("SELECT credits_included FROM yearly_subscription_plans WHERE plan_key = %s", (old_plan_type,))
+                else:
+                    cursor.execute("SELECT credits_included FROM monthly_subscription_plans WHERE plan_key = %s", (old_plan_type,))
+                old_plan_row = cursor.fetchone()
+                
+                if old_plan_row:
+                    old_limit = old_plan_row[0]
+                    remaining = old_limit - old_used
+                    if remaining > 0:
+                        cursor.execute("""
+                            INSERT INTO rollover_credits (user_id, credits, expiry_date)
+                            VALUES (%s, %s, %s)
+                        """, (user_id, remaining, old_expiry))
+
         # 2. Update or Insert into user_plans (UPSERT)
         cursor.execute("""
             INSERT INTO user_plans (user_id, plan_type, used_requests, updated_at)
@@ -344,17 +372,41 @@ async def get_my_plan(
         """, (user_id,))
 
         result = cursor.fetchone()
-        cursor.close()
 
         if not result:
+            cursor.close()
             raise HTTPException(status_code=404, detail="Plan details not found for this user.")
+
+        # Fetch non-expired rollover credit pools ordered by earliest expiry
+        cursor.execute("""
+            SELECT id, credits, expiry_date
+            FROM rollover_credits
+            WHERE user_id = %s AND expiry_date > CURRENT_TIMESTAMP
+            ORDER BY expiry_date ASC
+        """, (user_id,))
+        rollover_rows = cursor.fetchall()
+        cursor.close()
+
+        total_rollover = sum(row["credits"] for row in rollover_rows)
+        rollover_breakdown = [
+            {
+                "rollover_id": row["id"],
+                "credits": row["credits"],
+                "expires_at": row["expiry_date"].isoformat() if row["expiry_date"] else None
+            }
+            for row in rollover_rows
+        ]
 
         return {
             "plan_type": result["plan_type"],
             "total_requests": result["total_requests"],
             "used_requests": result["used_requests"],
             "expiry_date": result["expiry_date"].isoformat() if result["expiry_date"] else None,
-            "subscript_type": result["subscript_type"]
+            "subscript_type": result["subscript_type"],
+            "rollover_credits_for_old_plans": {
+                "total_rollover_credits": total_rollover,
+                "pools": rollover_breakdown
+            }
         }
 
     except HTTPException:

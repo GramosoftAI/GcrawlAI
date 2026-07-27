@@ -66,17 +66,6 @@ logger.info("=" * 80)
 logger.info(f"🚀 API Server Starting - Logging to {_LOG_FILE}")
 logger.info("=" * 80)
 
-def _configure_root_logger():
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-    root.addHandler(_file_handler)
-    root.addHandler(_console_handler)
-    
-    for module_name in ['web_crawler.search.google_search', 'web_crawler.search.search_engine', 'web_crawler']:
-        mod_logger = logging.getLogger(module_name)
-        mod_logger.propagate = True
-        mod_logger.setLevel(logging.DEBUG)
 
 # ================= APP INIT =================
 app = FastAPI(title="Web Crawler API")
@@ -108,6 +97,7 @@ app.include_router(admin_reported_issues_router, prefix="/api/v1")
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
+    """Http exception handler."""
     return JSONResponse(
         status_code=exc.status_code,
         content=jsonable_encoder({
@@ -119,6 +109,7 @@ async def http_exception_handler(request, exc):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
+    """Validation exception handler."""
     return JSONResponse(
         status_code=422,
         content=jsonable_encoder({
@@ -131,11 +122,13 @@ async def validation_exception_handler(request, exc):
 
 @app.get("/")
 def root():
+    """Root."""
     return {"status": "running"}
 
 # ================= STARTUP =================
 @app.on_event("startup")
 async def startup_event():
+    """Startup event."""
     logger.info("Starting up FastAPI application...")
     _init_db_pool()
     
@@ -146,8 +139,8 @@ async def startup_event():
         db_setup.create_api_endpoints_table()
         db_setup.create_subscription_plans_tables()
         db_setup.create_admin_error_logs_table()
-        db_setup.create_custom_requests_table()
-        logger.info("✓ job_results, api_endpoints, subscription_plans, admin_error_logs and custom_requests tables validated/created on startup")
+        db_setup.create_admin_emails_table()
+        logger.info("✓ job_results, api_endpoints, subscription_plans, admin_error_logs, custom_requests and admin_emails tables validated/created on startup")
     except Exception as db_setup_err:
         logger.error(f"Failed to check/create database tables on startup: {db_setup_err}")
         
@@ -171,6 +164,10 @@ async def startup_event():
     logger.info("Pre-warming background crawler threads...")
     pre_warm_crawler_workers()
 
+    logger.info("Starting background keep-alive loop for pre-warmed browsers...")
+    asyncio.create_task(keep_alive_browsers_loop())
+
 @app.on_event("shutdown")
 async def shutdown_event():
+    """Shutdown event."""
     queue_manager.stop_workers()

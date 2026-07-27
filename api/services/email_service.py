@@ -674,6 +674,7 @@ class EmailService:
         issue_related_to: list,
         explanation: str,
         report_id: int = None,
+        user_id: Optional[str] = None,
     ) -> bool:
         """
         Send a report-issue notification email to the admin.
@@ -684,6 +685,7 @@ class EmailService:
             issue_related_to: List of issue category strings
             explanation: Free-text explanation of the issue
             report_id: Optional DB row id for reference
+            user_id: Optional user ID who reported the issue
 
         Returns:
             True if email sent successfully, False otherwise
@@ -698,6 +700,7 @@ class EmailService:
         )
         issues_text = ", ".join(issue_related_to)
         report_ref = f"#{report_id}" if report_id else "N/A"
+        user_id_display = user_id if user_id else "N/A"
 
         html_content = f"""
         <!DOCTYPE html>
@@ -804,6 +807,9 @@ class EmailService:
                 <div class="content">
                     <p style="margin-top:0;">A new issue has been submitted. Please review the details below.</p>
 
+                    <div class="field-label">User ID</div>
+                    <div class="field-value">{user_id_display}</div>
+
                     <div class="field-label">URL Affected</div>
                     <div class="field-value url">{url_affected}</div>
 
@@ -829,6 +835,9 @@ class EmailService:
         text_content = f"""
 New Issue Report {report_ref}
 {'=' * 40}
+
+User ID:
+{user_id_display}
 
 URL Affected:
 {url_affected}

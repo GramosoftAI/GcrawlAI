@@ -18,6 +18,7 @@ def substitute_env_vars(data):
     elif isinstance(data, str):
         # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
         def replace_var(match):
+            """Replace var."""
             var_name = match.group(1)
             default_value = match.group(2)
             return os.getenv(var_name, default_value or "")
@@ -27,6 +28,7 @@ def substitute_env_vars(data):
         return data
 
 def load_config():
+    """Load config."""
     global _CONFIG
     if _CONFIG is None:
         config_path = "config.yaml"
@@ -42,11 +44,13 @@ def load_config():
     return _CONFIG
 
 def get_db_config():
+    """Return db config."""
     config = load_config()
     return config["postgres"]
 
 def setup_crawl_config(payload, default_max_pages=10, concurrency_limit=None) -> CrawlConfig:
     # Resolve max pages if crawl options exist
+    """Set up crawl config."""
     max_pages = default_max_pages
     if hasattr(payload, 'crawl') and payload.crawl and payload.crawl.max_pages is not None:
         max_pages = payload.crawl.max_pages

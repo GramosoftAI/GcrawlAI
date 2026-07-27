@@ -48,6 +48,7 @@ _MAX_CONCURRENT_GOOGLE_REQUESTS: int = 30
 _google_request_semaphore: Optional[asyncio.Semaphore] = None
 
 def _get_semaphore():
+    """Return semaphore."""
     global _google_request_semaphore
     if _google_request_semaphore is None:
         _google_request_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_GOOGLE_REQUESTS)
@@ -75,12 +76,14 @@ _request_counter_lock = asyncio.Lock()
 # ─────────────────────────────────────────────────────────────────────────────
 class _ResultCache:
     def __init__(self, maxsize: int, ttl: float):
+        """Init."""
         self.maxsize = maxsize
         self.ttl = ttl
         self.cache: OrderedDict = OrderedDict()
         self.lock = asyncio.Lock()
 
     async def get(self, key: str) -> Optional[Dict]:
+        """Get."""
         if not _CACHING_ENABLED: return None
         async with self.lock:
             if key not in self.cache:
@@ -93,6 +96,7 @@ class _ResultCache:
             return data
 
     async def put(self, key: str, value: Dict) -> None:
+        """Put."""
         if not _CACHING_ENABLED: return
         async with self.lock:
             self.cache[key] = (value, time.time())
@@ -100,9 +104,6 @@ class _ResultCache:
             if len(self.cache) > self.maxsize:
                 self.cache.popitem(last=False)
 
-    async def invalidate_all(self):
-        async with self.lock:
-            self.cache.clear()
 
 _cache = _ResultCache(_CACHE_MAX_SIZE, _CACHE_TTL_SECONDS)
 
@@ -111,6 +112,7 @@ _cache = _ResultCache(_CACHE_MAX_SIZE, _CACHE_TTL_SECONDS)
 # ─────────────────────────────────────────────────────────────────────────────
 class _BrowserPool:
     def __init__(self, minsize: int, maxsize: int, timeout: int = 120):
+        """Init."""
         self.minsize = minsize
         self.maxsize = maxsize
         self.timeout = timeout
@@ -121,6 +123,7 @@ class _BrowserPool:
         self._initialized = False
 
     async def initialize(self):
+        """Initialize."""
         if self._lock is None:
             self._lock = asyncio.Lock()
         if self._available is None:
@@ -137,6 +140,7 @@ class _BrowserPool:
             logger.info(f"[BrowserPool] Pool ready.")
 
     def _create_instance(self):
+        """Create instance."""
         is_headless = os.getenv("CRAWL_HEADLESS", "true").strip().lower() == "true"
         return PersistentStealthyFetcher(
             headless=is_headless,
@@ -149,6 +153,7 @@ class _BrowserPool:
         )
 
     async def borrow(self) -> PersistentStealthyFetcher:
+        """Borrow."""
         if not self._initialized:
             await self.initialize()
 
@@ -177,11 +182,13 @@ class _BrowserPool:
             raise TimeoutError("Browser pool exhausted")
 
     async def return_fetcher(self, fetcher: PersistentStealthyFetcher):
+        """Return fetcher."""
         async with self._lock:
             self._in_use_count -= 1
         await self._available.put(fetcher)
 
     async def close_all(self):
+        """Close all."""
         if not self._lock: return
         async with self._lock:
             for f in self._all_fetchers:
@@ -210,6 +217,7 @@ async def _apply_provider_throttle(provider: str):
     _provider_last_req[provider] = time.time()
 
 def _build_proxy_config(session_id: Optional[str] = None, proxy_geo: Optional[str] = None) -> Dict:
+    """Build proxy config."""
     if proxy_geo and proxy_geo.strip().lower() != "default":
         return _pm.get_playwright_proxy(
             target_url="https://www.google.com",
@@ -252,6 +260,7 @@ _proactor_loop = None
 _proactor_thread = None
 
 def _get_or_start_proactor_thread():
+    """Return or start proactor thread."""
     global _proactor_loop, _proactor_thread
     if _proactor_thread is not None and _proactor_thread.is_alive():
         return _proactor_loop
@@ -260,6 +269,7 @@ def _get_or_start_proactor_thread():
     import asyncio
     
     def run_loop():
+        """Run loop."""
         global _proactor_loop, _pool
         try:
             if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
@@ -334,6 +344,7 @@ async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, *
         return []
 
 async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -> Dict:
+    """Search."""
     global _pool
     if _pool is None:
         # Lazy initialization for non-SelectorEventLoop or CLI execution
@@ -375,6 +386,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
         await _apply_provider_throttle("evomi")
         
         async def fetch_page(start: int):
+            """Fetch and return page."""
             fetcher = await _pool.borrow()
             try:
                 url = f"https://www.google.com/search?q={query.replace(' ', '+')}&start={start}&filter=0"
@@ -394,6 +406,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
                 await _pool.return_fetcher(fetcher)
 
         async def fetch_page_with_retry(start: int):
+            """Fetch and return page with retry."""
             page_results = []
             page_response = None
             for attempt in range(3):  # Try up to 3 times to get this specific page
@@ -519,7 +532,3 @@ def extract_search_results(response: Any, limit: int) -> Dict:
                 
     return {"results": results, "count": len(results)}
 
-# Lifecycle helpers
-async def shutdown():
-    await _pool.close_all()
-    logger.info("Browser pool shutdown.")

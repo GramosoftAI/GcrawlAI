@@ -114,10 +114,11 @@ async def search(
             ip=client_ip,
             proxy_geo=geo_val
         )
-        # On success, deduct/increment used credit (1 request credit per 10 limit size)
-        limit_val = search_req.limit if search_req.limit is not None else 10
-        credits_to_deduct = (limit_val + 9) // 10
-        increment_used_requests(user_id, amount=credits_to_deduct)
+        # On success, deduct/increment used credit (1 request credit per 10 results returned)
+        num_results = len(results) if results else 0
+        credits_to_deduct = (num_results + 9) // 10 if num_results > 0 else 0
+        if credits_to_deduct > 0:
+            increment_used_requests(user_id, amount=credits_to_deduct)
 
         if not results:
             try:
@@ -195,10 +196,10 @@ async def search(
             
         try:
             from api.core.config_setup import load_config
-            import os
+            from api.core.database import get_admin_recipient_emails
             from api.services.email_service import EmailService
             
-            admin_email = os.getenv("ADMIN_EMAIL")
+            admin_email = get_admin_recipient_emails()
             if admin_email:
                 config = load_config()
                 smtp_config = config.get("email", {})
@@ -208,7 +209,8 @@ async def search(
                     to_email=admin_email,
                     url_affected=f"SEARCH: {search_req.query}",
                     issue_related_to=["Search Engine Failure", "All Search Tiers Exhausted"],
-                    explanation=f"The search engine completely failed for the query.\n\nError Details: {str(exc)}"
+                    explanation=f"The search engine completely failed for the query.\n\nError Details: {str(exc)}",
+                    user_id=str(user_id) if user_id else None
                 )
         except Exception as e:
             logger.error(f"Failed to send alert email for search failure: {e}")

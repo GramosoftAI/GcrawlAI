@@ -63,6 +63,7 @@ class DatabaseSetup:
             return [DatabaseSetup._substitute_env_vars(item) for item in data]
         elif isinstance(data, str):
             def replace_var(match):
+                """Replace var."""
                 var_name = match.group(1)
                 default_value = match.group(2)
                 return os.getenv(var_name, default_value or "")
@@ -243,6 +244,18 @@ class DatabaseSetup:
                 if conn:
                     conn.close()
         return success
+
+    def create_admin_emails_table(self) -> bool:
+        """Create admin_emails table and index"""
+        query = """
+        CREATE TABLE IF NOT EXISTS admin_emails (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_emails_email ON admin_emails(email);
+        """
+        return self.execute_query(query)
 
     def create_api_keys_table(self) -> bool:
         """Create api_keys table and indexes"""
@@ -600,6 +613,15 @@ class DatabaseSetup:
             );
             """,
             """
+            CREATE TABLE IF NOT EXISTS rollover_credits (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                credits BIGINT NOT NULL,
+                expiry_date TIMESTAMP WITH TIME ZONE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            """,
+            """
             CREATE TABLE IF NOT EXISTS payment_requests (
                 id BIGSERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -786,6 +808,7 @@ class DatabaseSetup:
                 logger.info("Fetching and storing Nodemaven ISPs in parallel...")
                 
                 def _fetch_nodemaven(country):
+                    """Fetch and return nodemaven."""
                     headers = {"Authorization": f"x-api-key {nodemaven_key}", "Content-Type": "application/json"}
                     url = "https://api.nodemaven.com/api/v2/base/locations/isps/"
                     params = {"country__code": country.lower(), "limit": 100, "offset": 0}
@@ -884,6 +907,7 @@ class DatabaseSetup:
         if not self.create_activity_logs_table(): return False
         if not self.create_reported_issues_table(): return False
         if not self.create_admin_error_logs_table(): return False
+        if not self.create_admin_emails_table(): return False
 
         # 4. System config & payment tables
         if not self.create_api_endpoints_table(): return False
@@ -906,7 +930,7 @@ class DatabaseSetup:
             'job_results', 'search_jobs', 'search_errors', 'api_endpoints', 
             'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
-            'admin_error_logs', 'custom_requests'
+            'admin_error_logs', 'custom_requests', 'admin_emails'
         ]
         
         verify_query = """
@@ -947,7 +971,7 @@ class DatabaseSetup:
             'api_keys', 'crawl_errors', 'activity_logs', 'job_results', 'search_jobs', 
             'search_errors', 'api_endpoints', 'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
-            'admin_error_logs', 'custom_requests'
+            'admin_error_logs', 'custom_requests', 'admin_emails'
         ]
         
         conn = None

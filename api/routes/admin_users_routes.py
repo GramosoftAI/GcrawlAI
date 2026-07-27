@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Header, status
 from psycopg2.extras import RealDictCursor
-from api.routes.api_key_routes import get_db_connection, get_current_user_from_token
+from api.core.database import get_db_connection
+from api.core.security import get_current_user_from_token
 from api.models.payloads import (
     AdminUserResponse,
     AdminUserListResponse,
@@ -321,6 +322,30 @@ async def update_admin_user(
                     )
             else:
                 if request.plan_type is not None:
+                    # 3a. Rollover: save remaining credits from old paid plan
+                    if current_plan != 'free' and current_plan != target_plan:
+                        cursor.execute("""
+                            SELECT e.subscript_type, e.expiry_date
+                            FROM plan_expiry e
+                            WHERE e.user_id = %s AND e.expiry_date > CURRENT_TIMESTAMP
+                        """, (user_id,))
+                        old_exp_row = cursor.fetchone()
+                        old_cycle = old_exp_row['subscript_type'] if old_exp_row else 'MONTHLY'
+                        old_expiry = old_exp_row['expiry_date'] if old_exp_row else None
+
+                        # Get old plan total credits
+                        old_table = "yearly_subscription_plans" if old_cycle == 'YEARLY' else "monthly_subscription_plans"
+                        cursor.execute(f"SELECT credits_included FROM {old_table} WHERE plan_key = %s", (current_plan,))
+                        old_limit_row = cursor.fetchone()
+                        if old_limit_row and old_expiry:
+                            old_limit = old_limit_row['credits_included']
+                            remaining = old_limit - current_used
+                            if remaining > 0:
+                                cursor.execute("""
+                                    INSERT INTO rollover_credits (user_id, credits, expiry_date)
+                                    VALUES (%s, %s, %s)
+                                """, (user_id, remaining, old_expiry))
+
                     # Reset to 0 when plan changes and no used_requests is specified
                     new_used = 0
                 else:

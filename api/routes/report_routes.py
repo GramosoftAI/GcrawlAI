@@ -20,6 +20,7 @@ class ReportIssueRequest(BaseModel):
     @field_validator("url_affected")
     @classmethod
     def url_must_not_be_empty(cls, v: str) -> str:
+        """Url must not be empty."""
         v = v.strip()
         if not v:
             raise ValueError("url_affected must not be empty")
@@ -28,6 +29,7 @@ class ReportIssueRequest(BaseModel):
     @field_validator("issue_related_to")
     @classmethod
     def issues_must_not_be_empty(cls, v: List[str]) -> List[str]:
+        """Issues must not be empty."""
         if not v:
             raise ValueError("issue_related_to must contain at least one item")
         return [item.strip() for item in v if item.strip()]
@@ -35,6 +37,7 @@ class ReportIssueRequest(BaseModel):
     @field_validator("explanation")
     @classmethod
     def explanation_must_not_be_empty(cls, v: str) -> str:
+        """Explanation must not be empty."""
         v = v.strip()
         if not v:
             raise ValueError("explanation must not be empty")
@@ -43,6 +46,7 @@ class ReportIssueRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def email_must_be_valid(cls, v: str) -> str:
+        """Email must be valid."""
         v = v.strip()
         if not v:
             raise ValueError("email must not be empty")
@@ -110,10 +114,10 @@ def report_issue(
 
         logger.info(f"Issue report #{report_id} stored in DB")
 
+        from api.core.database import get_admin_recipient_emails
+        admin_email = get_admin_recipient_emails()
         config = load_config()
         smtp_config = config.get("email", {})
-
-        admin_email = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
 
         email_sent = False
         if admin_email:
@@ -125,6 +129,7 @@ def report_issue(
                     issue_related_to=payload.issue_related_to,
                     explanation=payload.explanation,
                     report_id=report_id,
+                    user_id=user_id,
                 )
             except Exception as email_err:
                 logger.warning(f"Could not send admin email for report #{report_id}: {email_err}")

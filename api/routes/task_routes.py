@@ -15,6 +15,7 @@ def get_task_status(
     authorization: Optional[str] = Header(None),
     recaptcha_token: Optional[str] = Header(None, alias="recaptcha-token")
 ):
+    """Return task status."""
     from api.core.database import get_pooled_connection
     from api.core.security import validate_recaptcha_or_jwt
     from web_crawler.crawler.celery_config import celery_app

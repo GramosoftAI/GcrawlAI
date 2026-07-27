@@ -110,6 +110,7 @@ def crawl_website(
             summary['status'] = 'completed'
 
         from api.core.database import get_pooled_connection, update_activity_log_status, update_activity_log_time
+        from api.core.security import increment_used_requests
         from datetime import datetime
         try:
             with get_pooled_connection() as conn:
@@ -118,13 +119,24 @@ def crawl_website(
                         "UPDATE crawl_jobs SET updated_at = %s WHERE crawl_id = %s",
                         (datetime.now(), task_id)
                     )
-                    if user_id and user_id != "demo":
-                        charge_amount = 1 if crawl_mode == "links" else min(config.max_pages, summary.get("pages_crawled", 1))
-                        cur.execute(
-                            "UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s",
-                            (charge_amount, user_id)
-                        )
                 conn.commit()
+
+            # Billing: calculate charge and deduct using centralized rollover-aware function
+            if user_id and user_id != "demo":
+                if crawl_mode == "links":
+                    links_found = summary.get("total_links_found", 1)
+                    charge_amount = (links_found + 9) // 10
+                elif crawl_mode == "screenshot":
+                    charge_amount = 1
+                else:
+                    enabled_formats_count = sum(bool(x) for x in [enable_md, enable_html, enable_ss, enable_seo, enable_images])
+                    if crawl_mode == "single":
+                        charge_amount = enabled_formats_count or 1
+                    else:
+                        pages_crawled = summary.get("pages_crawled", 1)
+                        charge_amount = pages_crawled * (enabled_formats_count or 1)
+
+                increment_used_requests(user_id, amount=charge_amount)
             
             # Update activity log status and latency
             status = "FAILED" if summary.get("status") == "failed" else "COMPLETED"
@@ -152,55 +164,6 @@ def crawl_website(
                 'error': str(exc),
                 'start_url': start_url
             }
-
-
-@celery_app.task(
-    name='celery_tasks.crawl_single_page',
-    bind=True,
-    max_retries=2,
-    time_limit=300,  # 5 minutes max
-)
-def crawl_single_page(self, url: str, config_dict: Dict) -> Dict:
-    """
-    Celery task to crawl a single page (faster, for single-page mode)
-    """
-    return crawl_website(
-        self,
-        start_url=url,
-        config_dict=config_dict,
-        crawl_mode="single",
-        enable_md=True,
-        enable_html=False,
-        enable_ss=False,
-        enable_json=True,
-        enable_links=True,
-        enable_seo=False,
-        enable_images=True,
-    )
-
-@celery_app.task(
-    name='celery_tasks.crawl_links',
-    bind=True,
-    max_retries=2,
-    time_limit=300,  # 5 minutes max
-)
-def crawl_links(self, url: str, config_dict: Dict) -> Dict:
-    """
-    Celery task to crawl a single page (faster, for single-page mode)
-    """
-    return crawl_website(
-        self,
-        start_url=url,
-        config_dict=config_dict,
-        crawl_mode="links",
-        enable_md=True,
-        enable_html=False,
-        enable_ss=False,
-        enable_json=True,
-        enable_links=True,
-        enable_seo=False,
-        enable_images=True,
-    )
 
 
 @celery_app.task(name='celery_tasks.cleanup_old_results')

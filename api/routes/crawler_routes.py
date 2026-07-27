@@ -54,6 +54,7 @@ GLOBAL_BROWSER_POOL = int(os.getenv("GLOBAL_BROWSER_POOL", 100))
 
 def pre_warm_crawler_workers():
 
+    """Pre warm crawler workers."""
     from api.services.queue_manager import queue_manager
 
     for _ in range(GLOBAL_BROWSER_POOL):
@@ -275,6 +276,7 @@ async def run_scrape(
 
 ):
 
+    """Run scrape."""
     try:
 
         if payload.screenshot and payload.screenshot.js_render:
@@ -385,17 +387,14 @@ async def run_scrape(
 
         crawl_id = uuid.uuid4().hex
 
-
-
         from api.services.queue_manager import queue_manager
-
         
+        enabled_formats_count = sum(bool(x) for x in [enable_md, enable_html, enable_ss, enable_seo, enable_images])
 
         def _wrapper(**kw):
-
+            """Wrapper."""
             _run_background_crawl_task(user_id=user_id, **kw)
-
-            increment_used_requests(user_id, amount=1)
+            increment_used_requests(user_id, amount=enabled_formats_count or 1)
 
 
 
@@ -567,6 +566,7 @@ async def run_crawl(
 
 ):
 
+    """Run crawl."""
     try:
 
         if payload.screenshot and payload.screenshot.js_render:
@@ -798,9 +798,13 @@ async def run_crawl(
 
             def _wrapper(**kw):
 
+                """Wrapper."""
                 summary = _run_background_crawl_task(user_id=user_id, **kw)
+                
                 pages = summary.get("pages_crawled", 1) if (summary and isinstance(summary, dict)) else 1
-                increment_used_requests(user_id, amount=min(config.max_pages, pages))
+                enabled_formats_count = sum(bool(x) for x in [enable_md, enable_html, enable_ss, enable_seo, enable_images])
+
+                increment_used_requests(user_id, amount=pages * (enabled_formats_count or 1))
 
                 
 
@@ -978,6 +982,7 @@ async def run_links(
 
 ):
 
+    """Run links."""
     try:
 
         user_id = validate_recaptcha_or_jwt(
@@ -1146,9 +1151,13 @@ async def run_links(
 
             def _wrapper(**kw):
 
-                _run_background_crawl_task(user_id=user_id, **kw)
+                """Wrapper."""
+                summary = _run_background_crawl_task(user_id=user_id, **kw)
 
-                increment_used_requests(user_id, amount=1)
+                links_found = summary.get("total_links_found", 1) if (summary and isinstance(summary, dict)) else 1
+                credits_to_deduct = (links_found + 9) // 10
+
+                increment_used_requests(user_id, amount=credits_to_deduct)
 
                 
 
@@ -1324,6 +1333,7 @@ async def run_screenshot(
 
 ):
 
+    """Run screenshot."""
     try:
 
         if payload.screenshot and payload.screenshot.js_render:
@@ -1423,6 +1433,7 @@ async def run_screenshot(
 
         def _wrapper(**kw):
 
+            """Wrapper."""
             _run_background_crawl_task(user_id=user_id, **kw)
 
             increment_used_requests(user_id, amount=1)

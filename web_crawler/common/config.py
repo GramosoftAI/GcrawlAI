@@ -88,6 +88,7 @@ class CrawlConfig:
 
     @staticmethod
     def _clean_env(value: Optional[str]) -> Optional[str]:
+        """Clean env."""
         if value is None:
             return None
         trimmed = value.strip()

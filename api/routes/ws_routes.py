@@ -13,6 +13,7 @@ redis_client_async = aioredis.from_url("redis://localhost:6379/0", decode_respon
 
 @router.websocket("/crawl/{crawl_id}")
 async def crawl_ws(websocket: WebSocket, crawl_id: str):
+    """Crawl ws."""
     await websocket.accept()
 
     # Safe defaults

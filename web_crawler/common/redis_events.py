@@ -14,6 +14,7 @@ redis_client = redis.Redis.from_url(
 )
 
 def publish_event(crawl_id: str, payload: dict):
+    """Publish event."""
     try:
         redis_client.publish(f"crawl:{crawl_id}", json.dumps(payload))
     except Exception as e:

@@ -5,7 +5,7 @@ Provides stats and health cards.
 """
 import logging
 from fastapi import APIRouter, HTTPException, Depends
-from api.routes.api_key_routes import get_db_connection
+from api.core.database import get_db_connection
 from api.routes.admin_users_routes import verify_admin_user
 from api.models.payloads import (
     AdminDashboardStatsResponse,

@@ -16,9 +16,11 @@ class CrawlReportWriter:
     """
 
     def __init__(self, output_dir: Path):
+        """Init."""
         self.output_dir = Path(output_dir)
 
     def render_json(self, pages: List[Dict], links: List[str] = None) -> str:
+        """Render json."""
         output = {
             "total_pages": len(pages),
             "links": links or [],
@@ -32,6 +34,7 @@ class CrawlReportWriter:
         pages: List[Dict],
         links: List[str] = None,
     ) -> str:
+        """Render markdown."""
         md = f"# SEO Crawl Report - {domain}\n\n"
         md += f"## Total Pages: {len(pages)}\n\n"
 
@@ -73,6 +76,7 @@ class CrawlReportWriter:
         return md
 
     def render_excel_base64(self, pages: List[Dict]) -> str:
+        """Render excel base64."""
         wb = Workbook()
         ws = wb.active
         ws.title = "SEO Report"
@@ -131,6 +135,7 @@ class CrawlReportWriter:
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     def render_single_json(self, seo_data: Dict) -> str:
+        """Render single json."""
         output = {
             "url": seo_data.get("url"),
             "data": seo_data,
@@ -138,6 +143,7 @@ class CrawlReportWriter:
         return json.dumps(output, indent=4, ensure_ascii=False)
 
     def render_single_markdown(self, seo_data: Dict) -> str:
+        """Render single markdown."""
         md = f"# SEO Report: {seo_data.get('title')}\n\n"
         md += f"**URL:** {seo_data.get('url')}\n"
         md += f"**Website Name:** {seo_data.get('og_site_name') or 'N/A'}\n"
@@ -172,6 +178,7 @@ class CrawlReportWriter:
         return md
 
     def render_single_excel_base64(self, seo_data: Dict) -> str:
+        """Render single excel base64."""
         wb = Workbook()
         ws = wb.active
         ws.title = "SEO Data"
@@ -206,6 +213,7 @@ class CrawlReportWriter:
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     def save_json(self, domain: str, pages: List[Dict], links: List[str] = None) -> str:
+        """Save json."""
         file_path = self.output_dir / "seo" / f"{domain}_seo.json"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
@@ -218,6 +226,7 @@ class CrawlReportWriter:
         pages: List[Dict],
         links: List[str] = None,
     ) -> str:
+        """Save markdown."""
         file_path = self.output_dir / "seo" / f"{domain}_seo.md"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
@@ -225,6 +234,7 @@ class CrawlReportWriter:
         return str(file_path)
 
     def save_excel(self, domain: str, pages: List[Dict]) -> str:
+        """Save excel."""
         file_path = self.output_dir / "seo" / f"{domain}_seo.xlsx"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "wb") as f:
@@ -232,6 +242,7 @@ class CrawlReportWriter:
         return str(file_path)
 
     def save_single_json(self, filename: str, seo_data: Dict) -> str:
+        """Save single json."""
         file_path = self.output_dir / "seo" / f"{filename}.json"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
@@ -239,6 +250,7 @@ class CrawlReportWriter:
         return str(file_path)
 
     def save_single_markdown(self, filename: str, seo_data: Dict) -> str:
+        """Save single markdown."""
         file_path = self.output_dir / "seo" / f"{filename}.md"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
@@ -246,6 +258,7 @@ class CrawlReportWriter:
         return str(file_path)
 
     def save_single_excel(self, filename: str, seo_data: Dict) -> str:
+        """Save single excel."""
         file_path = self.output_dir / "seo" / f"{filename}.xlsx"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "wb") as f:

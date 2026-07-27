@@ -28,7 +28,6 @@ from web_crawler.crawler.map.map_crawler_utils import (
     MAX_URLS,
 )
 from web_crawler.crawler.map.map_crawler_xml import (
-    _find_sitemaps_from_robots,
     _collect_sitemap_urls,
 )
 
@@ -119,32 +118,6 @@ def _collect_homepage_links_from_resp(
     return added
 
 
-def _collect_homepage_links(
-    base_url: str, 
-    collected: Set[str], 
-    lock: threading.Lock,
-    proxy_dict: Optional[dict] = None,
-    limit: int = MAX_URLS,
-) -> int:
-    """
-    Fetch the homepage and extract internal links.
-    (Used as fallback when pre-fetching is not used.)
-    """
-    with lock:
-        if len(collected) >= limit:
-            logger.info("⛔ Limit already reached — skipping homepage link extraction")
-            return 0
-
-    logger.info(f"🔗 Fetching homepage links: {base_url}")
-    resp = _get(base_url, timeout=_PAGE_TIMEOUT, proxy_dict=proxy_dict)
-    if not resp:
-        logger.warning("Homepage fetch failed — skipping link extraction")
-        return 0
-
-    added = _parse_homepage_html(resp, base_url, collected, lock, limit)
-    logger.info(f"  → added {added} new URLs from homepage (pool: {len(collected)})")
-    return added
-
 
 # ── Step 4: Browser-based link extraction (fallback) ────────────────────────
 
@@ -167,6 +140,7 @@ def _browser_extract_links(
     success_lock = threading.Lock()
 
     def _worker_attempt(attempt_idx):
+        """Worker attempt."""
         if success_event.is_set():
             return
         
@@ -214,6 +188,7 @@ def _browser_extract_links(
 
             # Block heavy/unnecessary resources for ultra-fast loading
             def block_resources(route):
+                """Block resources."""
                 req_type = route.request.resource_type
                 if req_type in ["image", "stylesheet", "font", "media"]:
                     return route.abort()

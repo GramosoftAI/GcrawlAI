@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, status, WebSocket, WebSocketDisconnect
 from psycopg2.extras import RealDictCursor
-from api.routes.api_key_routes import get_db_connection
+from api.core.database import get_db_connection
 from api.routes.admin_users_routes import verify_admin_user
 from api.models.payloads import StandardResponse
 from pydantic import BaseModel

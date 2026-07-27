@@ -14,7 +14,6 @@ import yaml
 from typing import Optional, Dict
 from urllib.parse import urlparse
 from pathlib import Path
-from playwright.sync_api import sync_playwright
 import cloakbrowser
 
 import platform
@@ -34,6 +33,7 @@ _pool_lock = threading.Lock()
 
 class PooledConnectionWrapper:
     def __init__(self, pool, conn):
+        """Init."""
         self._pool = pool
         self._conn = conn
 
@@ -41,16 +41,19 @@ class PooledConnectionWrapper:
         return getattr(self._conn, name)
 
     def close(self):
+        """Close."""
         try:
             self._pool.putconn(self._conn)
         except Exception as e:
             logger.warning(f"Error returning connection to pool: {e}")
 
 def _substitute_config(data):
+    """Substitute config."""
     if isinstance(data, dict):
         return {k: _substitute_config(v) for k, v in data.items()}
     if isinstance(data, str):
         def _rep(m):
+            """Rep."""
             return os.getenv(m.group(1), m.group(2) or "")
         return re.sub(r'\$\{([^:}]+)(?::([^}]*))?\}', _rep, data)
     return data
@@ -330,19 +333,13 @@ class BrowserManager:
             return cls._instance
 
     def _get_local_data(self):
-        if not hasattr(self._local, 'playwright'):
-            self._local.playwright = None
+        """Return local data."""
+        if not hasattr(self._local, 'clock_browser'):
             self._local.clock_browser = None
-            self._local.clock_browser_direct = None
         return self._local
 
-    def get_playwright(self):
-        local = self._get_local_data()
-        if not local.playwright:
-            local.playwright = sync_playwright().start()
-        return local.playwright
-
     def get_clock_browser(self, config, direct=False):
+        """Return clock browser."""
         local = self._get_local_data()
         
         target_browser = local.clock_browser
@@ -414,6 +411,7 @@ class BrowserManager:
         return target_browser
 
     def close_clock_browser(self, direct=False):
+        """Close clock browser."""
         local = self._get_local_data()
         with self._lock:
             target = local.clock_browser
@@ -427,11 +425,10 @@ class BrowserManager:
 
 
     def shutdown(self):
+        """Shutdown."""
         local = self._get_local_data()
         try:
             if local.clock_browser: local.clock_browser.close()
-            if local.clock_browser_direct: local.clock_browser_direct.close()
-            if local.playwright: local.playwright.stop()
         except: pass
 
 

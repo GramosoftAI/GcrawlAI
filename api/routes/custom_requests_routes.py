@@ -2,7 +2,7 @@
 import os
 import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from api.routes.api_key_routes import get_db_connection
+from api.core.database import get_db_connection
 from api.models.payloads import CustomRequestSubmitPayload, StandardResponse
 from api.services.email_service import EmailService
 from api.core.config_setup import load_config
@@ -15,6 +15,7 @@ email_config = load_config().get('email', {})
 email_service = EmailService(email_config)
 
 def send_admin_notification_email(payload: CustomRequestSubmitPayload):
+    """Send admin notification email."""
     admin_emails_str = os.getenv('ADMIN_EMAIL')
     if not admin_emails_str:
         logger.warning("ADMIN_EMAIL not set in env variables. Skipping notification email.")

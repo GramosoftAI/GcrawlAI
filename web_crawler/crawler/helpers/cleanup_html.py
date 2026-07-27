@@ -14,7 +14,6 @@ import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Comment
-from minify_html import minify
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -54,6 +53,7 @@ _KEEP_ATTRS = {"href", "src", "alt", "title", "colspan", "rowspan"}
 
 
 def extract_from_script_tags(soup):
+    """Extract from script tags."""
     script_content = []
 
     for script in soup.find_all("script"):
@@ -211,57 +211,6 @@ def _process_srcset(soup: BeautifulSoup) -> None:
             continue
 
 
-def clean_html_firecrawl_style(html_content: str, base_url: str) -> str:
-    """
-    Cleans HTML to match Firecrawl's clean HTML output format exactly:
-      1. Removes <head> entirely.
-      2. Removes all <script> and <noscript> tags.
-      3. Removes all HTML comments.
-      4. Converts all relative href and src attributes to absolute URLs.
-      5. Wraps in standard clean <!DOCTYPE html><html lang="en"><body>...</body></html> format.
-    """
-    soup = BeautifulSoup(html_content, "html.parser")
-    
-    # 1. Remove <head>
-    head = soup.find("head")
-    if head:
-        head.decompose()
-        
-    # 2. Remove all <script>, <noscript>, <style>, <meta>, and <iframe> tags
-    for tag in soup.find_all(["script", "noscript", "style", "meta", "iframe"]):
-        tag.decompose()
-        
-    # 3. Remove all HTML comments
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-        comment.extract()
-        
-    # 4. Absolutize relative links (href and src)
-    for tag in soup.find_all(True):
-        if tag.parent is None:
-            continue
-        try:
-            if tag.get("href"):
-                tag["href"] = urljoin(base_url, tag["href"])
-            if tag.get("src"):
-                tag["src"] = urljoin(base_url, tag["src"])
-        except (AttributeError, TypeError):
-            continue
-            
-    # 5. Extract body or fallback to soup
-    body = soup.find("body")
-    if body:
-        body_content = str(body)
-    else:
-        body_content = f"<body>{str(soup)}</body>"
-        
-    cleaned_html = (
-        "<!DOCTYPE html>\n"
-        '<html lang="en">\n'
-        f"{body_content}\n"
-        "</html>"
-    )
-    return cleaned_html
-
 
 def cleanup_html(html_content: str, base_url: str, only_main_content: bool = False, ignore_tags: list = None) -> str:
     """
@@ -349,78 +298,6 @@ def cleanup_html(html_content: str, base_url: str, only_main_content: bool = Fal
         body_content = soup
     return title, str(body_content), link_urls, image_urls, script_content
 
-
-def minify_html(html):
-    """
-    minify_html function
-    """
-    # Combine multiple regex operations into one for better performance
-    patterns = [
-        (r"<!--.*?-->", "", re.DOTALL),
-        (r">\s+<", "><", 0),
-        (r"\s+>", ">", 0),
-        (r"<\s+", "<", 0),
-        (r"\s+", " ", 0),
-        (r"\s*=\s*", "=", 0),
-    ]
-
-    for pattern, repl, flags in patterns:
-        html = re.sub(pattern, repl, html, flags=flags)
-
-    return html.strip()
-
-
-def reduce_html(html, reduction):
-    """
-    Reduces the size of the HTML content based on the specified level of reduction.
-
-    Args:
-        html (str): The HTML content to reduce.
-        reduction (int): The level of reduction to apply to the HTML content.
-            0: minification only,
-            1: minification and removig unnecessary tags and attributes,
-            2: minification, removig unnecessary tags and attributes,
-            simplifying text content, removing of the head tag
-
-    Returns:
-        str: The reduced HTML content based on the specified reduction level.
-    """
-    if reduction == 0:
-        return minify_html(html)
-
-    soup = BeautifulSoup(html, "html.parser")
-
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-        comment.extract()
-
-    for tag in soup(["style"]):
-        tag.string = ""
-
-    attrs_to_keep = ["class", "id", "href", "src", "type"]
-    for tag in soup.find_all(True):
-        for attr in list(tag.attrs):
-            if attr not in attrs_to_keep:
-                del tag[attr]
-
-    if reduction == 1:
-        return minify_html(str(soup))
-
-    for tag in soup(["style"]):
-        tag.decompose()
-
-    body = soup.body
-    if not body:
-        return "No <body> tag found in the HTML"
-
-    for tag in body.find_all(string=True):
-        if tag.parent.name not in ["script"]:
-            tag.replace_with(re.sub(r"\s+", " ", tag.strip())[:20])
-
-    reduced_html = str(body)
-
-    reduced_html = minify_html(reduced_html)
-
-    return reduced_html
 
 
 def clean_html_dynamic(html_content: str, base_url: str, config) -> str:

@@ -21,6 +21,7 @@ except Exception:
     PRIORITY_ISPS = ["jio", "airtel", "reliance", "vodafone", "idea", "bsnl", "comcast", "spectrum", "at&t"]
 
 def fetch_nodemaven_isp(country, api_key):
+    """Fetch and return nodemaven isp."""
     headers = {
         "Authorization": f"x-api-key {api_key}",
         "Content-Type": "application/json"
@@ -94,6 +95,7 @@ def fetch_nodemaven_isp(country, api_key):
     return country.upper(), None
 
 def run_population(conn, evomi_key, nodemaven_key):
+    """Run population."""
     cur = conn.cursor()
     
     # 1. Create tables
@@ -198,6 +200,7 @@ def run_population(conn, evomi_key, nodemaven_key):
     print("★ Setup and Database population completed successfully!")
 
 def main():
+    """Main."""
     evomi_key = os.getenv("EVOMI_PREMIUM_ISP_APIKEY")
     if not evomi_key:
         print("EVOMI_PREMIUM_ISP_APIKEY is not set in .env.")

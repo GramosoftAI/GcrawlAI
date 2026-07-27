@@ -7,8 +7,6 @@ from playwright.sync_api import Page
 # Bypass Playwright font loading check during screenshots to avoid timeout hangs
 os.environ["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
 
-from web_crawler.common.config import CrawlConfig
-from web_crawler.crawler.helpers.file_manager import FileManager
 from web_crawler.common.redis_events import publish_event
 from web_crawler.crawler.page.page_crawler2 import BasePageCrawler
 from web_crawler.crawler.page.page_crawler_cloak import CloakCrawlerMixin
@@ -35,11 +33,13 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
         "chewy.com", "autozone.com", "comcast.com", "indeed.com", "gartner.com"
     ]
 
-    def __init__(self, config, file_manager):
-        super().__init__(config, file_manager)
+    def __init__(self, config):
+        """Init."""
+        super().__init__(config)
         self.high_sec_sites = self.HIGH_SEC_SITES
 
     def _load_session_state(self, client_id: str, url: str, context_kwargs: dict, browser_type: str = "cloak"):
+        """Load session state."""
         if not client_id:
             return
         try:
@@ -57,6 +57,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             logger.warning(f"Failed to load session state from Redis: {e}")
 
     def _save_session_state(self, client_id: str, url: str, context, result: dict, browser_type: str = "cloak"):
+        """Save session state."""
         if not client_id or not result or "error" in result:
             return
         try:
@@ -250,37 +251,11 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
         
         return result
 
-    def scroll_to_bottom(self, page):
-        """
-        Incrementally scroll page to trigger lazy loading.
-        """
-        try:
-            logger.info("Starting slow auto-scroll to load dynamic content...")
-            page.evaluate("""
-                async () => {
-                    await new Promise((resolve) => {
-                        let totalHeight = 0;
-                        let distance = 500; 
-                        let timer = setInterval(() => {
-                            let scrollHeight = document.body.scrollHeight;
-                            let jitter = Math.floor(Math.random() * 20);
-                            window.scrollBy(0, distance + jitter);
-                            totalHeight += distance;
-
-                            if(totalHeight >= scrollHeight || totalHeight > 15000){
-                                clearInterval(timer);
-                                resolve();
-                            }
-                        }, 200); 
-                    });
-                }
-            """)
-            page.wait_for_timeout(3000)
-        except Exception as e:
-            logger.warning(f"Scroll failed: {e}")
 
     def _handle_popups_and_overlays(self, page: Page):
+        """Handle popups and overlays."""
         handle_popups_and_overlays(page)
 
     def _capture_robust_screenshot(self, page: Page) -> bytes:
+        """Capture robust screenshot."""
         return capture_robust_screenshot(page, self.config)

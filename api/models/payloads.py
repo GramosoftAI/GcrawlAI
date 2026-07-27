@@ -146,6 +146,7 @@ class SignupOTPRequest(BaseModel):
     @field_validator('name')
     @classmethod
     def validate_name(cls, v: str) -> str:
+        """Validate name."""
         if not v or len(v.strip()) < 2:
             raise ValueError('Name must be at least 2 characters long')
         return v.strip()
@@ -153,6 +154,7 @@ class SignupOTPRequest(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password(cls, v: str) -> str:
+        """Validate password."""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
         return v
@@ -164,6 +166,7 @@ class VerifyOTPRequest(BaseModel):
     @field_validator('otp')
     @classmethod
     def validate_otp(cls, v: str) -> str:
+        """Validate otp."""
         if not v or len(v) != 5 or not v.isdigit():
             raise ValueError('OTP must be exactly 5 digits')
         return v
@@ -185,6 +188,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator('new_password')
     @classmethod
     def validate_new_password(cls, v: str) -> str:
+        """Validate new password."""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
         return v

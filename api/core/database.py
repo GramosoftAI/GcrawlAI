@@ -92,11 +92,40 @@ def get_pooled_connection(max_retries: int = 3):
             except Exception:
                 pass
 
-# Legacy wrapper for backwards compatibility
+class PooledConnectionWrapper:
+    def __init__(self, pool, conn):
+        """Init."""
+        self._pool = pool
+        self._conn = conn
+
+    def __enter__(self):
+        return self._conn.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._conn.__exit__(exc_type, exc_val, exc_tb)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        """Close."""
+        try:
+            if self._conn and self._pool:
+                self._pool.putconn(self._conn)
+        except Exception as e:
+            logger.warning(f"Error returning connection to pool: {e}")
+        finally:
+            self._conn = None
+            self._pool = None
+
+# Wrapper for backwards compatibility using the pool
 def get_db_connection():
-    """Get a connection from the pool. Caller MUST return it via pool.putconn()."""
+    """Get a connection from the pool. Caller MUST return it via pool.putconn() or conn.close()."""
     global _db_pool
-    return _db_pool.getconn()
+    if _db_pool is None:
+        _init_db_pool()
+    conn = _db_pool.getconn()
+    return PooledConnectionWrapper(_db_pool, conn)
 
 def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str, job_id: str = None, time_taken: str = None) -> None:
     """Log an activity to the activity_logs table"""
@@ -265,3 +294,35 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
     except Exception as e:
         logger.error(f"Failed to fetch remaining credits for user {user_id}: {e}")
         return 0
+
+def get_admin_recipient_emails() -> str:
+    """
+    Get admin recipient email addresses.
+    First tries to retrieve from the `admin_emails` table in the database.
+    If none are found, falls back to the ADMIN_EMAIL environment variable or config email setting.
+    """
+    import os
+    from api.core.config_setup import load_config
+    
+    emails = []
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cur:
+                # We query from public.admin_emails table
+                cur.execute("SELECT email FROM admin_emails ORDER BY id ASC")
+                rows = cur.fetchall()
+                emails = [r[0] for r in rows if r[0]]
+    except Exception as e:
+        logger.warning(f"Failed to fetch admin emails from database (it might not exist yet): {e}")
+
+    if emails:
+        return ",".join(emails)
+
+    try:
+        config = load_config()
+        smtp_config = config.get("email", {})
+        fallback = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
+        return fallback
+    except Exception as e:
+        logger.error(f"Failed to load fallback admin email: {e}")
+        return os.getenv("ADMIN_EMAIL", "")

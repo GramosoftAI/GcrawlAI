@@ -12,7 +12,6 @@ from web_crawler.crawler.map.map_crawler_utils import (
     _same_host,
     _clean_url,
     _is_page_url,
-    _ROBOTS_TIMEOUT,
     _SITEMAP_TIMEOUT,
     _SITEMAP_XML_NS,
     MAX_URLS,
@@ -20,32 +19,6 @@ from web_crawler.crawler.map.map_crawler_utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# ── Step 1: robots.txt ───────────────────────────────────────────────────────
-
-def _find_sitemaps_from_robots(base_url: str) -> List[str]:
-    """
-    Fetch robots.txt and extract every 'Sitemap:' directive.
-    Returns a list of absolute sitemap URLs (same host only), empty list on failure.
-    """
-    robots_url = f"{_origin(base_url)}/robots.txt"
-    logger.info(f"🤖 Fetching robots.txt: {robots_url}")
-    resp = _get(robots_url, timeout=_ROBOTS_TIMEOUT)
-    if not resp:
-        logger.info("robots.txt not found or inaccessible")
-        return []
-
-    sitemaps = []
-    for line in resp.text.splitlines():
-        stripped = line.strip()
-        if stripped.lower().startswith("sitemap:"):
-            sitemap_url = stripped.split(":", 1)[1].strip()
-            if sitemap_url.startswith("http"):
-                sitemaps.append(sitemap_url)
-                logger.info(f"  📄 Found sitemap directive: {sitemap_url}")
-
-    return sitemaps
 
 
 # ── Step 2: Sitemap XML parsing ──────────────────────────────────────────────

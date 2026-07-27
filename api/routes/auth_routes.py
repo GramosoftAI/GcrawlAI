@@ -23,6 +23,7 @@ router = APIRouter()
 security = HTTPBearer(auto_error=False)
 
 def get_auth_manager():
+    """Return auth manager."""
     from api.core.security import _auth_manager
     if not _auth_manager:
         raise HTTPException(
@@ -33,6 +34,7 @@ def get_auth_manager():
 
 @router.post("/auth/signup/send-otp", tags=["Authentication"], response_model=OTPResponse)
 async def send_signup_otp(request: SignupOTPRequest):
+    """Send signup otp."""
     try:
         am = get_auth_manager()
         success, message, otp, status_code = am.generate_signup_otp(
@@ -52,6 +54,7 @@ async def send_signup_otp(request: SignupOTPRequest):
 
 @router.post("/auth/signup/verify-otp", tags=["Authentication"], response_model=AuthResponse)
 async def verify_signup_otp(request: VerifyOTPRequest):
+    """Verify signup otp."""
     try:
         am = get_auth_manager()
         response = am.verify_signup_otp(request.email, request.otp)
@@ -67,6 +70,7 @@ async def verify_signup_otp(request: VerifyOTPRequest):
 
 @router.post("/auth/signin", tags=["Authentication"], response_model=AuthResponse)
 async def sign_in(request: SignInRequest):
+    """Sign in."""
     try:
         am = get_auth_manager()
         response = am.sign_in(request.email, request.password)
@@ -82,6 +86,7 @@ async def sign_in(request: SignInRequest):
 
 @router.post("/auth/forgot-password", tags=["Authentication"], response_model=StandardResponse)
 async def forgot_password(request: ForgotPasswordRequest):
+    """Forgot password."""
     try:
         am = get_auth_manager()
         success, message, encrypted_token, status_code = am.request_password_reset(request.email)
@@ -94,6 +99,7 @@ async def forgot_password(request: ForgotPasswordRequest):
 
 @router.post("/auth/reset-password", tags=["Authentication"], response_model=StandardResponse)
 async def reset_password(request: ResetPasswordRequest):
+    """Reset password."""
     try:
         am = get_auth_manager()
         success, message, status_code = am.reset_password_with_token(request.token, request.new_password)
@@ -109,6 +115,7 @@ async def reset_password(request: ResetPasswordRequest):
 
 @router.get("/auth/me", tags=["Authentication"], response_model=CurrentUserResponse)
 async def get_current_user_info(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Return current user info."""
     try:
         am = get_auth_manager()
         if not credentials:
