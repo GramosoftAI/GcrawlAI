@@ -129,6 +129,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
         result = None
         proxy_attempt_count = 0
         proxy_attempts = []
+        bandwidth_usage = {}
 
         for idx, (provider_name, provider_id) in enumerate(providers):
             attempt = idx + 1
@@ -166,6 +167,9 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
                 url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, provider_id,
                 use_high_speed=use_high_speed
             )
+            if result:
+                bandwidth_usage[provider_id] = result.pop("bandwidth_bytes", 0)
+                result["proxy_usage"] = bandwidth_usage
  
             if result and "error" not in result:
                 logger.info("\n" + "="*30 + f"\nAttempt {attempt}/3 - Success\n" + "="*30)
@@ -248,7 +252,8 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             proxy_attempts=proxy_attempts,
             request_params=request_params
         )
-        
+        if result:
+            result["proxy_usage"] = bandwidth_usage
         return result
 
 

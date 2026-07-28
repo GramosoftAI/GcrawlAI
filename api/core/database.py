@@ -140,6 +140,30 @@ def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str,
     except Exception as e:
         logger.error(f"Failed to log activity for user {user_id}: {e}")
 
+def log_proxy_bandwidth(user_id: Union[int, str], endpoint: str, url_or_query: str, bandwidth_data: dict, status: str = 'success') -> None:
+    """Log proxy bandwidth usage to proxy_bandwidth_usage table"""
+    if not bandwidth_data or user_id == "demo":
+        return
+        
+    try:
+        nodemaven = bandwidth_data.get('nodemaven')
+        evomi_premium = bandwidth_data.get('evomi_premium')
+        evomi_core = bandwidth_data.get('evomi_core')
+        
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO proxy_bandwidth_usage 
+                    (user_id, endpoint, url_or_query, nodemaven, evomi_premium, evomi_core, final_status) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (user_id, endpoint, url_or_query, nodemaven, evomi_premium, evomi_core, status)
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log proxy bandwidth for user {user_id}: {e}")
+
 def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = None) -> list:
     """Fetch activity logs for a specific user"""
     try:

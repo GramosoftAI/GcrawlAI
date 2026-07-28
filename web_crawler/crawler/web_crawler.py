@@ -50,6 +50,8 @@ class WebCrawler:
         self.all_links: Set[str] = set()
         self.pages_data: List[Dict] = []
         
+        self.proxy_usage_aggregate = {"nodemaven": 0, "evomi_premium": 0, "evomi_core": 0}
+        
         self.successful_pages = 0
         self.attempted_pages = 0
 
@@ -93,6 +95,12 @@ class WebCrawler:
                 websocket_manager=websocket_manager,
                 crawl_mode=crawl_mode
             )
+
+            if result:
+                usage = result.get("proxy_usage", {})
+                with lock:
+                    for k, v in usage.items():
+                        self.proxy_usage_aggregate[k] += v
 
             if not result or "error" in result:
                 with lock:
@@ -440,7 +448,11 @@ class WebCrawler:
             )
 
             error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
-            if result and "error" not in result:
+            if result and not result.get("error"):
+                usage = result.get("proxy_usage", {})
+                for k, v in usage.items():
+                    self.proxy_usage_aggregate[k] += v
+                
                 self.successful_pages = 1
 
             elapsed = perf_counter() - start_perf
@@ -488,6 +500,7 @@ class WebCrawler:
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Single-page crawl finished")
+            summary["proxy_usage"] = self.proxy_usage_aggregate
             logger.info(json.dumps(summary, indent=2))
             return summary
 
@@ -623,6 +636,7 @@ class WebCrawler:
             if crawl_mode != "all":
                 upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
 
+        summary["proxy_usage"] = self.proxy_usage_aggregate
         logger.info("✅ Crawl finished")
         logger.info(json.dumps(summary, indent=2))
         return summary

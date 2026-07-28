@@ -165,11 +165,19 @@ def _ping_browser_worker():
 
 
 
-def _run_background_crawl_task(client_id: str, **kwargs):
+def _run_background_crawl_task(client_id: str, user_id=None, **kwargs):
 
     """Wrapper to run synchronous crawls (single, links) and persist their completion to DB."""
 
-    summary = crawl_main(client_id=client_id, **kwargs)
+    summary = crawl_main(client_id=client_id, user_id=user_id, **kwargs)
+    
+    if user_id and "proxy_usage" in summary:
+        try:
+            from api.core.database import log_proxy_bandwidth
+            bw_status = "failed" if summary.get("status") == "failed" else "success"
+            log_proxy_bandwidth(user_id, "CRAWL", summary.get("start_url", ""), summary["proxy_usage"], bw_status)
+        except Exception as e:
+            logger.error(f"Failed to log proxy bandwidth: {e}")
 
     
 

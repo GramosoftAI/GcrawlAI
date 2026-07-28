@@ -33,7 +33,7 @@ def upload_to_s3(file_bytes: bytes, crawl_id: str, filename: str, content_type: 
         return ""
         
     bucket = os.getenv("AWS_S3_BUCKET", "gramosoft")
-    key = f"gcrawl_artifacts/{crawl_id}/{filename}"
+    key = f"gcrawl_outputs/{crawl_id}/{filename}"
     
     try:
         s3.put_object(

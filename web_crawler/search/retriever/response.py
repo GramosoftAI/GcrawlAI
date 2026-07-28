@@ -17,6 +17,7 @@ class Response:
         url: str,
         ok: bool = True,
         error: Optional[str] = None,
+        bandwidth_bytes: int = 0,
     ):
         """Init."""
         self.content = content
@@ -25,6 +26,7 @@ class Response:
         self.url = url
         self.ok = ok
         self.error = error
+        self.bandwidth_bytes = bandwidth_bytes
 
     def __repr__(self) -> str:
         """Repr."""

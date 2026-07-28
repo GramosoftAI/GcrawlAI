@@ -88,11 +88,11 @@ class DatabaseSetup:
             password = password or self.db_config.get("password")
 
         # Set standard defaults
-        host = host or "localhost"
-        port = port or "5432"
-        database = database or "Dev_tamil"
-        user = user or "postgres"
-        password = password or ""
+        host = host
+        port = port
+        database = database
+        user = user
+        password = password
 
         conn = psycopg2.connect(
             host=host,
@@ -189,28 +189,6 @@ class DatabaseSetup:
         """
         return self.execute_query(query)
 
-    def create_crawl_artifacts_table(self) -> bool:
-        """Create crawl_artifacts table"""
-        query = """
-        CREATE TABLE IF NOT EXISTS crawl_artifacts (
-            artifact_id VARCHAR(64) PRIMARY KEY,
-            crawl_id VARCHAR(64) NOT NULL,
-            page_url TEXT NOT NULL DEFAULT '',
-            artifact_type VARCHAR(50) NOT NULL,
-            content_kind VARCHAR(20) NOT NULL DEFAULT 'text',
-            title TEXT,
-            content TEXT NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT fk_crawl_artifact_job
-                FOREIGN KEY (crawl_id)
-                REFERENCES crawl_jobs (crawl_id)
-                ON DELETE CASCADE,
-            CONSTRAINT unique_crawl_artifact
-                UNIQUE (crawl_id, page_url, artifact_type)
-        );
-        """
-        return self.execute_query(query)
 
     def create_reported_issues_table(self) -> bool:
         """Create reported_issues table and index"""
@@ -886,6 +864,25 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_proxy_bandwidth_usage_table(self) -> bool:
+        """Create proxy_bandwidth_usage table"""
+        query = """
+        CREATE TABLE IF NOT EXISTS proxy_bandwidth_usage (
+            id SERIAL PRIMARY KEY,
+            user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
+            endpoint VARCHAR(50) NOT NULL,
+            url_or_query TEXT NOT NULL,
+            nodemaven BIGINT DEFAULT NULL,
+            evomi_premium BIGINT DEFAULT NULL,
+            evomi_core BIGINT DEFAULT NULL,
+            final_status VARCHAR(20) DEFAULT 'success',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_user_id ON proxy_bandwidth_usage(user_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_created_at ON proxy_bandwidth_usage(created_at);
+        """
+        return self.execute_query(query)
+
     def setup_all_tables(self) -> bool:
         """Execute table creation and population in topological order of dependencies"""
         logger.info("Starting GcrawlAI database setup...")
@@ -897,7 +894,7 @@ class DatabaseSetup:
 
         # 2. Crawler & search tables
         if not self.create_crawl_jobs_table(): return False
-        if not self.create_crawl_artifacts_table(): return False
+
         if not self.create_crawl_errors_table(): return False
         if not self.create_search_jobs_table(): return False
         if not self.create_search_errors_table(): return False
@@ -908,6 +905,7 @@ class DatabaseSetup:
         if not self.create_reported_issues_table(): return False
         if not self.create_admin_error_logs_table(): return False
         if not self.create_admin_emails_table(): return False
+        if not self.create_proxy_bandwidth_usage_table(): return False
 
         # 4. System config & payment tables
         if not self.create_api_endpoints_table(): return False
@@ -925,8 +923,8 @@ class DatabaseSetup:
     def verify_tables_exist(self) -> bool:
         """Verify existence of all 20 target system database tables"""
         required_tables = [
-            'users', 'signup_otps', 'crawl_jobs', 'crawl_artifacts', 
-            'reported_issues', 'api_keys', 'crawl_errors', 'activity_logs', 
+            'users', 'signup_otps', 'crawl_jobs', 'reported_issues', 
+            'api_keys', 'crawl_errors', 'activity_logs', 
             'job_results', 'search_jobs', 'search_errors', 'api_endpoints', 
             'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
@@ -967,7 +965,7 @@ class DatabaseSetup:
     def drop_all_tables(self) -> bool:
         """Drop all GcrawlAI tables (USE WITH EXTREME CAUTION)"""
         tables = [
-            'signup_otps', 'users', 'crawl_jobs', 'crawl_artifacts', 'reported_issues', 
+            'signup_otps', 'users', 'crawl_jobs', 'reported_issues', 
             'api_keys', 'crawl_errors', 'activity_logs', 'job_results', 'search_jobs', 
             'search_errors', 'api_endpoints', 'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',

@@ -23,7 +23,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from web_crawler.common.config import CrawlConfig
-from web_crawler.common.artifact_store import upsert_crawl_artifact
+
 
 logger = logging.getLogger(__name__)
 
@@ -100,48 +100,6 @@ def _get_db_conn():
 
 
 
-
-def _store_crawl_artifact(
-    crawl_id: Optional[str],
-    artifact_type: str,
-    content,
-    *,
-    content_kind: str = "text",
-    page_url: Optional[str] = None,
-    title: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Helper to store a crawl artifact in the database via the common artifact store.
-    Returns the artifact ref (artifact://UUID) or None on failure.
-    """
-    if not crawl_id or content is None:
-        return None
-
-    conn = None
-    try:
-        conn = _get_db_conn()
-        artifact_ref = upsert_crawl_artifact(
-            conn,
-            crawl_id=crawl_id,
-            page_url=page_url,
-            artifact_type=artifact_type,
-            content=content,
-            content_kind=content_kind,
-            title=title,
-        )
-        conn.commit()
-        return artifact_ref
-    except Exception as db_err:
-        logger.warning(
-            f"⚠ Could not persist crawl artifact '{artifact_type}' for {page_url or crawl_id}: {db_err}"
-        )
-        return None
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
 
 def _record_crawl_error(

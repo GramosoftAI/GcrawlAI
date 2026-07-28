@@ -21,9 +21,7 @@ from web_crawler.common.proxy_manager import ProxyManager
 from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
 from web_crawler.crawler.helpers.cleanup_html import clean_html_dynamic
 
-from web_crawler.crawler.page.page_crawler1 import (
-    _store_crawl_artifact
-)
+
 
 # Import delegates
 from web_crawler.crawler.helpers.crawler_helpers import (
@@ -228,9 +226,6 @@ class BasePageCrawler:
                         s_md = writer.render_single_markdown(seo_data)
                         s_xlsx = writer.render_single_excel_base64(seo_data)
                         
-                        _store_crawl_artifact(client_id, "seo_json", s_json, page_url=url, title=seo_data.get("title"))
-                        _store_crawl_artifact(client_id, "seo_md", s_md, page_url=url, title=seo_data.get("title"))
-                        _store_crawl_artifact(client_id, "seo_xlsx", s_xlsx, content_kind="binary", page_url=url, title=seo_data.get("title"))
                         
                         from web_crawler.common.s3_utils import upload_to_s3
                         seo_xlsx_s3_url = upload_to_s3(
@@ -251,7 +246,6 @@ class BasePageCrawler:
                     if not enable_md: return None
                     try:
                         md = self.content_processor.convert_to_markdown(html, url, only_main_content=self.config.markdown_clean, ignore_tags=self.config.html_ignore_tags)
-                        _store_crawl_artifact(client_id, "markdown", md, page_url=url, title=page_title)
                         return md
                     except Exception as e:
                         logger.error(f"MD Parallel Task Error: {e}")
@@ -263,7 +257,6 @@ class BasePageCrawler:
                     if not enable_images: return None
                     try:
                         imgs = self.content_processor.extract_image_urls(soup, url)
-                        _store_crawl_artifact(client_id, "images", imgs, content_kind="json", page_url=url, title=page_title)
                         return imgs
                     except Exception as e:
                         logger.error(f"Images Parallel Task Error: {e}")
@@ -275,7 +268,7 @@ class BasePageCrawler:
                     if not (enable_ss and screenshot_bytes): return None
                     try:
                         screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-                        _store_crawl_artifact(client_id, "screenshot", screenshot_b64, content_kind="binary", page_url=url, title=page_title)
+                        
                         
                         from web_crawler.common.s3_utils import upload_to_s3
                         fmt = self.config.screenshot_format.lower()
@@ -316,7 +309,6 @@ class BasePageCrawler:
             html_content = None
             if enable_html:
                 html_content = clean_html_dynamic(html, url, self.config)
-                _store_crawl_artifact(client_id, "html", html_content, page_url=url, title=page_title)
 
             # Blank Page Detection
             content_blank = self._is_page_content_blank(title, check_content, len(links))

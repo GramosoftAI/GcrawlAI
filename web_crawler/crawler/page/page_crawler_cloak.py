@@ -58,6 +58,19 @@ class CloakCrawlerMixin:
 
             page = context.new_page()
             
+            total_bytes = [0]
+            def handle_response(response):
+                try:
+                    headers = response.headers
+                    size = 0
+                    if 'content-length' in headers:
+                        size += int(headers['content-length'])
+                    size += sum(len(k.encode('utf-8')) + len(v.encode('utf-8')) for k, v in headers.items())
+                    total_bytes[0] += size
+                except Exception:
+                    pass
+            page.on("response", handle_response)
+            
             # Block heavy tracking/analytics scripts and heavy media to speed up loads and prevent timeouts
             def block_useless_resources(route):
                 """Block useless resources."""
@@ -345,9 +358,11 @@ class CloakCrawlerMixin:
                          logger.info("Auto-scroll skipped.")
                 
                 if self.is_captcha_page(page): 
-                    return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
+                    return {"url": url, "error": "CAPTCHA detected", "status_code": 403, "bandwidth_bytes": total_bytes[0]}
                     
                 result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, status_code=status_code)
+                if result and isinstance(result, dict):
+                    result["bandwidth_bytes"] = total_bytes[0]
                 self._save_session_state(client_id, url, context, result, browser_type="cloak")
                 return result
             finally:
@@ -366,4 +381,4 @@ class CloakCrawlerMixin:
                 except Exception as close_err:
                     logger.error(f"Failed to close browser during recycling: {close_err}")
                     
-            return {"url": url, "error": str(e), "status_code": 500}
+            return {"url": url, "error": str(e), "status_code": 500, "bandwidth_bytes": total_bytes[0] if 'total_bytes' in locals() else 0}

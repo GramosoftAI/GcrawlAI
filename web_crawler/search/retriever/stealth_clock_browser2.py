@@ -211,6 +211,20 @@ class PersistentStealthyFetcher(_StealthMixin):
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout)
 
+                # Track total bytes downloaded via proxy
+                total_bytes = [0]
+                async def handle_response_bandwidth(response):
+                    try:
+                        hdrs = response.headers
+                        size = 0
+                        if 'content-length' in hdrs:
+                            size += int(hdrs['content-length'])
+                        size += sum(len(k.encode('utf-8')) + len(v.encode('utf-8')) for k, v in hdrs.items())
+                        total_bytes[0] += size
+                    except Exception:
+                        pass
+                page.on("response", handle_response_bandwidth)
+
                 # Layer 11: Advanced Deep Stealth Script Injection (Bypass CAPTCHA) - Handled natively by cloakbrowser binary
                 # stealth_script = ...
                 # await page.add_init_script(stealth_script)
@@ -291,7 +305,7 @@ class PersistentStealthyFetcher(_StealthMixin):
 
                 logger.info(f"[PersistentFetcher] ✅ {url} (status={status})")
                 return Response(content=content, headers=headers, status=status,
-                                url=final_url, ok=status < 400)
+                                url=final_url, ok=status < 400, bandwidth_bytes=total_bytes[0])
 
             except Exception as e:
                 if "ERR_TIMED_OUT" in str(e) or "Timeout" in str(e):

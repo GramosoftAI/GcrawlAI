@@ -303,7 +303,7 @@ def _get_or_start_proactor_thread():
         
     return _proactor_loop
 
-async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, **kwargs) -> List[Dict]:
+async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, **kwargs) -> Dict:
     """FastAPI-friendly async entry point."""
     import sys
     import asyncio
@@ -328,20 +328,20 @@ async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, *
                 # Wrap the concurrent.futures.Future in an asyncio Future to await it non-blocking
                 results = await asyncio.wrap_future(future)
                 if isinstance(results, dict) and "error" in results:
-                    return []
-                return results.get("results", [])
+                    return {"results": []}
+                return results
             except Exception as e:
                 logger.error(f"Windows persistent thread search failed: {e}")
-                return []
+                return {"results": []}
                 
     try:
         results = await search(query, limit=limit, proxy_geo=proxy_geo)
         if isinstance(results, dict) and "error" in results:
-            return []
-        return results.get("results", [])
+            return {"results": []}
+        return results
     except Exception as e:
         logger.error(f"scrape_google failed: {e}")
-        return []
+        return {"results": []}
 
 async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -> Dict:
     """Search."""
@@ -426,6 +426,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
         combined = []
         seen_urls = set()
         valid_response = None
+        total_search_bytes = 0
         
         # Process tasks in sorted start order to maintain correct Google ranking.
         for start in sorted(starts):
@@ -433,6 +434,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
                 page_results, page_response = await async_tasks[start]
                 if page_response:
                     valid_response = page_response
+                    total_search_bytes += getattr(page_response, 'bandwidth_bytes', 0)
                 
                 # Log if a page failed completely but continue to show other pages' results
                 if not page_response or not page_response.ok:
@@ -457,6 +459,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
                 page_results, page_response = await fetch_page_with_retry(next_start)
                 if page_response:
                     valid_response = page_response
+                    total_search_bytes += getattr(page_response, 'bandwidth_bytes', 0)
                 if not page_response or not page_response.ok:
                     logger.warning(f"[Thread-{tid}] Subsequent page start={next_start} failed completely after retries. Stopping.")
                     break
@@ -487,7 +490,8 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
             "count": len(final_results),
             "query": query,
             "final_url": response.url if response else f"https://www.google.com/search?q={query.replace(' ', '+')}",
-            "status": response.status if response else 200
+            "status": response.status if response else 200,
+            "proxy_usage": {"nodemaven": total_search_bytes}
         }
         
         if final_results:

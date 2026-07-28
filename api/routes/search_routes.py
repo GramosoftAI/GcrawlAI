@@ -104,7 +104,7 @@ async def search(
             geo_val = "IN"
 
         # Pass to the global Priority Queue instead of executing directly
-        results: List[Dict[str, str]] = await queue_manager.submit_task(
+        raw_results = await queue_manager.submit_task(
             user_id=user_id,
             plan_type=plan_type,
             user_limit=concurrency_limit,
@@ -114,6 +114,19 @@ async def search(
             ip=client_ip,
             proxy_geo=geo_val
         )
+        
+        if isinstance(raw_results, dict):
+            results = raw_results.get("results", [])
+            proxy_usage = raw_results.get("proxy_usage")
+            if proxy_usage and user_id:
+                try:
+                    from api.core.database import log_proxy_bandwidth
+                    log_proxy_bandwidth(user_id, "SEARCH", search_req.query, proxy_usage, "success")
+                except Exception as e:
+                    logger.error(f"Failed to log proxy bandwidth for search: {e}")
+        else:
+            results = raw_results
+            
         # On success, deduct/increment used credit (1 request credit per 10 results returned)
         num_results = len(results) if results else 0
         credits_to_deduct = (num_results + 9) // 10 if num_results > 0 else 0
