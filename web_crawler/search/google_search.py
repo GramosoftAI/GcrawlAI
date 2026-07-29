@@ -491,7 +491,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
             "query": query,
             "final_url": response.url if response else f"https://www.google.com/search?q={query.replace(' ', '+')}",
             "status": response.status if response else 200,
-            "proxy_usage": {"nodemaven": total_search_bytes}
+            "proxy_usage": {"nodemaven": round(total_search_bytes / (1024 * 1024), 2)}
         }
         
         if final_results:

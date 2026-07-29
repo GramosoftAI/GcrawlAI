@@ -500,7 +500,7 @@ class WebCrawler:
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Single-page crawl finished")
-            summary["proxy_usage"] = self.proxy_usage_aggregate
+            summary["proxy_usage"] = {k: round(v / (1024 * 1024), 2) for k, v in self.proxy_usage_aggregate.items()}
             logger.info(json.dumps(summary, indent=2))
             return summary
 
@@ -636,7 +636,7 @@ class WebCrawler:
             if crawl_mode != "all":
                 upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
 
-        summary["proxy_usage"] = self.proxy_usage_aggregate
+        summary["proxy_usage"] = {k: round(v / (1024 * 1024), 2) for k, v in self.proxy_usage_aggregate.items()}
         logger.info("✅ Crawl finished")
         logger.info(json.dumps(summary, indent=2))
         return summary

@@ -471,8 +471,6 @@ class DatabaseSetup:
         """Create monthly and yearly subscription plans tables and seed default pricing plans"""
         drop_old_query = """
         DROP TABLE IF EXISTS subscription_plans CASCADE;
-        DROP TABLE IF EXISTS monthly_subscription_plans CASCADE;
-        DROP TABLE IF EXISTS yearly_subscription_plans CASCADE;
         """
 
         create_monthly_query = """
@@ -480,10 +478,12 @@ class DatabaseSetup:
             id SERIAL PRIMARY KEY,
             plan_name VARCHAR(100) UNIQUE NOT NULL,
             plan_key VARCHAR(100) UNIQUE NOT NULL,
-            price VARCHAR(100) NOT NULL,
+            price_usd VARCHAR(100) NOT NULL,
+            price_inr VARCHAR(100) NOT NULL,
             credits_included INTEGER NOT NULL,
             max_concurrency INTEGER NOT NULL,
-            monthly_product_id VARCHAR(255),
+            monthly_product_id_inr VARCHAR(255),
+            monthly_product_id_usd VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -494,32 +494,34 @@ class DatabaseSetup:
             id SERIAL PRIMARY KEY,
             plan_name VARCHAR(100) UNIQUE NOT NULL,
             plan_key VARCHAR(100) UNIQUE NOT NULL,
-            price VARCHAR(100) NOT NULL,
+            price_usd VARCHAR(100) NOT NULL,
+            price_inr VARCHAR(100) NOT NULL,
             credits_included INTEGER NOT NULL,
             max_concurrency INTEGER NOT NULL,
-            yearly_product_id VARCHAR(255),
+            yearly_product_id_inr VARCHAR(255),
+            yearly_product_id_usd VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
         
         seed_monthly_query = """
-        INSERT INTO monthly_subscription_plans (plan_name, plan_key, price, credits_included, max_concurrency)
+        INSERT INTO monthly_subscription_plans (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency)
         VALUES 
-            ('Free', 'free', '$0/mo', 500, 2),
-            ('Starter', 'starter', '$19/mo', 3000, 5),
-            ('Growth', 'growth', '$29/mo', 50000, 15),
-            ('Pro', 'pro', '$49/mo', 150000, 25)
+            ('Free', 'free', '$0/mo', 'Rs.0/mo', 500, 2),
+            ('Starter', 'starter', '$19/mo', 'Rs.1599/mo', 3000, 5),
+            ('Growth', 'growth', '$29/mo', 'Rs.2499/mo', 50000, 15),
+            ('Pro', 'pro', '$49/mo', 'Rs.4199/mo', 150000, 25)
         ON CONFLICT (plan_key) DO NOTHING;
         """
         
         seed_yearly_query = """
-        INSERT INTO yearly_subscription_plans (plan_name, plan_key, price, credits_included, max_concurrency)
+        INSERT INTO yearly_subscription_plans (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency)
         VALUES 
-            ('Free', 'free', '$0/yr', 500, 2),
-            ('Starter', 'starter', '$190/yr', 36000, 5),
-            ('Growth', 'growth', '$290/yr', 600000, 15),
-            ('Pro', 'pro', '$490/yr', 1800000, 25)
+            ('Free', 'free', '$0/yr', 'Rs.0/yr', 500, 2),
+            ('Starter', 'starter', '$190/yr', 'Rs.15990/yr', 36000, 5),
+            ('Growth', 'growth', '$290/yr', 'Rs.24990/yr', 600000, 15),
+            ('Pro', 'pro', '$490/yr', 'Rs.41990/yr', 1800000, 25)
         ON CONFLICT (plan_key) DO NOTHING;
         """
         

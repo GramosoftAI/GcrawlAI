@@ -34,7 +34,7 @@ async def list_subscription_plans(
         
         # Monthly Plans
         cursor.execute("""
-            SELECT id, plan_name, plan_key, price, credits_included, max_concurrency, monthly_product_id 
+            SELECT id, plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency, monthly_product_id_inr, monthly_product_id_usd 
             FROM monthly_subscription_plans 
             ORDER BY id ASC
         """)
@@ -42,7 +42,7 @@ async def list_subscription_plans(
         
         # Yearly Plans
         cursor.execute("""
-            SELECT id, plan_name, plan_key, price, credits_included, max_concurrency, yearly_product_id 
+            SELECT id, plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency, yearly_product_id_inr, yearly_product_id_usd 
             FROM yearly_subscription_plans 
             ORDER BY id ASC
         """)
@@ -54,10 +54,12 @@ async def list_subscription_plans(
                 id=row['id'],
                 plan_name=row['plan_name'],
                 plan_key=row['plan_key'],
-                price=row['price'],
+                price_usd=row['price_usd'],
+                price_inr=row['price_inr'],
                 credits_included=row['credits_included'],
                 max_concurrency=row['max_concurrency'],
-                monthly_product_id=row['monthly_product_id']
+                monthly_product_id_inr=row['monthly_product_id_inr'],
+                monthly_product_id_usd=row['monthly_product_id_usd']
             ) for row in monthly_rows
         ]
         
@@ -66,10 +68,12 @@ async def list_subscription_plans(
                 id=row['id'],
                 plan_name=row['plan_name'],
                 plan_key=row['plan_key'],
-                price=row['price'],
+                price_usd=row['price_usd'],
+                price_inr=row['price_inr'],
                 credits_included=row['credits_included'],
                 max_concurrency=row['max_concurrency'],
-                yearly_product_id=row['yearly_product_id']
+                yearly_product_id_inr=row['yearly_product_id_inr'],
+                yearly_product_id_usd=row['yearly_product_id_usd']
             ) for row in yearly_rows
         ]
 
@@ -111,9 +115,12 @@ async def update_subscription_plan(
 
         updates = []
         params = []
-        if request.price is not None:
-            updates.append("price = %s")
-            params.append(request.price)
+        if request.price_usd is not None:
+            updates.append("price_usd = %s")
+            params.append(request.price_usd)
+        if request.price_inr is not None:
+            updates.append("price_inr = %s")
+            params.append(request.price_inr)
         if request.credits_included is not None:
             updates.append("credits_included = %s")
             params.append(request.credits_included)
@@ -121,12 +128,20 @@ async def update_subscription_plan(
             updates.append("max_concurrency = %s")
             params.append(request.max_concurrency)
             
-        if cycle == 'monthly' and request.monthly_product_id is not None:
-            updates.append("monthly_product_id = %s")
-            params.append(request.monthly_product_id)
-        if cycle == 'yearly' and request.yearly_product_id is not None:
-            updates.append("yearly_product_id = %s")
-            params.append(request.yearly_product_id)
+        if cycle == 'monthly':
+            if request.monthly_product_id_inr is not None:
+                updates.append("monthly_product_id_inr = %s")
+                params.append(request.monthly_product_id_inr)
+            if request.monthly_product_id_usd is not None:
+                updates.append("monthly_product_id_usd = %s")
+                params.append(request.monthly_product_id_usd)
+        if cycle == 'yearly':
+            if request.yearly_product_id_inr is not None:
+                updates.append("yearly_product_id_inr = %s")
+                params.append(request.yearly_product_id_inr)
+            if request.yearly_product_id_usd is not None:
+                updates.append("yearly_product_id_usd = %s")
+                params.append(request.yearly_product_id_usd)
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
@@ -177,16 +192,16 @@ async def create_subscription_plan(
         # Determine product ID column and value
         if cycle == 'monthly':
             query = f"""
-                INSERT INTO {table_name} (plan_name, plan_key, price, credits_included, max_concurrency, monthly_product_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO {table_name} (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency, monthly_product_id_inr, monthly_product_id_usd)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
-            params = (request.plan_name, request.plan_key, request.price, request.credits_included, request.max_concurrency, request.monthly_product_id)
+            params = (request.plan_name, request.plan_key, request.price_usd, request.price_inr, request.credits_included, request.max_concurrency, request.monthly_product_id_inr, request.monthly_product_id_usd)
         else:
             query = f"""
-                INSERT INTO {table_name} (plan_name, plan_key, price, credits_included, max_concurrency, yearly_product_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO {table_name} (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency, yearly_product_id_inr, yearly_product_id_usd)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
-            params = (request.plan_name, request.plan_key, request.price, request.credits_included, request.max_concurrency, request.yearly_product_id)
+            params = (request.plan_name, request.plan_key, request.price_usd, request.price_inr, request.credits_included, request.max_concurrency, request.yearly_product_id_inr, request.yearly_product_id_usd)
 
         cursor.execute(query, params)
         conn.commit()

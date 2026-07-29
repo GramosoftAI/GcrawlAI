@@ -146,9 +146,16 @@ def log_proxy_bandwidth(user_id: Union[int, str], endpoint: str, url_or_query: s
         return
         
     try:
-        nodemaven = bandwidth_data.get('nodemaven')
-        evomi_premium = bandwidth_data.get('evomi_premium')
-        evomi_core = bandwidth_data.get('evomi_core')
+        def to_bytes(val):
+            if val is None:
+                return None
+            if isinstance(val, float):
+                return int(val * 1024 * 1024)
+            return int(val)
+
+        nodemaven = to_bytes(bandwidth_data.get('nodemaven'))
+        evomi_premium = to_bytes(bandwidth_data.get('evomi_premium'))
+        evomi_core = to_bytes(bandwidth_data.get('evomi_core'))
         
         with get_pooled_connection() as conn:
             with conn.cursor() as cursor:

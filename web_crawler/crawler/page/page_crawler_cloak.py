@@ -145,7 +145,7 @@ class CloakCrawlerMixin:
                             break
                     else:
                         logger.debug("CAPTCHA/Challenge could not be bypassed on this attempt (CloakBrowser).")
-                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
+                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403, "bandwidth_bytes": total_bytes[0]}
 
                 if not self.config.js_render:
                     if enable_ss:
@@ -155,6 +155,8 @@ class CloakCrawlerMixin:
                             pass
                         
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, status_code=status_code)
+                    if result and isinstance(result, dict):
+                        result["bandwidth_bytes"] = total_bytes[0]
                     self._save_session_state(client_id, url, context, result, browser_type="cloak")
                     return result
 
@@ -181,14 +183,14 @@ class CloakCrawlerMixin:
                             break
                     else:
                         logger.debug("CAPTCHA/Challenge could not be bypassed on this attempt (CloakBrowser).")
-                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
+                        return {"url": url, "error": "CAPTCHA detected", "status_code": 403, "bandwidth_bytes": total_bytes[0]}
 
                 status_code = response.status if response else 0
                 title = page.title()
                 
                 if status_code in [401, 407, 502, 503, 504]:
                     logger.warning(f"Bailing out due to status {status_code}.")
-                    return {"url": url, "error": f"Block/Auth error: {status_code}", "status_code": status_code}
+                    return {"url": url, "error": f"Block/Auth error: {status_code}", "status_code": status_code, "bandwidth_bytes": total_bytes[0]}
 
                 if not title and status_code == 200:
                     title = page.title()

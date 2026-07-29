@@ -293,11 +293,14 @@ class AdminPlanResponse(BaseModel):
     id: int
     plan_name: str
     plan_key: str
-    price: str
+    price_usd: str
+    price_inr: str
     credits_included: int
     max_concurrency: int
-    monthly_product_id: Optional[str] = None
-    yearly_product_id: Optional[str] = None
+    monthly_product_id_inr: Optional[str] = None
+    monthly_product_id_usd: Optional[str] = None
+    yearly_product_id_inr: Optional[str] = None
+    yearly_product_id_usd: Optional[str] = None
 
 class AdminPlansData(BaseModel):
     monthly: List[AdminPlanResponse]
@@ -312,11 +315,14 @@ class AdminPlanListResponse(BaseModel):
 
 class UpdatePlanRequest(BaseModel):
     """Request model for updating subscription plan settings"""
-    price: Optional[str] = None
+    price_usd: Optional[str] = None
+    price_inr: Optional[str] = None
     credits_included: Optional[int] = None
     max_concurrency: Optional[int] = None
-    monthly_product_id: Optional[str] = None
-    yearly_product_id: Optional[str] = None
+    monthly_product_id_inr: Optional[str] = None
+    monthly_product_id_usd: Optional[str] = None
+    yearly_product_id_inr: Optional[str] = None
+    yearly_product_id_usd: Optional[str] = None
 
 class DashboardStatCard(BaseModel):
     value: str
@@ -388,8 +394,11 @@ class CreatePlanRequest(BaseModel):
     """Request model for creating a new subscription plan tier template"""
     plan_name: str
     plan_key: str
-    price: str
+    price_usd: str
+    price_inr: str
     credits_included: int
     max_concurrency: int
-    monthly_product_id: Optional[str] = None
-    yearly_product_id: Optional[str] = None
+    monthly_product_id_inr: Optional[str] = None
+    monthly_product_id_usd: Optional[str] = None
+    yearly_product_id_inr: Optional[str] = None
+    yearly_product_id_usd: Optional[str] = None

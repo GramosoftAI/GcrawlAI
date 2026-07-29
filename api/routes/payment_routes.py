@@ -21,6 +21,7 @@ class CheckoutSessionRequest(BaseModel):
     plan_type: str = Field(..., description="Plan name (e.g. starter, growth, pro)")
     billing_cycle: str = Field(..., description="Billing cycle: MONTHLY or YEARLY")
     return_url: Optional[str] = Field(None, description="Dynamic redirect URL after successful payment")
+    billing_currency: Optional[str] = Field(None, description="Billing currency (e.g. USD, INR)")
 
 
 @router.post("/create-checkout-session")
@@ -53,23 +54,47 @@ async def create_checkout_session(
             api_env = os.getenv("API_ENV", "development").lower()
             env = "live_mode" if api_env == "production" else "test_mode"
         client = AsyncDodoPayments(bearer_token=api_key, environment=env)
-        session = await client.checkout_sessions.create(
-            product_cart=[
+
+        # Check if the customer already exists in Dodo Payments to enable autofill
+        customer_id = None
+        try:
+            customers_page = await client.customers.list(email=user_email)
+            existing_customer = None
+            if hasattr(customers_page, "items") and customers_page.items:
+                existing_customer = customers_page.items[0]
+            elif isinstance(customers_page, list) and customers_page:
+                existing_customer = customers_page[0]
+
+            if existing_customer:
+                customer_id = getattr(existing_customer, "customer_id", None) or getattr(existing_customer, "id", None)
+                logger.info(f"Resolved existing Dodo customer_id: {customer_id} for email: {user_email}")
+        except Exception as list_err:
+            logger.warning(f"Failed to check existing customer in Dodo Payments: {list_err}")
+
+        session_args = {
+            "product_cart": [
                 {
                     "product_id": request.product_id,
                     "quantity": 1
                 }
             ],
-            customer={
-                "email": user_email,
+            "customer": {
+                "customer_id": customer_id
+            } if customer_id else {
+                "email": user_email
             },
-            return_url=target_return_url,
-            metadata={
+            "return_url": target_return_url,
+            "metadata": {
                 "user_id": str(user_id),
                 "plan_type": plan,
                 "billing_cycle": cycle
             }
-        )
+        }
+
+        if request.billing_currency:
+            session_args["billing_currency"] = request.billing_currency.upper()
+
+        session = await client.checkout_sessions.create(**session_args)
 
         return {
             "success": True,
@@ -226,6 +251,22 @@ async def dodo_webhook(
         return {"success": True, "message": f"Ignored event type: {event_type}"}
 
     data = event_dict.get("data", {})
+    
+    # Option 1: Sync the latest phone number from checkout form to Dodo Payments Customer profile
+    customer = data.get("customer") if isinstance(data, dict) else None
+    if isinstance(customer, dict):
+        customer_id = customer.get("customer_id") or customer.get("id")
+        phone_number = customer.get("phone_number")
+        if customer_id and phone_number:
+            try:
+                await client.customers.update(
+                    customer_id=customer_id,
+                    phone_number=phone_number
+                )
+                logger.info(f"Updated customer {customer_id} phone number to {phone_number} on Dodo Payments")
+            except Exception as customer_update_err:
+                logger.warning(f"Failed to update customer {customer_id} phone number on Dodo Payments: {customer_update_err}")
+
     metadata = data.get("metadata", {}) or {}
     
     user_id = metadata.get("user_id")
