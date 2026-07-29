@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Find services near you</title>
+<style>
+  :root {
+    --bg: #FAF9F6;
+    --ink: #12332B;
+    --ink-soft: #1C2A25;
+    --muted: #5B6B66;
+    --muted-2: #9AA5A0;
+    --border: #DDE3E0;
+    --border-soft: #E5E9E7;
+    --border-hover: #F0F2F1;
+    --hover: #F5F7F6;
+    --accent: #0F5C4C;
+    --accent-dark: #0C4A3D;
+    --accent-tint: #EAF3EF;
+    --accent-tint-2: #F0F7F4;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+
+  .page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 64px 16px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 640px;
+  }
+
+  .heading {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  .heading h1 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .heading p {
+    font-size: 14px;
+    color: var(--muted);
+    margin: 6px 0 0;
+  }
+
+  .searchbar {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+
+  .searchbar.focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(15,92,76,0.12);
+  }
+
+  /* City selector */
+  .city-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 12px 14px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    background: none;
+    border: none;
+    border-right: 1px solid var(--border-soft);
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: 12px 0 0 12px;
+  }
+  .city-btn:hover { background: var(--hover); }
+
+  .city-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    width: 176px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    padding: 4px 0;
+    z-index: 30;
+    display: none;
+  }
+  .city-menu.open { display: block; }
+
+  .city-option {
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 14px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--ink-soft);
+  }
+  .city-option:hover { background: var(--hover); }
+  .city-option.selected { color: var(--accent); font-weight: 600; }
+
+  /* Input area */
+  .input-area {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  #search-input {
+    width: 100%;
+    padding: 14px 4px 14px 16px;
+    font-size: 14px;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    outline: none;
+  }
+  #search-input::placeholder { color: var(--muted-2); }
+
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted-2);
+    padding: 6px;
+  }
+  .icon-btn:hover { color: var(--muted); }
+  #mic-btn:hover { color: var(--accent); }
+  #clear-btn { display: none; }
+  #clear-btn.show { display: flex; }
+
+  .go-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 20px;
+    background: var(--accent);
+    border: none;
+    border-radius: 0 12px 12px 0;
+    cursor: pointer;
+  }
+  .go-btn:hover { background: var(--accent-dark); }
+
+  /* Dropdown */
+  .dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 8px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    overflow: hidden;
+    max-height: 384px;
+    overflow-y: auto;
+    z-index: 20;
+    display: none;
+  }
+  .dropdown.open { display: block; }
+
+  .result-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border-hover);
+    cursor: pointer;
+  }
+  .result-item:last-child { border-bottom: none; }
+  .result-item:hover, .result-item.active { background: var(--accent-tint-2); }
+
+  .result-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+  }
+
+  .result-text { min-width: 0; }
+  .result-name {
+    display: block;
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .result-name mark {
+    background: none;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .result-type {
+    display: block;
+    font-size: 12px;
+    color: var(--muted-2);
+    margin-top: 2px;
+  }
+
+  .empty-state {
+    padding: 24px 16px;
+    text-align: center;
+  }
+  .empty-state p:first-child { font-size: 14px; color: var(--muted); margin: 0; }
+  .empty-state p:last-child { font-size: 12px; color: var(--muted-2); margin: 4px 0 0; }
+
+  /* Tags */
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+  }
+  .tag {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: #fff;
+    cursor: pointer;
+  }
+  .tag:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="wrap">
+    <div class="heading">
+      <h1>Find services near you</h1>
+      <p>Search a category, business name, or brand</p>
+    </div>
+
+    <div class="searchbar" id="searchbar">
+      <div style="position: relative;">
+        <button type="button" class="city-btn" id="city-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0F5C4C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span id="city-label">Chennai</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B968F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="city-menu" id="city-menu"></div>
+      </div>
+
+      <div class="input-area">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Try 'automobile', 'dentist', 'home cleaning'..."
+          autocomplete="off"
+          role="combobox"
+          aria-expanded="false"
+        />
+        <button class="icon-btn" id="clear-btn" aria-label="Clear search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <button class="icon-btn" id="mic-btn" aria-label="Voice search">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+      </div>
+
+      <button class="go-btn" aria-label="Search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+
+      <div class="dropdown" id="dropdown"></div>
+    </div>
+
+    <div class="tags" id="tags"></div>
+  </div>
+</div>
+
+<script>
+  // --- Sample data source. Swap this for a call to your own /api/suggestions endpoint. ---
+  const SUGGESTIONS = [
+    { name: "Automobile Car AC Repair & Services", type: "Category", icon: "🚗" },
+    { name: "Automobile Part Dealers", type: "Category", icon: "🔧" },
+    { name: "Automobile Loans", type: "Category", icon: "🏦" },
+    { name: "Automobile Body Building Services", type: "Category", icon: "🚗" },
+    { name: "Automobile Car AC Gas Refilling Services", type: "Category", icon: "🚗" },
+    { name: "Automobile Spare Part Dealers - Tata", type: "Category", icon: "🔧" },
+    { name: "Automobile Electrical Works", type: "Category", icon: "🔧" },
+    { name: "Automobile Insurance Agents", type: "Category", icon: "🏦" },
+    { name: "Home Cleaning Services", type: "Category", icon: "🏠" },
+    { name: "Home Interior Designers", type: "Category", icon: "🏠" },
+    { name: "Restaurants - North Indian", type: "Category", icon: "🍽️" },
+    { name: "Restaurants - Multicuisine", type: "Category", icon: "🍽️" },
+    { name: "Dental Clinics", type: "Category", icon: "🩺" },
+    { name: "General Physicians", type: "Category", icon: "🩺" },
+    { name: "Tuition Centres - CBSE", type: "Category", icon: "🎓" },
+    { name: "Beauty Parlours - Unisex", type: "Category", icon: "💇" },
+    { name: "Speedway Automobiles Pvt Ltd", type: "Business", icon: "🚗" },
+    { name: "AutoZone Spares", type: "Business", icon: "🔧" },
+  ];
+
+  const CITIES = ["Chennai", "Bengaluru", "Hyderabad", "Mumbai", "Delhi", "Pune"];
+  const QUICK_TAGS = ["Automobile Repair", "Home Cleaning", "Dentist", "Restaurants"];
+
+  const els = {
+    searchbar: document.getElementById("searchbar"),
+    input: document.getElementById("search-input"),
+    clearBtn: document.getElementById("clear-btn"),
+    dropdown: document.getElementById("dropdown"),
+    cityBtn: document.getElementById("city-btn"),
+    cityLabel: document.getElementById("city-label"),
+    cityMenu: document.getElementById("city-menu"),
+    tags: document.getElementById("tags"),
+  };
+
+  let city = "Chennai";
+  let results = [];
+  let activeIndex = -1;
+  let debounceTimer = null;
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function highlight(name, query) {
+    const idx = name.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return escapeHtml(name);
+    const before = escapeHtml(name.slice(0, idx));
+    const match = escapeHtml(name.slice(idx, idx + query.length));
+    const after = escapeHtml(name.slice(idx + query.length));
+    return `${before}<mark>${match}</mark>${after}`;
+  }
+
+  // ---- City dropdown ----
+  function renderCityMenu() {
+    els.cityMenu.innerHTML = CITIES.map(
+      (c) => `<button type="button" class="city-option${c === city ? " selected" : ""}" data-city="${c}">${c}</button>`
+    ).join("");
+  }
+  renderCityMenu();
+
+  els.cityBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    els.cityMenu.classList.toggle("open");
+    closeDropdown();
+  });
+
+  els.cityMenu.addEventListener("click", (e) => {
+    const btn = e.target.closest(".city-option");
+    if (!btn) return;
+    city = btn.dataset.city;
+    els.cityLabel.textContent = city;
+    renderCityMenu();
+    els.cityMenu.classList.remove("open");
+  });
+
+  // ---- Search / suggestions ----
+  // Replace this function with a fetch() call to your backend, e.g.:
+  //
+  // async function getSuggestions(query, city) {
+  //   const res = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}&city=${encodeURIComponent(city)}`);
+  //   return res.json();
+  // }
+  function getSuggestions(query) {
+    const q = query.toLowerCase();
+    return SUGGESTIONS.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 8);
+  }
+
+  function renderDropdown() {
+    const query = els.input.value.trim();
+
+    if (!query) {
+      closeDropdown();
+      return;
+    }
+
+    if (results.length === 0) {
+      els.dropdown.innerHTML = `
+        <div class="empty-state">
+          <p>No matches for "${escapeHtml(query)}"</p>
+          <p>Try a different category or business name</p>
+        </div>`;
+    } else {
+      els.dropdown.innerHTML = results
+        .map(
+          (item, i) => `
+        <button type="button" class="result-item${i === activeIndex ? " active" : ""}" data-index="${i}">
+          <span class="result-icon">${item.icon}</span>
+          <span class="result-text">
+            <span class="result-name">${highlight(item.name, query)}</span>
+            <span class="result-type">${item.type}</span>
+          </span>
+        </button>`
+        )
+        .join("");
+    }
+
+    els.dropdown.classList.add("open");
+    els.input.setAttribute("aria-expanded", "true");
+  }
+
+  function closeDropdown() {
+    els.dropdown.classList.remove("open");
+    els.input.setAttribute("aria-expanded", "false");
+    activeIndex = -1;
+  }
+
+  function selectResult(item) {
+    els.input.value = item.name;
+    els.clearBtn.classList.add("show");
+    closeDropdown();
+    els.input.blur();
+  }
+
+  els.input.addEventListener("input", () => {
+    const query = els.input.value;
+    els.clearBtn.classList.toggle("show", query.length > 0);
+    activeIndex = -1;
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      results = query.trim() ? getSuggestions(query) : [];
+      renderDropdown();
+    }, 150);
+  });
+
+  els.input.addEventListener("focus", () => {
+    els.searchbar.classList.add("focused");
+    if (els.input.value.trim()) renderDropdown();
+  });
+
+  els.input.addEventListener("blur", () => {
+    els.searchbar.classList.remove("focused");
+  });
+
+  els.input.addEventListener("keydown", (e) => {
+    if (!els.dropdown.classList.contains("open") || results.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % results.length;
+      renderDropdown();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + results.length) % results.length;
+      renderDropdown();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIndex >= 0) selectResult(results[activeIndex]);
+    } else if (e.key === "Escape") {
+      closeDropdown();
+    }
+  });
+
+  els.dropdown.addEventListener("click", (e) => {
+    const btn = e.target.closest(".result-item");
+    if (!btn) return;
+    selectResult(results[Number(btn.dataset.index)]);
+  });
+
+  els.clearBtn.addEventListener("click", () => {
+    els.input.value = "";
+    els.clearBtn.classList.remove("show");
+    closeDropdown();
+    els.input.focus();
+  });
+
+  // ---- Quick tags ----
+  els.tags.innerHTML = QUICK_TAGS.map((t) => `<button type="button" class="tag" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("");
+  els.tags.addEventListener("click", (e) => {
+    const btn = e.target.closest(".tag");
+    if (!btn) return;
+    els.input.value = btn.dataset.tag;
+    els.clearBtn.classList.add("show");
+    results = getSuggestions(btn.dataset.tag);
+    renderDropdown();
+    els.input.focus();
+  });
+
+  // ---- Close menus on outside click ----
+  document.addEventListener("click", (e) => {
+    if (!els.searchbar.contains(e.target)) {
+      closeDropdown();
+      els.cityMenu.classList.remove("open");
+    }
+  });
+</script>
+
+</body>
+</html>

@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
@@ -34,6 +34,7 @@ class CrawlConfig:
     js_render: bool = True
     render_timeout: int = 30000
     auto_scroll: bool = True
+    auto_scroll_for_html: bool = False
     scroll_delay: int = 500
     max_scrolls: int = 10
     html_clean: bool = True
@@ -49,6 +50,8 @@ class CrawlConfig:
     # Optional proxy URL or list of URLs for rotation
     # Example: "http://user:pass@host:port" or ["p1", "p2"]
     proxy: Optional[Union[str, list]] = None
+
+    headers: Optional[Dict[str, str]] = None
 
     # Firecrawl-style BYOP env settings
     proxy_server: Optional[str] = None

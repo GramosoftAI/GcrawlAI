@@ -1,11 +1,7 @@
-from pydantic import BaseModel, HttpUrl, StrictBool, StrictInt, StrictStr
-
-from typing import List, Optional, Union
-
-from datetime import datetime
-
-
-
+from pydantic import BaseModel, HttpUrl, StrictBool, StrictInt, StrictStr
+from typing import List, Optional, Union, Dict
+from datetime import datetime
+
 class ProxyConfig(BaseModel):
 
     geo: Optional[StrictStr] = None
@@ -82,7 +78,9 @@ class CrawlOptions(BaseModel):
 
 class ScrapeRequest(BaseModel):
 
-    url: HttpUrl
+    url: HttpUrl
+
+    headers: Optional[Dict[str, str]] = None
 
     proxy: Optional[ProxyConfig] = None
 

@@ -45,6 +45,17 @@ class CloakCrawlerMixin:
             if proxy_settings:
                 context_kwargs["proxy"] = proxy_settings
 
+            if hasattr(self.config, "headers") and self.config.headers:
+                headers = self.config.headers.copy()
+                
+                # Playwright prefers user_agent explicitly
+                if "user-agent" in headers:
+                    context_kwargs["user_agent"] = headers.pop("user-agent")
+                elif "User-Agent" in headers:
+                    context_kwargs["user_agent"] = headers.pop("User-Agent")
+                    
+                context_kwargs["extra_http_headers"] = headers
+
             # Let CloakBrowser handle User-Agent dynamically based on its stealth initialization
 
             # Note: We do not load old session states for high-security targets to prevent carrying over block flags
@@ -119,8 +130,25 @@ class CloakCrawlerMixin:
                 
                 if self.is_captcha_page(page):
                     logger.debug("CAPTCHA/Challenge detected early. Waiting for stealth bypass...")
-                    for _ in range(10):
+                    for _ in range(25):
                         page.wait_for_timeout(1000)
+                        
+                        # Inject random human mouse movements to help clear JS challenges
+                        try:
+                            import random
+                            page.mouse.move(random.randint(100, 800), random.randint(100, 600))
+                            
+                            # Auto-click reCAPTCHA checkboxes if they appear
+                            for frame in page.frames:
+                                if "recaptcha" in frame.url or "anchor" in frame.url:
+                                    chk = frame.locator(".recaptcha-checkbox-border").first
+                                    if chk.count() > 0 and chk.is_visible():
+                                        chk.click(force=True)
+                                        logger.info("Automatically clicked reCAPTCHA checkbox!")
+                                        page.wait_for_timeout(2000)
+                        except:
+                            pass
+                            
                         if not self.is_captcha_page(page):
                             logger.debug("CAPTCHA/Challenge bypassed successfully!")
                             try:
@@ -133,7 +161,8 @@ class CloakCrawlerMixin:
                         logger.debug("CAPTCHA/Challenge could not be bypassed on this attempt (CloakBrowser).")
                         return {"url": url, "error": "CAPTCHA detected", "status_code": 403}
 
-                if not self.config.js_render:
+                should_stabilize = self.config.js_render or (self.config.auto_scroll_for_html and enable_html)
+                if not should_stabilize:
                     if enable_ss:
                         try:
                             page.wait_for_load_state("networkidle", timeout=3000)
@@ -151,8 +180,25 @@ class CloakCrawlerMixin:
                 
                 if self.is_captcha_page(page):
                     logger.debug("CAPTCHA/Challenge detected after initial load wait. Waiting for stealth bypass...")
-                    for _ in range(10):
+                    for _ in range(25):
                         page.wait_for_timeout(1000)
+                        
+                        # Inject random human mouse movements to help clear JS challenges
+                        try:
+                            import random
+                            page.mouse.move(random.randint(100, 800), random.randint(100, 600))
+                            
+                            # Auto-click reCAPTCHA checkboxes if they appear
+                            for frame in page.frames:
+                                if "recaptcha" in frame.url or "anchor" in frame.url:
+                                    chk = frame.locator(".recaptcha-checkbox-border").first
+                                    if chk.count() > 0 and chk.is_visible():
+                                        chk.click(force=True)
+                                        logger.info("Automatically clicked reCAPTCHA checkbox!")
+                                        page.wait_for_timeout(2000)
+                        except:
+                            pass
+                            
                         if not self.is_captcha_page(page):
                             logger.debug("CAPTCHA/Challenge bypassed successfully!")
                             try:
@@ -175,9 +221,10 @@ class CloakCrawlerMixin:
                 if not title and status_code == 200:
                     title = page.title()
 
-                if self.config.js_render:
-                    logger.info("[Stealth Layer] JS Rendering: Stabilizing dynamic DOM elements and triggering lazy-loaded assets before extraction.")
-                    if self.config.auto_scroll:
+                if should_stabilize:
+                    logger.info("[Stealth Layer] Stabilizing dynamic DOM elements and triggering lazy-loaded assets before extraction.")
+                    should_scroll = self.config.auto_scroll or (self.config.auto_scroll_for_html and enable_html)
+                    if should_scroll:
                         logger.info(f"Performing custom auto-scroll: delay={self.config.scroll_delay}ms, max_scrolls={self.config.max_scrolls}")
                         try:
                             page.evaluate(
@@ -192,6 +239,15 @@ class CloakCrawlerMixin:
                                     const subStepDelay = 40; // 40ms interval (25 FPS smooth rendering)
 
                                     while (stepCount < maxScrolls) {
+                                        // Justdial Modal close logic
+                                        if (window.location.hostname.includes('justdial.com')) {
+                                            const closeBtn = document.querySelector('div[aria-label="Best deal Modal Close Icon"]');
+                                            if (closeBtn && closeBtn.offsetParent !== null) {
+                                                closeBtn.click();
+                                                await new Promise(r => setTimeout(r, 100));
+                                            }
+                                        }
+
                                         const clientHeight = window.innerHeight;
                                         const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
                                         const maxScrollPos = scrollHeight - clientHeight;
