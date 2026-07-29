@@ -33,8 +33,112 @@ from web_crawler.crawler.helpers.crawler_search import (
     _format_search_results_html,
 )
 from web_crawler.crawler.helpers.crawler_canonical import resolve_canonical_url
+from lxml import html
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
+
+
+def extract_business_listings(
+    html_content,
+    base_url="https://www.justdial.com",
+    main_xpath = "//main"
+    ):
+    """
+    Extract business listings from Justdial search page HTML.
+
+    Args:
+        html_content (str): HTML source
+        base_url (str): Base URL for relative links
+
+    Returns:
+        list[dict]
+    """
+    if not html_content:
+        return []
+
+    try:
+        tree = html.fromstring(html_content)
+
+        # Find the main tag
+        main = tree.xpath("//main")
+        if not main:
+            return []
+
+        main = main[0]
+
+        # Every business card
+        cards = main.xpath('.//div[contains(@class,"resultbox_textbox")]')
+
+        results = []
+
+        for card in cards:
+
+            def first(xpath):
+                value = card.xpath(xpath)
+                if not value:
+                    return None
+
+                if isinstance(value[0], str):
+                    return value[0].strip()
+
+                return value[0].text_content().strip()
+
+            # Name
+            name = first('.//h2//span[contains(@class,"resultbox_title_anchor")]')
+
+            # Profile URL
+            href = first('.//h2/a/@href')
+            if href:
+                href = urljoin(base_url, href)
+
+            # Rating
+            rating = first('.//li[contains(@class,"resultbox_totalrate")]/text()')
+
+            # Rating Count
+            rating_count = first('.//li[contains(@class,"resultbox_countrate")]')
+
+            # Address
+            address = first('.//div[contains(@class,"locatcity")]')
+
+            # Business Status
+            status = first('.//ul[contains(@class,"resultbox_address")][2]//span')
+
+            # Phone
+            phone = first('.//span[contains(@class,"callcontent")]')
+
+            # WhatsApp Available
+            whatsapp = bool(card.xpath('.//*[contains(text(),"WhatsApp")]'))
+
+            # Respond Time
+            responds_in = first('.//button//*[contains(text(),"Responds")]')
+
+            # Recent Enquiries
+            enquiries = first('.//div[contains(@class,"btnresponse")]')
+
+            # Verified
+            verified = bool(
+                card.xpath('.//img[contains(@src,"verified")]')
+            )
+
+            results.append({
+                "name": name,
+                "url": href,
+                "rating": rating,
+                "rating_count": rating_count,
+                "address": address,
+                "status": status,
+                "phone": phone,
+                "whatsapp": whatsapp,
+                "verified": verified,
+                "responds_in": responds_in,
+                "recent_enquiries": enquiries
+            })
+
+        return results
+    except Exception as e:
+        logger.error(f"Error extracting Justdial business listings: {e}")
+        return []
 
 
 class WebCrawler:
@@ -386,7 +490,15 @@ class WebCrawler:
             
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)            
             logger.info("✅ Search crawl finished")
-            logger.info(json.dumps(summary, indent=2))
+            html_content = summary.get("html_content")
+            if html_content:
+                listings = extract_business_listings(html_content)
+                logger.info("Extracted Business Listings:")
+                logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
+                summary["listings"] = listings
+            clean_summary = {k: v for k, v in summary.items() if k not in ("html_content", "markdown_content")}
+            logger.info("Crawl Summary:")
+            logger.info(json.dumps(clean_summary, indent=2))
             return summary
 
         # =========================================================
@@ -448,7 +560,15 @@ class WebCrawler:
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Single-page crawl finished")
-            logger.info(json.dumps(summary, indent=2))
+            html_content = summary.get("html_content")
+            if html_content:
+                listings = extract_business_listings(html_content)
+                logger.info("Extracted Business Listings:")
+                logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
+                summary["listings"] = listings
+            clean_summary = {k: v for k, v in summary.items() if k not in ("html_content", "markdown_content")}
+            logger.info("Crawl Summary:")
+            logger.info(json.dumps(clean_summary, indent=2))
             return summary
 
         # =========================================================
@@ -559,5 +679,13 @@ class WebCrawler:
             upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
 
         logger.info("✅ Crawl finished")
-        logger.info(json.dumps(summary, indent=2))
+        html_content = summary.get("html_content")
+        if html_content:
+            listings = extract_business_listings(html_content)
+            logger.info("Extracted Business Listings:")
+            logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
+            summary["listings"] = listings
+        clean_summary = {k: v for k, v in summary.items() if k not in ("html_content", "markdown_content")}
+        logger.info("Crawl Summary:")
+        logger.info(json.dumps(clean_summary, indent=2))
         return summary

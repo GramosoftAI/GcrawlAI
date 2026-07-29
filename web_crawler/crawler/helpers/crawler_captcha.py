@@ -19,6 +19,18 @@ def is_captcha_page(page: Page) -> bool:
             "verify you", "one more step", "access denied", "checking your browser", "cloudflare",
             "forbidden", "blocked"
         ]
+        
+        url_lower = page.url.lower()
+        
+        try:
+            html_len = len(page.content())
+        except:
+            html_len = 0
+            
+        if ("js_challenge=1" in url_lower or "solution=" in url_lower) and html_len < 50000:
+            logger.warning(f"CAPTCHA/Challenge detected via URL: {url_lower} (HTML Size: {html_len})")
+            return True
+            
         is_waf_challenge = any(kw in title for kw in challenge_title_keywords) or title == ""
 
         # 2. Check Unconditional block selectors first (always indicate a block)

@@ -66,18 +66,36 @@ def setup_crawl_config(payload, default_max_pages=10, concurrency_limit=None) ->
     if getattr(payload, 'proxy', None):
         config.proxy_geo = payload.proxy.geo
 
+    if getattr(payload, 'headers', None):
+        config.headers = payload.headers
+
     if getattr(payload, 'html', None):
         config.html_clean = payload.html.clean if payload.html.clean is not None else True
         config.html_remove_external_links = payload.html.remove_external_links if payload.html.remove_external_links is not None else False
         config.html_relative_to_absolute_links = payload.html.relative_to_absolute_links if payload.html.relative_to_absolute_links is not None else True
         config.html_remove_data_images = payload.html.remove_data_images if payload.html.remove_data_images is not None else False
         config.html_ignore_tags = payload.html.ignore_tags if payload.html.ignore_tags is not None else []
+        config.auto_scroll_for_html = (payload.html.auto_scroll_for_html if getattr(payload.html, "auto_scroll_for_html", None) is not None else True )
+        
+        # Merge HTML specific rendering/scrolling requests into the global config
+        html_js = getattr(payload.html, 'js_render', False)
+        html_scroll = getattr(payload.html, 'auto_scroll', False)
+        if html_js or html_scroll:
+            config.js_render = True  # Must be true for auto_scroll to work
+            config.auto_scroll = config.auto_scroll or html_scroll
+            if html_scroll:
+                config.max_scrolls = max(config.max_scrolls, getattr(payload.html, 'max_scrolls', 2))
+                if getattr(payload.html, 'scroll_delay', None):
+                    config.scroll_delay = payload.html.scroll_delay
+            if html_js:
+                config.render_timeout = max(config.render_timeout, getattr(payload.html, 'render_timeout', 30000))
     else:
         config.html_clean = True
         config.html_remove_external_links = False
         config.html_relative_to_absolute_links = True
         config.html_remove_data_images = False
         config.html_ignore_tags = []
+        config.auto_scroll_for_html = True
 
     screenshot_enabled = False
     if getattr(payload, 'screenshot', None):
