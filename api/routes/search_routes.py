@@ -121,7 +121,7 @@ async def search(
             if proxy_usage and user_id:
                 try:
                     from api.core.database import log_proxy_bandwidth
-                    log_proxy_bandwidth(user_id, "SEARCH", search_req.query, proxy_usage, "success")
+                    log_proxy_bandwidth(user_id, "SEARCH", search_req.query, proxy_usage, "success", search_id)
                 except Exception as e:
                     logger.error(f"Failed to log proxy bandwidth for search: {e}")
         else:

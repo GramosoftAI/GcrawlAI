@@ -175,7 +175,7 @@ def _run_background_crawl_task(client_id: str, user_id=None, **kwargs):
         try:
             from api.core.database import log_proxy_bandwidth
             bw_status = "failed" if summary.get("status") == "failed" else "success"
-            log_proxy_bandwidth(user_id, "CRAWL", summary.get("start_url", ""), summary["proxy_usage"], bw_status)
+            log_proxy_bandwidth(user_id, "CRAWL", summary.get("start_url", ""), summary["proxy_usage"], bw_status, client_id)
         except Exception as e:
             logger.error(f"Failed to log proxy bandwidth: {e}")
 

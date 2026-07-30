@@ -261,6 +261,10 @@ def _send_crawl_error_notification(
         smtp_cfg = cfg.get("email", {})
         admin_email = os.getenv("ADMIN_EMAIL")
         
+        if not admin_email:
+            logger.info("Admin email is not set. Skipping crawl error email notification.")
+            return
+
         if not smtp_cfg:
             logger.warning("Email configuration not found in config.yaml")
             return

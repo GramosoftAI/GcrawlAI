@@ -220,20 +220,53 @@ class WebCrawler:
         logger.info("🚀 Crawl started")
 
         # =========================================================
+        # PRE-POPULATE CRAWL QUEUE USING BROWSER-FIRST MAP DISCOVERY
+        # =========================================================
+        if crawl_mode == "all" and max_pages > 1:
+            logger.info("🗺️  Pre-populating crawl queue using browser-first map discovery...")
+            providers = [
+                ("Nodemaven", "nodemaven"),
+                ("Evomi Premium", "evomi_premium"),
+                ("Evomi Core", "evomi_core")
+            ]
+            discovered_urls = []
+            for attempt, (provider_name, provider_id) in enumerate(providers, 1):
+                logger.info(f"  → Attempting pre-crawl map discovery with {provider_name} proxy (Attempt {attempt}/{len(providers)})...")
+                proxy_geo = getattr(self.config, "proxy_geo", None)
+                use_hs = (provider_id in {"nodemaven", "evomi_premium"})
+                p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                    target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
+                )
+                if p_dict:
+                    map_result = map_website(start_url, limit=max_pages, proxy_dict=p_dict)
+                    if map_result["total"] > 1:
+                        logger.info(f"  ✓ Pre-crawl map discovery succeeded with {provider_name} ({map_result['total']} links)")
+                        discovered_urls = map_result["urls"]
+                        break
+                    logger.warning(f"  ! Pre-crawl map discovery yielded {map_result['total']} results with {provider_name}. Escalating...")
+            
+            if discovered_urls:
+                for u in discovered_urls:
+                    u_norm = normalize_url(u)
+                    if u_norm not in seen_raw:
+                        seen_raw.add(u_norm)
+                        queue.append((u_norm, "MAP_PREPOPULATE"))
+
+        # =========================================================
         # MAP MODE
         # =========================================================
         if crawl_mode == "links":
             logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
 
             providers = [
-                ("Evomi Premium", "evomi_premium"),
                 ("Nodemaven", "nodemaven"),
+                ("Evomi Premium", "evomi_premium"),
                 ("Evomi Core", "evomi_core")
             ]
             
             map_result = {"total": 0, "urls": []}
             for attempt, (provider_name, provider_id) in enumerate(providers, 1):
-                logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/3)...")
+                logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/{len(providers)})...")
                 proxy_geo = getattr(self.config, "proxy_geo", None)
                 use_hs = (provider_id in {"nodemaven", "evomi_premium"})
                 p_dict = self.page_crawler.proxy_manager.get_requests_proxies(

@@ -871,6 +871,7 @@ class DatabaseSetup:
         query = """
         CREATE TABLE IF NOT EXISTS proxy_bandwidth_usage (
             id SERIAL PRIMARY KEY,
+            job_id VARCHAR(64),
             user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
             endpoint VARCHAR(50) NOT NULL,
             url_or_query TEXT NOT NULL,
@@ -880,10 +881,17 @@ class DatabaseSetup:
             final_status VARCHAR(20) DEFAULT 'success',
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_job_id ON proxy_bandwidth_usage(job_id);
         CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_user_id ON proxy_bandwidth_usage(user_id);
         CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_created_at ON proxy_bandwidth_usage(created_at);
         """
-        return self.execute_query(query)
+        success = self.execute_query(query)
+        if success:
+            try:
+                self.execute_query("ALTER TABLE proxy_bandwidth_usage ADD COLUMN IF NOT EXISTS job_id VARCHAR(64);")
+            except Exception as e:
+                logger.warning(f"Failed to run migration query for proxy_bandwidth_usage table: {e}")
+        return success
 
     def setup_all_tables(self) -> bool:
         """Execute table creation and population in topological order of dependencies"""

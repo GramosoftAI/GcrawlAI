@@ -77,6 +77,10 @@ class EmailService:
         Returns:
             True if email sent successfully, False otherwise
         """
+        if not to_email:
+            logger.warning(f"⚠ Skipping email dispatch: recipient 'to_email' is None or empty. Subject: {subject}")
+            return False
+
         if not self.is_configured:
             logger.warning(f"⚠ Email service not configured. Skipping email to {to_email}")
             logger.info(f"Email would have been sent to {to_email} with subject: {subject}")
