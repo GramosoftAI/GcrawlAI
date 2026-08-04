@@ -730,6 +730,43 @@ class DatabaseSetup:
             logger.info("ℹ Skipping ISP tables population (EVOMI_PREMIUM_ISP_APIKEY / NODEMAVEN_ISP_APIKEY not found in .env)")
             return
 
+        # Check if tables are already populated to avoid redundant API hits and duplicate inserts
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            
+            nodemaven_populated = False
+            try:
+                cur.execute("SELECT COUNT(*) FROM nodemaven_isps")
+                if cur.fetchone()[0] > 0:
+                    nodemaven_populated = True
+            except Exception:
+                pass
+                
+            evomi_populated = False
+            try:
+                cur.execute("SELECT COUNT(*) FROM evomi_isps")
+                if cur.fetchone()[0] > 0:
+                    evomi_populated = True
+            except Exception:
+                pass
+                
+            cur.close()
+            
+            # If the tables corresponding to the provided keys are already populated, skip!
+            skip_nodemaven = (nodemaven_key and nodemaven_populated) or (not nodemaven_key)
+            skip_evomi = (evomi_key and evomi_populated) or (not evomi_key)
+            
+            if skip_nodemaven and skip_evomi:
+                logger.info("ℹ Skipping ISP tables population because tables are already populated.")
+                return
+        except Exception as check_err:
+            logger.warning(f"Could not check existing ISP table counts: {check_err}")
+        finally:
+            if conn:
+                conn.close()
+
         conn = None
         try:
             conn = self._get_db_connection()
