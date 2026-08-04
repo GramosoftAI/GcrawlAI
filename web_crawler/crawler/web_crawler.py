@@ -360,9 +360,9 @@ class WebCrawler:
             return summary
 
         # =========================================================
-        # SEARCH MODE
+        # SEARCH MODE (Disabled: allow direct scraping of search URLs)
         # =========================================================
-        if _is_search_url(start_url):
+        if False and _is_search_url(start_url):
             query = _extract_search_query(start_url)
             logger.info(f"🔍 Search URL detected. Routing query '{query}' through search engine router...")
             
