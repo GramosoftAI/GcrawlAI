@@ -63,7 +63,7 @@ class MultiCrawlRequest(BaseModel):
     images: Optional[ImagesConfig] = None
 
 class LinksOptions(BaseModel):
-    limit: Optional[int] = 100
+    limit: Optional[Union[StrictInt, StrictStr]] = 100
     same_domain_only: Optional[bool] = True
     include_subdomains: Optional[bool] = False
 
@@ -86,6 +86,7 @@ class CrawlResponse(BaseModel):
     Images: bool
     status: str
     user_id: Optional[Union[int, str]] = None
+    task_url: Optional[str] = None
 
 class CrawlPathsResponse(BaseModel):
     status_code: int = 200

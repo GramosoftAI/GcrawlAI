@@ -34,6 +34,7 @@ from psycopg2.extras import RealDictCursor
 import psycopg2
 from api.core.database import get_db_connection
 from api.core.security import get_current_user_from_token
+from cryptography.fernet import Fernet
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

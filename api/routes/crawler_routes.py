@@ -500,6 +500,8 @@ async def run_scrape(
 
             "polling_url": f"https://gcrawlai.com/gc/crawler/data/{crawl_id}",
 
+            "task_url": f"https://gcrawlai.com/gc/crawler/results/{crawl_id}",
+
             "url": str(payload.url),
 
             "crawl_mode": "single",
@@ -918,6 +920,8 @@ async def run_crawl(
 
             "polling_url": f"https://gcrawlai.com/gc/crawler/data/{crawl_id}",
 
+            "task_url": f"https://gcrawlai.com/gc/crawler/results/{crawl_id}",
+
             "url": str(payload.url),
 
             "crawl_mode": "all",
@@ -1053,13 +1057,46 @@ async def run_links(
 
             limit_val = payload.links.limit
 
+            if isinstance(limit_val, str):
+
+                if limit_val.lower() != "auto":
+
+                    raise HTTPException(
+
+                        status_code=400,
+
+                        detail="limit must be an integer or 'auto'"
+
+                    )
+
+
+
+        # Force internal limit to be MAX_URLS (5000) to get overall links
+
+        crawl_limit = 5000
+
+
+
+        try:
+
+            worker_limit = int(limit_val) if isinstance(limit_val, (int, str)) and str(limit_val).isdigit() else 100
+
+        except ValueError:
+
+            worker_limit = 100
+
 
 
         config = CrawlConfig(
-            max_pages=limit_val,
-            max_workers=min(concurrency_limit, limit_val) if concurrency_limit else 4,
+
+            max_pages=crawl_limit,
+
+            max_workers=min(concurrency_limit, worker_limit) if concurrency_limit else 4,
+
             headless=True,
+
             use_stealth=True
+
         )
         import json
         config.raw_payload = json.loads(payload.json())
@@ -1266,6 +1303,8 @@ async def run_links(
             "crawl_id": crawl_id,
 
             "polling_url": f"https://gcrawlai.com/gc/crawler/data/{crawl_id}",
+
+            "task_url": f"https://gcrawlai.com/gc/crawler/results/{crawl_id}",
 
             "url": str(payload.url),
 
@@ -1543,6 +1582,8 @@ async def run_screenshot(
             "crawl_id": crawl_id,
 
             "polling_url": f"https://gcrawlai.com/gc/crawler/data/{crawl_id}",
+
+            "task_url": f"https://gcrawlai.com/gc/crawler/results/{crawl_id}",
 
             "url": str(payload.url),
 

@@ -35,6 +35,7 @@ from api.routes.admin_routes import router as admin_router
 from api.routes.custom_requests_routes import router as custom_requests_router
 from api.routes.admin_custom_requests_routes import router as admin_custom_requests_router
 from api.routes.admin_reported_issues_routes import router as admin_reported_issues_router
+from grag.routes import router as grag_router
 
 # ================= LOGGING =================
 _LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -94,6 +95,7 @@ app.include_router(admin_router, prefix="/api/v1")
 app.include_router(custom_requests_router, prefix="/api/v1")
 app.include_router(admin_custom_requests_router, prefix="/api/v1")
 app.include_router(admin_reported_issues_router, prefix="/api/v1")
+app.include_router(grag_router, prefix="/api/v1/grag", tags=["Grag"])
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
@@ -140,7 +142,12 @@ async def startup_event():
         db_setup.create_subscription_plans_tables()
         db_setup.create_admin_error_logs_table()
         db_setup.create_admin_emails_table()
-        logger.info("✓ job_results, api_endpoints, subscription_plans, admin_error_logs, custom_requests and admin_emails tables validated/created on startup")
+        
+        # Initialize Grag partitioned tables
+        from grag.db_setup import init_gsearch_database
+        init_gsearch_database()
+        
+        logger.info("✓ job_results, api_endpoints, subscription_plans, admin_error_logs, custom_requests, admin_emails and grag tables validated/created on startup")
     except Exception as db_setup_err:
         logger.error(f"Failed to check/create database tables on startup: {db_setup_err}")
         

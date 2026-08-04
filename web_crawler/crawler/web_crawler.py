@@ -286,7 +286,23 @@ class WebCrawler:
             
             if self.config.max_pages and len(discovered_urls) > self.config.max_pages:
                 discovered_urls = discovered_urls[:self.config.max_pages]
-                map_result["total"] = len(discovered_urls)
+
+            # Slice to user limit if specified (since we force config.max_pages=5000 internally)
+            raw_payload = getattr(self.config, "raw_payload", None)
+            user_limit = "auto"
+            if raw_payload and isinstance(raw_payload, dict):
+                links_opt = raw_payload.get("links")
+                if isinstance(links_opt, dict):
+                    user_limit = links_opt.get("limit", 100)
+
+            if isinstance(user_limit, int):
+                discovered_urls = discovered_urls[:user_limit]
+            elif isinstance(user_limit, str) and user_limit.isdigit():
+                discovered_urls = discovered_urls[:int(user_limit)]
+            elif isinstance(user_limit, str) and user_limit.lower() == "auto":
+                pass  # Keep all URLs discovered
+
+            map_result["total"] = len(discovered_urls)
 
             pass
 
@@ -335,6 +351,7 @@ class WebCrawler:
                     "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
                     "crawl_mode": crawl_mode,
                     "links": discovered_urls,
+                    "total_links_found": len(discovered_urls),
                 }
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)

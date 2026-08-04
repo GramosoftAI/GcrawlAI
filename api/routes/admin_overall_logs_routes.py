@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Request, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, Query, WebSocket, WebSocketDisconnect, Depends
 from typing import Optional
 from psycopg2.extras import DictCursor
 import logging
 import asyncio
 from api.core.database import get_pooled_connection
+from api.routes.admin_users_routes import verify_admin_user
 
 router = APIRouter(prefix="/admin", tags=["Admin Overall Logs"])
 logger = logging.getLogger(__name__)
@@ -34,7 +35,8 @@ manager = ConnectionManager()
 async def get_overall_logs(
     request: Request,
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100)
+    limit: int = Query(50, ge=1, le=100),
+    _: bool = Depends(verify_admin_user)
 ):
     """
     Get overall logs combining activity, bandwidth, and error details.
