@@ -32,7 +32,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from psycopg2.extras import RealDictCursor
 import psycopg2
-from api.core.database import get_db_connection
+from api.core.database import get_db_connection, get_ist_now
 from api.core.security import get_current_user_from_token
 from cryptography.fernet import Fernet
 
@@ -510,7 +510,7 @@ def validate_api_key_from_header(api_key: str) -> Optional[Dict[str, Any]]:
         
         # Check if key is expired
         if result['expires_at']:
-            if datetime.utcnow() > result['expires_at']:
+            if get_ist_now() > result['expires_at']:
                 logger.warning("API key has expired")
                 return None
         

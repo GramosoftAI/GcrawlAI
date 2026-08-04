@@ -50,7 +50,7 @@ class WebCrawler:
         self.all_links: Set[str] = set()
         self.pages_data: List[Dict] = []
         
-        self.proxy_usage_aggregate = {"nodemaven": 0, "evomi_premium": 0, "evomi_core": 0}
+        self.proxy_usage_aggregate = {"nodemaven": 0, "thordata": 0, "evomi_core": 0}
         
         self.successful_pages = 0
         self.attempted_pages = 0
@@ -226,14 +226,14 @@ class WebCrawler:
             logger.info("🗺️  Pre-populating crawl queue using browser-first map discovery...")
             providers = [
                 ("Nodemaven", "nodemaven"),
-                ("Evomi Premium", "evomi_premium"),
+                ("Thordata", "thordata"),
                 ("Evomi Core", "evomi_core")
             ]
             discovered_urls = []
             for attempt, (provider_name, provider_id) in enumerate(providers, 1):
                 logger.info(f"  → Attempting pre-crawl map discovery with {provider_name} proxy (Attempt {attempt}/{len(providers)})...")
                 proxy_geo = getattr(self.config, "proxy_geo", None)
-                use_hs = (provider_id in {"nodemaven", "evomi_premium"})
+                use_hs = (provider_id in {"nodemaven", "thordata"})
                 p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
                     target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
                 )
@@ -260,7 +260,7 @@ class WebCrawler:
 
             providers = [
                 ("Nodemaven", "nodemaven"),
-                ("Evomi Premium", "evomi_premium"),
+                ("Thordata", "thordata"),
                 ("Evomi Core", "evomi_core")
             ]
             
@@ -268,7 +268,7 @@ class WebCrawler:
             for attempt, (provider_name, provider_id) in enumerate(providers, 1):
                 logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/{len(providers)})...")
                 proxy_geo = getattr(self.config, "proxy_geo", None)
-                use_hs = (provider_id in {"nodemaven", "evomi_premium"})
+                use_hs = (provider_id in {"nodemaven", "thordata"})
                 p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
                     target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
                 )

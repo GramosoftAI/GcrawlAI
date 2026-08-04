@@ -101,8 +101,8 @@ class CloakCrawlerMixin:
 
             page.route("**/*", block_useless_resources)
             
-            # Timeout logic: Evomi Premium/Core (15s), Nodemaven/Direct (12s)
-            attempt_timeout = 15 if "evomi" in provider else 12
+            # Timeout logic: Evomi / Thordata (15s), Nodemaven/Direct (12s)
+            attempt_timeout = 15 if ("evomi" in provider or "thordata" in provider) else 12
             if self.config.render_timeout is not None:
                 nav_timeout = self.config.render_timeout
             else:

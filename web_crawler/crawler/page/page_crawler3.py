@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
-    """PageCrawler orchestrates CloakBrowser crawling with Nodemaven -> Evomi fallback."""
+    """PageCrawler orchestrates CloakBrowser crawling with Nodemaven -> Thordata fallback."""
     # High‑security sites list used for header Referer adjustments and warm‑up logic
     HIGH_SEC_SITES = [
         "meesho", "delta.com", "jal.co.jp", "united.com", "wayfair.com",
@@ -88,7 +88,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
         crawl_mode: str = "all",
         proxy_type: str = "basic",
     ) -> Optional[Dict]:
-        """Crawl a single page using Evomi Premium -> Nodemaven -> Evomi Core loop"""
+        """Crawl a single page using Thordata -> Nodemaven -> Evomi Core loop"""
         logger.info(f"Crawling [{count}]: {url}")
         
         if client_id:
@@ -103,12 +103,12 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             )
 
         # Load attempt order from environment with default fallback values
-        attempt_1 = os.getenv("ATTEMPT_1", "evomi_premium").strip().lower()
-        attempt_2 = os.getenv("ATTEMPT_2", "nodemaven").strip().lower()
+        attempt_1 = os.getenv("ATTEMPT_1", "nodemaven").strip().lower()
+        attempt_2 = os.getenv("ATTEMPT_2", "thordata").strip().lower()
         attempt_3 = os.getenv("ATTEMPT_3", "evomi_core").strip().lower()
 
         provider_names = {
-            "evomi_premium": "Evomi Premium",
+            "thordata": "Thordata",
             "nodemaven": "Nodemaven",
             "evomi_core": "Evomi Core"
         }
@@ -119,7 +119,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             if pid and pid in provider_names:
                 configured_pids.append(pid)
         if not configured_pids:
-            configured_pids = ["evomi_premium", "nodemaven", "evomi_core"]
+            configured_pids = ["nodemaven", "thordata", "evomi_core"]
 
         providers = []
         for pid in configured_pids:
@@ -136,7 +136,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
             logger.info("\n" + "="*30 + f"\nAttempt {attempt}/3 - Provider: {provider_name}\n" + "="*30)
             
             # Enable high-speed ISP targeting for high-speed supporting providers
-            use_high_speed = (provider_id in {"nodemaven", "evomi_premium"})
+            use_high_speed = (provider_id in {"nodemaven"})
             if not use_high_speed:
                 logger.info(f"Disabling high-speed ISP targeting for provider {provider_name}.")
             
@@ -199,7 +199,7 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
                     to_email=admin_email,
                     url_affected=url,
                     issue_related_to=["Crawler Proxy Exhaustion", "All Providers Failed"],
-                    explanation=f"The crawler failed to process this URL across both Nodemaven and Evomi.\\n\\nLast Error: {last_error}"
+                    explanation=f"The crawler failed to process this URL across Nodemaven, Thordata, and Evomi.\\n\\nLast Error: {last_error}"
                 )
         except Exception as e:
             logger.error(f"Failed to send alert email for proxy exhaustion: {e}")

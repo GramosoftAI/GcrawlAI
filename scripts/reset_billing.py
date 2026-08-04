@@ -1,9 +1,15 @@
+import sys
+from pathlib import Path
+project_root = str(Path(__file__).resolve().parent.parent)
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 import os
 import psycopg2
 import logging
 from datetime import datetime
-from pathlib import Path
 from dotenv import load_dotenv
+from api.core.database import get_ist_now
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,7 +32,7 @@ def reset_billing_and_free_plans():
     """
     logger.info("=" * 60)
     logger.info("Starting Daily Billing & Free Plan Reset Cron Job...")
-    logger.info(f"Run time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Run time: {get_ist_now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 60)
 
     conn = None
@@ -38,6 +44,12 @@ def reset_billing_and_free_plans():
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "password")
         )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to set session timezone to Asia/Kolkata: {e}")
         conn.autocommit = False
         cursor = conn.cursor()
 
@@ -101,7 +113,7 @@ def reset_billing_and_free_plans():
         # ─────────────────────────────────────────────────────────────
         # STEP 3: Monthly reset for Free Plans (runs only on 1st of month)
         # ─────────────────────────────────────────────────────────────
-        today = datetime.now()
+        today = get_ist_now()
         if today.day == 1:
             logger.info("Step 3: Today is the 1st of the month. Resetting all 'free' plans...")
 

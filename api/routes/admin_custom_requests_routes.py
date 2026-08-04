@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from psycopg2.extras import RealDictCursor
 from api.core.database import get_db_connection
 from api.routes.admin_users_routes import verify_admin_user
@@ -12,9 +12,10 @@ router = APIRouter(prefix="/admin/custom-requests", tags=["Admin Custom Requests
 
 @router.get("", response_model=CustomRequestListResponse)
 async def get_admin_custom_requests(
-    page: int = 1,
-    page_size: int = 50,
-    status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    request_type: Optional[str] = Query(None),
     _: bool = Depends(verify_admin_user)
 ):
     """
@@ -27,22 +28,28 @@ async def get_admin_custom_requests(
         
         offset = (page - 1) * page_size
         
-        query = "SELECT * FROM custom_requests"
-        count_query = "SELECT COUNT(*) as total FROM custom_requests"
-        
+        conditions = []
         params = []
         if status:
-            query += " WHERE status = %s"
-            count_query += " WHERE status = %s"
+            conditions.append("status = %s")
             params.append(status)
+        if request_type:
+            conditions.append("request_type = %s")
+            params.append(request_type)
             
-        query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
-        params.extend([page_size, offset])
+        where_clause = ""
+        if conditions:
+            where_clause = " WHERE " + " AND ".join(conditions)
+            
+        query = f"SELECT * FROM custom_requests{where_clause}"
+        count_query = f"SELECT COUNT(*) as total FROM custom_requests{where_clause}"
         
-        cursor.execute(count_query, params[:-2] if status else [])
+        query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+        
+        cursor.execute(count_query, tuple(params))
         total_count = cursor.fetchone()['total']
         
-        cursor.execute(query, params)
+        cursor.execute(query, tuple(params + [page_size, offset]))
         rows = cursor.fetchall()
         
         requests_list = []

@@ -3,6 +3,15 @@ import psycopg2
 from psycopg2 import pool as psycopg2_pool
 from contextlib import contextmanager
 from typing import Union
+from datetime import datetime, timezone, timedelta
+
+# India Standard Time (IST) offset is UTC +5:30
+ist_tz = timezone(timedelta(hours=5, minutes=30))
+
+def get_ist_now() -> datetime:
+    """Returns the current timezone-aware datetime in Asia/Kolkata timezone (IST)"""
+    return datetime.now(ist_tz)
+
 
 from api.core.config_setup import get_db_config
 
@@ -154,6 +163,7 @@ def log_proxy_bandwidth(user_id: Union[int, str], endpoint: str, url_or_query: s
             return int(val)
 
         nodemaven = to_bytes(bandwidth_data.get('nodemaven'))
+        thordata = to_bytes(bandwidth_data.get('thordata') or bandwidth_data.get('evomi_premium'))
         evomi_premium = to_bytes(bandwidth_data.get('evomi_premium'))
         evomi_core = to_bytes(bandwidth_data.get('evomi_core'))
         
@@ -162,10 +172,10 @@ def log_proxy_bandwidth(user_id: Union[int, str], endpoint: str, url_or_query: s
                 cursor.execute(
                     """
                     INSERT INTO proxy_bandwidth_usage 
-                    (user_id, endpoint, url_or_query, nodemaven, evomi_premium, evomi_core, final_status, job_id) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (user_id, endpoint, url_or_query, nodemaven, thordata, evomi_premium, evomi_core, final_status, job_id) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (user_id, endpoint, url_or_query, nodemaven, evomi_premium, evomi_core, status, job_id)
+                    (user_id, endpoint, url_or_query, nodemaven, thordata, evomi_premium, evomi_core, status, job_id)
                 )
             conn.commit()
     except Exception as e:

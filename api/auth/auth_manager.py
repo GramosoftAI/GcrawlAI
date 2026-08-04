@@ -49,6 +49,7 @@ from pathlib import Path
 import os
 
 from dotenv import load_dotenv
+from api.core.database import get_ist_now
 
 import re
 
@@ -323,6 +324,13 @@ class AuthManager:
 
             )
 
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Failed to set session timezone to Asia/Kolkata: {e}")
+
             return conn
 
         
@@ -503,7 +511,7 @@ class AuthManager:
 
                 # Calculate expiry (5 minutes from now)
 
-                expires_at = datetime.now() + timedelta(minutes=5)
+                expires_at = get_ist_now() + timedelta(minutes=5)
 
                 
 
@@ -645,7 +653,7 @@ class AuthManager:
 
                 # Check if OTP has expired
 
-                if datetime.now() > otp_record['expires_at']:
+                if get_ist_now() > otp_record['expires_at']:
 
                     cursor.close()
 
@@ -745,7 +753,7 @@ class AuthManager:
 
                     True,
 
-                    datetime.now()
+                    get_ist_now()
 
                 ))
 
@@ -984,7 +992,7 @@ class AuthManager:
 
                     UPDATE users SET last_login = %s WHERE user_id = %s
 
-                """, (datetime.now(), user['user_id']))
+                """, (get_ist_now(), user['user_id']))
 
                 
 
@@ -1244,7 +1252,7 @@ class AuthManager:
 
                     WHERE email = %s
 
-                """, (hashed_password, salt, datetime.now(), email.lower()))
+                """, (hashed_password, salt, get_ist_now(), email.lower()))
 
                 
 

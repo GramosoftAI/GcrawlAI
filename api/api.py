@@ -137,6 +137,7 @@ async def startup_event():
     try:
         from api.core.db_setup import DatabaseSetup
         db_setup = DatabaseSetup()
+        db_setup.migrate_columns_to_timestamptz()
         db_setup.create_job_results_table()
         db_setup.create_api_endpoints_table()
         db_setup.create_subscription_plans_tables()

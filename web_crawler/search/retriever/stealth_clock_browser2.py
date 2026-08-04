@@ -144,13 +144,15 @@ class PersistentStealthyFetcher(_StealthMixin):
         import re
         new_session = "".join(random.choices("0123456789abcdef", k=8))
         
-        # 1. Rotate Nodemaven session ID in username if present (-session- or -sid-)
+        # 1. Rotate Nodemaven/Thordata session ID in username if present (-session- or -sid- or -sessid-)
         username = self.proxy.get("username", "")
         if username:
             if "-session-" in username:
                 self.proxy["username"] = re.sub(r"-session-[a-zA-Z0-9]+", f"-session-{new_session}", username)
             elif "-sid-" in username:
                 self.proxy["username"] = re.sub(r"-sid-[a-zA-Z0-9]+", f"-sid-{new_session}", username)
+            elif "-sessid-" in username:
+                self.proxy["username"] = re.sub(r"-sessid-[a-zA-Z0-9]+", f"-sessid-{new_session}", username)
                 
         # 2. Rotate Evomi session ID in password if present (_session-)
         password = self.proxy.get("password", "")

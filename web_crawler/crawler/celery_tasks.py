@@ -109,7 +109,7 @@ def crawl_website(
         if summary.get('status') != 'failed':
             summary['status'] = 'completed'
 
-        from api.core.database import get_pooled_connection, update_activity_log_status, update_activity_log_time
+        from api.core.database import get_pooled_connection, update_activity_log_status, update_activity_log_time, get_ist_now
         from api.core.security import increment_used_requests
         from datetime import datetime
         try:
@@ -117,7 +117,7 @@ def crawl_website(
                 with conn.cursor() as cur:
                     cur.execute(
                         "UPDATE crawl_jobs SET updated_at = %s WHERE crawl_id = %s",
-                        (datetime.now(), task_id)
+                        (get_ist_now(), task_id)
                     )
                 conn.commit()
 
@@ -173,11 +173,11 @@ def cleanup_old_results(days_old: int = 7):
     """
     import shutil
     from datetime import datetime, timedelta
-    from api.core.database import get_pooled_connection
+    from api.core.database import get_pooled_connection, get_ist_now
     
     # 1. Cleanup Filesystem (legacy or local assets)
     base_dir = Path(__file__).parent.parent / "crawl_output-api"
-    cutoff_date = datetime.now() - timedelta(days=days_old)
+    cutoff_date = (get_ist_now() - timedelta(days=days_old)).replace(tzinfo=None)
     
     deleted_dirs = 0
     if base_dir.exists():
@@ -320,7 +320,7 @@ def run_scrape_links_worker(gsearch_id: str, urls: list):
     logger.info(f"✅ Completed all scraping for gsearch_id: {gsearch_id}")
 
 def _upsert_gsearch_result(gsearch_id: str, url: str, markdown: str, status: str = "success", error: str = None) -> None:
-    from api.core.database import get_pooled_connection
+    from api.core.database import get_pooled_connection, get_ist_now
     from datetime import datetime
     import json
     
@@ -332,7 +332,7 @@ def _upsert_gsearch_result(gsearch_id: str, url: str, markdown: str, status: str
                     "status": status,
                     "markdown_content": markdown,
                     "error": error,
-                    "scraped_at": datetime.now().isoformat()
+                    "scraped_at": get_ist_now().isoformat()
                 }
                 
                 payload_str = json.dumps([page_result])

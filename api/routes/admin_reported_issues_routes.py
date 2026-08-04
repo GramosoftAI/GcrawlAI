@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from psycopg2.extras import RealDictCursor
 from api.core.database import get_db_connection
 from api.routes.admin_users_routes import verify_admin_user
@@ -12,11 +12,11 @@ router = APIRouter(prefix="/admin/reported-issues", tags=["Admin Reported Issues
 
 @router.get("", response_model=ReportIssueListResponse)
 async def get_admin_reported_issues(
-    page: int = 1,
-    page_size: int = 50,
-    status: Optional[str] = None,
-    category: Optional[str] = None,
-    search: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     _: bool = Depends(verify_admin_user)
 ):
     """

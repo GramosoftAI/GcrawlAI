@@ -16,6 +16,7 @@ import datetime
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
+from api.core.database import get_ist_now
 
 # Load environment variables
 BASE_DIR_PATH = Path(__file__).resolve().parent.parent.parent
@@ -140,9 +141,9 @@ class DatabaseSetup:
             password_salt TEXT NOT NULL,
             is_active BOOLEAN DEFAULT TRUE,
             admin_login BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMPTZ
         );
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
@@ -158,10 +159,10 @@ class DatabaseSetup:
             name VARCHAR(255) NOT NULL,
             password_hash TEXT NOT NULL,
             password_salt TEXT NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
             attempts INTEGER DEFAULT 0,
             is_verified BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_signup_otps_expires_at ON signup_otps(expires_at);
         CREATE INDEX IF NOT EXISTS idx_signup_otps_is_verified ON signup_otps(is_verified);
@@ -177,7 +178,7 @@ class DatabaseSetup:
             url TEXT NOT NULL,
             crawl_mode VARCHAR(20) NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP,
+            updated_at TIMESTAMPTZ,
             SEO BOOLEAN DEFAULT FALSE,
             HTML BOOLEAN DEFAULT FALSE,
             Screenshot BOOLEAN DEFAULT FALSE,
@@ -244,9 +245,9 @@ class DatabaseSetup:
             key_hash VARCHAR(64) NOT NULL,
             encrypted_key TEXT NOT NULL,
             status VARCHAR(20) DEFAULT 'active',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ,
             UNIQUE(user_id)
         );
         CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
@@ -287,7 +288,7 @@ class DatabaseSetup:
             url TEXT NOT NULL,
             status VARCHAR(50) NOT NULL,
             time_taken VARCHAR(50),
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
         CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
@@ -337,7 +338,7 @@ class DatabaseSetup:
             # Pre-create daily partitions for yesterday, today, and the next 10 days
             try:
                 for i in range(-2, 11):
-                    d = (datetime.datetime.now() + datetime.timedelta(days=i)).date()
+                    d = (get_ist_now() + datetime.timedelta(days=i)).date()
                     d_next = d + datetime.timedelta(days=1)
                     part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
                     
@@ -363,7 +364,7 @@ class DatabaseSetup:
                 # Re-create table and retry partition registration
                 cursor.execute(create_table_query)
                 for i in range(-2, 11):
-                    d = (datetime.datetime.now() + datetime.timedelta(days=i)).date()
+                    d = (get_ist_now() + datetime.timedelta(days=i)).date()
                     d_next = d + datetime.timedelta(days=1)
                     part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
                     
@@ -402,7 +403,7 @@ class DatabaseSetup:
             query TEXT NOT NULL,
             "limit" INTEGER NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP,
+            updated_at TIMESTAMPTZ,
             user_id VARCHAR(255)
         );
         CREATE INDEX IF NOT EXISTS idx_search_jobs_search_id ON search_jobs(search_id);
@@ -436,7 +437,7 @@ class DatabaseSetup:
             url_path VARCHAR(255) NOT NULL,
             status VARCHAR(50) NOT NULL DEFAULT 'Active',
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
         seed_query = """
@@ -484,8 +485,8 @@ class DatabaseSetup:
             max_concurrency INTEGER NOT NULL,
             monthly_product_id_inr VARCHAR(255),
             monthly_product_id_usd VARCHAR(255),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
         
@@ -500,8 +501,8 @@ class DatabaseSetup:
             max_concurrency INTEGER NOT NULL,
             yearly_product_id_inr VARCHAR(255),
             yearly_product_id_usd VARCHAR(255),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
         
@@ -558,7 +559,7 @@ class DatabaseSetup:
             target_websites TEXT NOT NULL,
             description TEXT NOT NULL,
             status VARCHAR(50) DEFAULT 'New',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
         conn = None
@@ -691,14 +692,14 @@ class DatabaseSetup:
             CREATE TABLE IF NOT EXISTS nodemaven_isps (
                 country_code VARCHAR(10) PRIMARY KEY,
                 isp_code VARCHAR(100) NOT NULL,
-                updated_at TIMESTAMP NOT NULL
+                updated_at TIMESTAMPTZ NOT NULL
             );
             """,
             """
             CREATE TABLE IF NOT EXISTS evomi_isps (
                 country_code VARCHAR(10) PRIMARY KEY,
                 isp_code VARCHAR(100) NOT NULL,
-                updated_at TIMESTAMP NOT NULL
+                updated_at TIMESTAMPTZ NOT NULL
             );
             """
         ]
@@ -774,7 +775,7 @@ class DatabaseSetup:
                             VALUES (%s, %s, %s)
                             ON CONFLICT (country_code) DO UPDATE
                             SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                            """, (c, selected, datetime.datetime.now()))
+                            """, (c, selected, get_ist_now()))
                         conn.commit()
                         logger.info("✓ Evomi ISP settings successfully populated in database.")
                 except Exception as e:
@@ -854,7 +855,7 @@ class DatabaseSetup:
                             VALUES (%s, %s, %s)
                             ON CONFLICT (country_code) DO UPDATE
                             SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                            """, (c, isp, datetime.datetime.now()))
+                            """, (c, isp, get_ist_now()))
                             success_count += 1
                 conn.commit()
                 logger.info(f"✓ Nodemaven ISPs populated successfully. Total records stored: {success_count}")
@@ -876,10 +877,11 @@ class DatabaseSetup:
             endpoint VARCHAR(50) NOT NULL,
             url_or_query TEXT NOT NULL,
             nodemaven BIGINT DEFAULT NULL,
+            thordata BIGINT DEFAULT NULL,
             evomi_premium BIGINT DEFAULT NULL,
             evomi_core BIGINT DEFAULT NULL,
             final_status VARCHAR(20) DEFAULT 'success',
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_job_id ON proxy_bandwidth_usage(job_id);
         CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_user_id ON proxy_bandwidth_usage(user_id);
@@ -889,13 +891,73 @@ class DatabaseSetup:
         if success:
             try:
                 self.execute_query("ALTER TABLE proxy_bandwidth_usage ADD COLUMN IF NOT EXISTS job_id VARCHAR(64);")
+                self.execute_query("ALTER TABLE proxy_bandwidth_usage ADD COLUMN IF NOT EXISTS thordata BIGINT DEFAULT NULL;")
             except Exception as e:
                 logger.warning(f"Failed to run migration query for proxy_bandwidth_usage table: {e}")
         return success
 
+    def migrate_columns_to_timestamptz(self) -> bool:
+        """Migrate any existing TIMESTAMP columns to TIMESTAMPTZ to support global timezone alignment"""
+        migrations = [
+            ("users", "created_at"),
+            ("users", "updated_at"),
+            ("users", "last_login"),
+            ("signup_otps", "expires_at"),
+            ("signup_otps", "created_at"),
+            ("crawl_jobs", "updated_at"),
+            ("api_keys", "created_at"),
+            ("api_keys", "updated_at"),
+            ("api_keys", "expires_at"),
+            ("activity_logs", "created_at"),
+            ("search_jobs", "updated_at"),
+            ("api_endpoints", "updated_at"),
+            ("monthly_subscription_plans", "created_at"),
+            ("monthly_subscription_plans", "updated_at"),
+            ("yearly_subscription_plans", "created_at"),
+            ("yearly_subscription_plans", "updated_at"),
+            ("custom_requests", "created_at"),
+            ("nodemaven_isps", "updated_at"),
+            ("evomi_isps", "updated_at"),
+            ("proxy_bandwidth_usage", "created_at"),
+        ]
+        
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            for table, column in migrations:
+                # Check if table and column exist, and check their data type
+                cursor.execute("""
+                    SELECT data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = %s AND column_name = %s;
+                """, (table, column))
+                row = cursor.fetchone()
+                if row and row[0].upper() == "TIMESTAMP WITHOUT TIME ZONE":
+                    logger.info(f"Migrating column {table}.{column} from TIMESTAMP to TIMESTAMPTZ...")
+                    cursor.execute(f"""
+                        ALTER TABLE {table} 
+                        ALTER COLUMN {column} TYPE TIMESTAMPTZ 
+                        USING {column} AT TIME ZONE 'Asia/Kolkata';
+                    """)
+            conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"✗ Failed to migrate columns to TIMESTAMPTZ: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     def setup_all_tables(self) -> bool:
         """Execute table creation and population in topological order of dependencies"""
         logger.info("Starting GcrawlAI database setup...")
+        
+        # Migrate existing columns to TIMESTAMPTZ first
+        self.migrate_columns_to_timestamptz()
 
         # 1. Base identity tables
         if not self.create_users_table(): return False
