@@ -8,6 +8,7 @@ import logging
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import yaml
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 import os
@@ -15,11 +16,16 @@ import re
 import datetime
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dotenv import load_dotenv
+
+# Set project root in sys.path to allow running from any subdirectory
+BASE_DIR_PATH = Path(__file__).resolve().parent.parent.parent
+if str(BASE_DIR_PATH) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR_PATH))
+
 from api.core.database import get_ist_now
+from dotenv import load_dotenv
 
 # Load environment variables
-BASE_DIR_PATH = Path(__file__).resolve().parent.parent.parent
 dotenv_path = BASE_DIR_PATH / '.env'
 load_dotenv(dotenv_path, override=True)
 
