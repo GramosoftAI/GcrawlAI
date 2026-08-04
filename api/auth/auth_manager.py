@@ -1372,3 +1372,119 @@ class AuthManager:
 
             return None
 
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+
+        """
+
+        Retrieve user information by email
+
+        """
+
+        try:
+
+            with self._db_connection_context() as conn:
+
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                cursor.execute("""
+
+                    SELECT user_id, name, email, created_at, is_active, admin_login
+
+                    FROM users WHERE email = %s
+
+                """, (email.lower().strip(),))
+
+                user = cursor.fetchone()
+
+                cursor.close()
+
+            if not user:
+
+                return None
+
+            return {
+
+                'user_id': user['user_id'],
+
+                'name': user['name'],
+
+                'email': user['email'],
+
+                'created_at': str(user['created_at']),
+
+                'is_active': user['is_active'],
+
+                'admin_login': user.get('admin_login', False)
+
+            }
+
+        except Exception as e:
+
+            logger.error(f"Error retrieving user by email: {e}", exc_info=True)
+
+            return None
+
+
+    def create_oauth_user(self, name: str, email: str) -> Optional[Dict[str, Any]]:
+
+        """
+
+        Create a new user account verified via OAuth
+
+        """
+
+        try:
+
+            import uuid
+
+            random_pw = str(uuid.uuid4())
+
+            pw_hash, pw_salt = self.password_hasher.hash_password(random_pw)
+
+            with self._db_connection_context() as conn:
+
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                cursor.execute("""
+
+                    INSERT INTO users (name, email, password_hash, password_salt, is_active, created_at)
+
+                    VALUES (%s, %s, %s, %s, true, %s)
+
+                    RETURNING user_id, name, email, created_at, is_active, admin_login
+
+                """, (name, email.lower().strip(), pw_hash, pw_salt, get_ist_now()))
+
+                user = cursor.fetchone()
+
+                conn.commit()
+
+                cursor.close()
+
+            if not user:
+
+                return None
+
+            return {
+
+                'user_id': user['user_id'],
+
+                'name': user['name'],
+
+                'email': user['email'],
+
+                'created_at': str(user['created_at']),
+
+                'is_active': user['is_active'],
+
+                'admin_login': user.get('admin_login', False)
+
+            }
+
+        except Exception as e:
+
+            logger.error(f"Error creating oauth user: {e}", exc_info=True)
+
+            return None
+
