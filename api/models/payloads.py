@@ -76,6 +76,37 @@ class CrawlOptions(BaseModel):
 
 
 
+class JustdialRequest(BaseModel):
+
+    location: StrictStr
+
+    category: StrictStr
+
+    headers: Optional[Dict[str, str]] = None
+
+class JustdialResponse(BaseModel):
+    status_code: int = 200
+    status: str = "success"
+    crawl_id: str
+    url: str
+    listings: list = []
+
+class GoogleFlightsRequest(BaseModel):
+    trip_type: str = "oneway"
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    outbound_date: Optional[str] = None
+    return_date: Optional[str] = None
+    proxy_geo: Optional[str] = "IN"
+
+class GoogleFlightsResponse(BaseModel):
+    status_code: int = 200
+    status: str = "success"
+    crawl_id: str
+    url: str
+    flights: list = []
+
+
 class ScrapeRequest(BaseModel):
 
     url: HttpUrl

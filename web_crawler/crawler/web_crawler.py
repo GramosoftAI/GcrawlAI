@@ -106,6 +106,8 @@ def extract_business_listings(
 
             # Phone
             phone = first('.//span[contains(@class,"callcontent")]')
+            if phone == "Show Number":
+                phone = "Not Available"
 
             # WhatsApp Available
             whatsapp = bool(card.xpath('.//*[contains(text(),"WhatsApp")]'))
@@ -493,8 +495,8 @@ class WebCrawler:
             html_content = summary.get("html_content")
             if html_content:
                 listings = extract_business_listings(html_content)
-                logger.info("Extracted Business Listings:")
-                logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
+                # logger.info("Extracted Business Listings:")
+                # logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
                 summary["listings"] = listings
             clean_summary = {k: v for k, v in summary.items() if k not in ("html_content", "markdown_content")}
             logger.info("Crawl Summary:")
@@ -563,8 +565,8 @@ class WebCrawler:
             html_content = summary.get("html_content")
             if html_content:
                 listings = extract_business_listings(html_content)
-                logger.info("Extracted Business Listings:")
-                logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
+                # logger.info("Extracted Business Listings:")
+                # logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
                 summary["listings"] = listings
             clean_summary = {k: v for k, v in summary.items() if k not in ("html_content", "markdown_content")}
             logger.info("Crawl Summary:")
@@ -682,8 +684,8 @@ class WebCrawler:
         html_content = summary.get("html_content")
         if html_content:
             listings = extract_business_listings(html_content)
-            logger.info("Extracted Business Listings:")
-            logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
+            # logger.info("Extracted Business Listings:")
+            # logger.info(json.dumps(listings, indent=2, ensure_ascii=False))
             summary["listings"] = listings
         clean_summary = {k: v for k, v in summary.items() if k not in ("html_content", "markdown_content")}
         logger.info("Crawl Summary:")

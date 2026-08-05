@@ -43,3 +43,5 @@ config.yml
 secrets.json
 
 New Folder/
+
+*.zip

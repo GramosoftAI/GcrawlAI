@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException, Header, Request
 
-from api.models.payloads import ScrapeRequest, MultiCrawlRequest, LinksRequest, ScreenshotRequest, CrawlResponse
+from api.models.payloads import ScrapeRequest, MultiCrawlRequest, LinksRequest, ScreenshotRequest, CrawlResponse, JustdialRequest, JustdialResponse, GoogleFlightsRequest, GoogleFlightsResponse
 from api.core.config_setup import setup_crawl_config
 from api.core.database import get_pooled_connection, log_activity
 from api.core.security import validate_recaptcha_or_jwt
@@ -789,4 +789,292 @@ async def run_screenshot(
             log_activity(user_id, "/SCREENSHOT", str(payload.url), "FAILED", job_id=crawl_id if 'crawl_id' in locals() else None)
         except Exception:
             pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_google_flights_modules():
+    import importlib.util
+    import os
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    gf_dir = os.path.join(base_dir, "google-flights")
+    
+    spec_gen = importlib.util.spec_from_file_location("generate_url", os.path.join(gf_dir, "generate_url.py"))
+    generate_url = importlib.util.module_from_spec(spec_gen)
+    spec_gen.loader.exec_module(generate_url)
+    
+    spec_ext = importlib.util.spec_from_file_location("convert_html_to_json", os.path.join(gf_dir, "convert-html-to-json.py"))
+    convert_html_to_json = importlib.util.module_from_spec(spec_ext)
+    spec_ext.loader.exec_module(convert_html_to_json)
+    
+    return generate_url, convert_html_to_json
+
+@router.post("/google-flights", response_model=GoogleFlightsResponse)
+async def run_google_flights_scrape(
+    payload: GoogleFlightsRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
+    recaptcha_token: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", description="API key for client access")
+):
+    try:
+        try:
+            user_id = validate_recaptcha_or_jwt(
+                auth_header=authorization,
+                recaptcha_header=recaptcha_token,
+                api_key_header=x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
+            )
+        except HTTPException:
+            user_id = 1 # Fallback to Demo User like Streamlit does
+        
+        from api.core.security import check_plan_limits_and_get_details, increment_used_requests, check_endpoint_active
+        check_endpoint_active("Scrape API")
+        plan_type, concurrency_limit = check_plan_limits_and_get_details(user_id)
+
+        import pytz
+        from datetime import datetime
+        import uuid
+        ist = pytz.timezone("Asia/Kolkata")
+        created_at = datetime.now(ist)
+        
+        # Load google-flights modules
+        generate_url, convert_html_to_json = get_google_flights_modules()
+        FlightSearchRequest = generate_url.FlightSearchRequest
+        build_url = generate_url.build_google_flights_url
+        extract_flights = convert_html_to_json.extract_google_flights
+
+        flight_req = FlightSearchRequest(
+            trip_type=payload.trip_type,
+            origin=payload.origin,
+            destination=payload.destination,
+            outbound_date=payload.outbound_date,
+            return_date=payload.return_date
+        )
+        url = build_url(flight_req)
+
+        config = CrawlConfig(
+            max_pages=1,
+            max_workers=1,
+            headless=True,
+            use_stealth=True,
+            proxy_geo=payload.proxy_geo or "IN",
+            js_render=False,
+            html_clean=False,
+            render_timeout=30000,
+            auto_scroll=False
+        )
+
+        crawl_id = uuid.uuid4().hex
+
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO crawl_jobs
+                (crawl_id, url, crawl_mode, created_at, SEO, HTML, Screenshot, Markdown, Images, links, user_id, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    crawl_id,
+                    url,
+                    "single",
+                    created_at,
+                    False, # enable_seo
+                    True,  # enable_html
+                    False, # enable_ss
+                    False, # enable_md
+                    False, # enable_images
+                    False, # enable_links
+                    user_id,
+                    datetime.now(ist) # update immediately
+                )
+            )
+            conn.commit()
+            cur.close()
+
+        # Run synchronously in a separate thread to wait for results
+        import asyncio
+        summary = await asyncio.to_thread(
+            crawl_main,
+            client_id=crawl_id,
+            user_id=user_id,
+            start_url=url,
+            crawl_mode="single",
+            enable_links=False,
+            enable_md=False,
+            enable_html=True,
+            enable_ss=False,
+            enable_seo=False,
+            enable_images=False,
+            config=config
+        )
+
+        from api.core.security import increment_used_requests
+        increment_used_requests(user_id, amount=1)
+
+        log_activity(user_id, "/GOOGLE-FLIGHTS", url, "COMPLETED", job_id=crawl_id)
+        
+        # Process the HTML response
+        flights_data = []
+        raw_html = None
+        
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT content FROM crawl_artifacts WHERE crawl_id = %s AND artifact_type = 'html' LIMIT 1",
+                (crawl_id,)
+            )
+            row = cur.fetchone()
+            if row:
+                raw_html = row[0]
+            cur.close()
+            
+        if raw_html:
+            flights_data = extract_flights(raw_html)
+                
+        return {
+            "status_code": 200,
+            "status": "success",
+            "crawl_id": crawl_id,
+            "url": url,
+            "flights": flights_data or []
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            auth_key = x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
+            user_id = validate_recaptcha_or_jwt(
+                auth_header=authorization,
+                recaptcha_header=recaptcha_token,
+                api_key_header=auth_key
+            )
+            log_activity(user_id, "/GOOGLE-FLIGHTS", url if 'url' in locals() else "", "FAILED", job_id=crawl_id if 'crawl_id' in locals() else None)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/justdial", response_model=JustdialResponse)
+async def run_justdial_scrape(
+    payload: JustdialRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
+    recaptcha_token: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", description="API key for client access")
+):
+    try:
+        try:
+            user_id = validate_recaptcha_or_jwt(
+                auth_header=authorization,
+                recaptcha_header=recaptcha_token,
+                api_key_header=x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
+            )
+        except HTTPException:
+            user_id = 1 # Fallback to Demo User like Streamlit does
+        
+        from api.core.security import check_plan_limits_and_get_details, increment_used_requests, check_endpoint_active
+        check_endpoint_active("Scrape API")
+        plan_type, concurrency_limit = check_plan_limits_and_get_details(user_id)
+
+        ist = pytz.timezone("Asia/Kolkata")
+        created_at = datetime.now(ist)
+
+        url = f"https://www.justdial.com/{payload.location}/{payload.category}"
+
+        config = CrawlConfig(
+            max_pages=1,
+            max_workers=1,
+            headless=True,
+            use_stealth=True,
+            proxy_geo="IN",
+            js_render=False,
+            html_clean=False,
+            render_timeout=30000,
+            scroll_delay=500,
+            max_scrolls=4,
+            auto_scroll=True,
+            auto_scroll_for_html=True
+        )
+        
+        config.headers = payload.headers or {
+            "referer": "https://www.justdial.com/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+            "sec-ch-ua": '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"'
+        }
+
+        crawl_id = uuid.uuid4().hex
+
+        with get_pooled_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO crawl_jobs
+                (crawl_id, url, crawl_mode, created_at, SEO, HTML, Screenshot, Markdown, Images, links, user_id, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    crawl_id,
+                    url,
+                    "single",
+                    created_at,
+                    False, # enable_seo
+                    True,  # enable_html
+                    False, # enable_ss
+                    False, # enable_md
+                    False, # enable_images
+                    False, # enable_links
+                    user_id,
+                    datetime.now(ist) # update immediately
+                )
+            )
+            conn.commit()
+            cur.close()
+
+        # Run synchronously in a separate thread to wait for results
+        import asyncio
+        summary = await asyncio.to_thread(
+            crawl_main,
+            client_id=crawl_id,
+            user_id=user_id,
+            start_url=url,
+            crawl_mode="single",
+            enable_links=False,
+            enable_md=False,
+            enable_html=True,
+            enable_ss=False,
+            enable_seo=False,
+            enable_images=False,
+            config=config
+        )
+
+        from api.core.security import increment_used_requests
+        increment_used_requests(user_id, amount=1)
+
+        log_activity(user_id, "/JUSTDIAL", url, "COMPLETED", job_id=crawl_id)
+        
+        return {
+            "status_code": 200,
+            "status": "success",
+            "crawl_id": crawl_id,
+            "url": url,
+            "listings": summary.get("listings", []) if isinstance(summary, dict) else []
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            auth_key = x_api_key or request.headers.get("x-api-key") or request.headers.get("api_key") or request.headers.get("api-key") or request.headers.get("apikey")
+            user_id = validate_recaptcha_or_jwt(
+                auth_header=authorization,
+                recaptcha_header=recaptcha_token,
+                api_key_header=auth_key
+            )
+            log_activity(user_id, "/JUSTDIAL", url if 'url' in locals() else "", "FAILED", job_id=crawl_id if 'crawl_id' in locals() else None)
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
