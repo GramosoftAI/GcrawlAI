@@ -14,7 +14,7 @@ def extract_google_flights(html_content: str):
     Returns:
         list[dict]
     """
-    logger.info(html_content,"============********************===============")
+    # logger.info(html_content,"============********************===============")
 
     tree = html.fromstring(html_content)
     flights = []
