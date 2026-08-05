@@ -78,7 +78,7 @@ async def get_overall_logs(
                         COALESCE(p.thordata, p.evomi_premium) as thordata,
                         p.evomi_core
                     FROM activity_logs a
-                    LEFT JOIN users u ON a.user_id = u.user_id
+                    LEFT JOIN users u ON a.user_id = u.user_id::text
                     LEFT JOIN proxy_bandwidth_usage p ON a.job_id = p.job_id
                     LEFT JOIN crawl_errors ce ON a.job_id = ce.crawl_id
                     LEFT JOIN search_errors se ON a.job_id = se.search_id
