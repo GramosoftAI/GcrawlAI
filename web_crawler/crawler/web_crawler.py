@@ -238,7 +238,8 @@ class WebCrawler:
                     target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
                 )
                 if p_dict:
-                    map_result = map_website(start_url, limit=max_pages, proxy_dict=p_dict)
+                    map_limit = max(max_pages, 5000)
+                    map_result = map_website(start_url, limit=map_limit, proxy_dict=p_dict)
                     if map_result["total"] > 1:
                         logger.info(f"  ✓ Pre-crawl map discovery succeeded with {provider_name} ({map_result['total']} links)")
                         discovered_urls = map_result["urls"]
