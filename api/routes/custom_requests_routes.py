@@ -16,12 +16,13 @@ email_service = EmailService(email_config)
 
 def send_admin_notification_email(payload: CustomRequestSubmitPayload):
     """Send admin notification email."""
-    admin_emails_str = os.getenv('ADMIN_EMAIL')
+    from api.core.database import get_admin_recipient_emails
+    admin_emails_str = get_admin_recipient_emails()
     if not admin_emails_str:
-        logger.warning("ADMIN_EMAIL not set in env variables. Skipping notification email.")
+        logger.warning("No admin emails found in database. Skipping notification email.")
         return
 
-    admin_emails = [email.strip() for email in admin_emails_str.split(',')]
+    admin_emails = [email.strip() for email in admin_emails_str.split(',') if email.strip()]
     
     subject = f"New Custom Scraping Request: {payload.request_type} from {payload.full_name}"
     

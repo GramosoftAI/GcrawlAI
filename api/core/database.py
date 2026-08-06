@@ -338,13 +338,9 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
 
 def get_admin_recipient_emails() -> str:
     """
-    Get admin recipient email addresses.
-    First tries to retrieve from the `admin_emails` table in the database.
-    If none are found, falls back to the ADMIN_EMAIL environment variable or config email setting.
+    Get admin recipient email addresses from the `admin_emails` table in the database.
+    Does NOT fall back to environment variables or config.yaml settings.
     """
-    import os
-    from api.core.config_setup import load_config
-    
     emails = []
     try:
         with get_pooled_connection() as conn:
@@ -354,16 +350,6 @@ def get_admin_recipient_emails() -> str:
                 rows = cur.fetchall()
                 emails = [r[0] for r in rows if r[0]]
     except Exception as e:
-        logger.warning(f"Failed to fetch admin emails from database (it might not exist yet): {e}")
+        logger.warning(f"Failed to fetch admin emails from database: {e}")
 
-    if emails:
-        return ",".join(emails)
-
-    try:
-        config = load_config()
-        smtp_config = config.get("email", {})
-        fallback = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
-        return fallback
-    except Exception as e:
-        logger.error(f"Failed to load fallback admin email: {e}")
-        return os.getenv("ADMIN_EMAIL", "")
+    return ",".join(emails)

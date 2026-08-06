@@ -519,7 +519,7 @@ class DatabaseSetup:
             ('Starter', 'starter', '$19/mo', 'Rs.1599/mo', 3000, 5),
             ('Growth', 'growth', '$29/mo', 'Rs.2499/mo', 50000, 15),
             ('Pro', 'pro', '$49/mo', 'Rs.4199/mo', 150000, 25)
-        ON CONFLICT (plan_key) DO NOTHING;
+        ON CONFLICT (plan_name) DO NOTHING;
         """
         
         seed_yearly_query = """
@@ -529,7 +529,7 @@ class DatabaseSetup:
             ('Starter', 'starter', '$190/yr', 'Rs.15990/yr', 36000, 5),
             ('Growth', 'growth', '$290/yr', 'Rs.24990/yr', 600000, 15),
             ('Pro', 'pro', '$490/yr', 'Rs.41990/yr', 1800000, 25)
-        ON CONFLICT (plan_key) DO NOTHING;
+        ON CONFLICT (plan_name) DO NOTHING;
         """
         
         conn = None
@@ -939,6 +939,27 @@ class DatabaseSetup:
                 logger.warning(f"Failed to run migration query for proxy_bandwidth_usage table: {e}")
         return success
 
+    def create_auto_robots_table(self) -> bool:
+        """Create auto_robots table and indexes"""
+        query = """
+        CREATE TABLE IF NOT EXISTS auto_robots (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            category VARCHAR(100) NOT NULL,
+            target_platform VARCHAR(100) NOT NULL,
+            status VARCHAR(50) DEFAULT 'Active',
+            sample_url TEXT NOT NULL,
+            description TEXT,
+            dynamic_fields JSONB DEFAULT '[]',
+            sample_schema JSONB DEFAULT '[]',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_auto_robots_category ON auto_robots(category);
+        CREATE INDEX IF NOT EXISTS idx_auto_robots_status ON auto_robots(status);
+        """
+        return self.execute_query(query)
+
     def migrate_columns_to_timestamptz(self) -> bool:
         """Migrate any existing TIMESTAMP columns to TIMESTAMPTZ to support global timezone alignment"""
         migrations = [
@@ -1021,6 +1042,7 @@ class DatabaseSetup:
         if not self.create_admin_error_logs_table(): return False
         if not self.create_admin_emails_table(): return False
         if not self.create_proxy_bandwidth_usage_table(): return False
+        if not self.create_auto_robots_table(): return False
 
         # 4. System config & payment tables
         if not self.create_api_endpoints_table(): return False
@@ -1036,14 +1058,14 @@ class DatabaseSetup:
         return True
 
     def verify_tables_exist(self) -> bool:
-        """Verify existence of all 20 target system database tables"""
+        """Verify existence of all target system database tables"""
         required_tables = [
             'users', 'signup_otps', 'crawl_jobs', 'reported_issues', 
             'api_keys', 'crawl_errors', 'activity_logs', 
             'job_results', 'search_jobs', 'search_errors', 'api_endpoints', 
             'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
-            'admin_error_logs', 'custom_requests', 'admin_emails'
+            'admin_error_logs', 'custom_requests', 'admin_emails', 'auto_robots'
         ]
         
         verify_query = """
@@ -1084,7 +1106,7 @@ class DatabaseSetup:
             'api_keys', 'crawl_errors', 'activity_logs', 'job_results', 'search_jobs', 
             'search_errors', 'api_endpoints', 'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
-            'admin_error_logs', 'custom_requests', 'admin_emails'
+            'admin_error_logs', 'custom_requests', 'admin_emails', 'auto_robots'
         ]
         
         conn = None
