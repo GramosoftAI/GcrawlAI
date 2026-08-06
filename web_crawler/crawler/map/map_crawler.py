@@ -486,7 +486,9 @@ def map_website(start_url: str, limit: int = MAX_URLS, proxy_dict: Optional[dict
             f"(threshold={_BROWSER_FALLBACK_THRESHOLD}) — trying browser fallback"
         )
         t0 = time.perf_counter()
-        from_browser = _browser_extract_links(start_url, collected, lock, limit, proxy_dict)
+        before_browser = len(collected)
+        _browser_map_website(start_url, collected, lock, limit, proxy_dict)
+        from_browser = len(collected) - before_browser
         logger.info(f"⏱  browser: {time.perf_counter()-t0:.2f}s → {from_browser} new URLs (pool: {len(collected)})")
 
     # ── Build result ─────────────────────────────────────────────────────────
