@@ -303,9 +303,35 @@ class WebCrawler:
             elif isinstance(user_limit, str) and user_limit.lower() == "auto":
                 pass  # Keep all URLs discovered
 
-            map_result["total"] = len(discovered_urls)
-
-            pass
+            if not discovered_urls or len(discovered_urls) <= 1:
+                logger.info(f"🗺️  Sitemap/Map discovery yielded no links. Falling back to crawling starting URL {start_url} directly...")
+                fallback_res = self.page_crawler.crawl_page(
+                    url=start_url,
+                    count=1,
+                    enable_md=False,
+                    enable_html=True,
+                    enable_ss=False,
+                    enable_seo=False,
+                    enable_images=False,
+                    enable_json=True,
+                    client_id=client_id,
+                    websocket_manager=websocket_manager,
+                    crawl_mode=crawl_mode
+                )
+                if fallback_res and "links" in fallback_res and not fallback_res.get("error"):
+                    fallback_urls = set()
+                    fallback_urls.add(normalize_url(start_url))
+                    for l in fallback_res["links"]:
+                        fallback_urls.add(normalize_url(l))
+                    discovered_urls = sorted(list(fallback_urls))
+                    
+                    if isinstance(user_limit, int):
+                        discovered_urls = discovered_urls[:user_limit]
+                    elif isinstance(user_limit, str) and user_limit.isdigit():
+                        discovered_urls = discovered_urls[:int(user_limit)]
+                    
+                    map_result["total"] = len(discovered_urls)
+                    elapsed = perf_counter() - start_perf
 
             error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
             if not discovered_urls or len(discovered_urls) <= 1:
