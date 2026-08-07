@@ -338,6 +338,24 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
 
 def get_admin_recipient_emails() -> str:
     """
+    Get admin recipient email addresses from the `admin_emails` table in the database.
+    Does NOT fall back to environment variables or config.yaml settings.
+    """
+    emails = []
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cur:
+                # We query from public.admin_emails table
+                cur.execute("SELECT email FROM admin_emails ORDER BY id ASC")
+                rows = cur.fetchall()
+                emails = [r[0] for r in rows if r[0]]
+    except Exception as e:
+        logger.warning(f"Failed to fetch admin emails from database: {e}")
+
+    return ",".join(emails)
+
+def get_admin_recipient_emails() -> str:
+    """
     Get admin recipient email addresses.
     First tries to retrieve from the `admin_emails` table in the database.
     If none are found, falls back to the ADMIN_EMAIL environment variable or config email setting.

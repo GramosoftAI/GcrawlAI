@@ -446,3 +446,49 @@ class CreatePlanRequest(BaseModel):
     monthly_product_id_usd: Optional[str] = None
     yearly_product_id_inr: Optional[str] = None
     yearly_product_id_usd: Optional[str] = None
+
+from typing import Dict, Any
+
+class DynamicFieldSchema(BaseModel):
+    label: str
+    input_type: str
+    options: Optional[List[str]] = None
+
+class CreateAutoRobotRequest(BaseModel):
+    title: str
+    category: str
+    target_platform: str
+    status: Optional[str] = "Active"
+    sample_url: str
+    description: Optional[str] = None
+    dynamic_fields: Optional[List[DynamicFieldSchema]] = []
+    sample_schema: Optional[Union[List[Any], Dict[str, Any]]] = []
+
+class UpdateAutoRobotRequest(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    target_platform: Optional[str] = None
+    status: Optional[str] = None
+    sample_url: Optional[str] = None
+    description: Optional[str] = None
+    dynamic_fields: Optional[List[DynamicFieldSchema]] = None
+    sample_schema: Optional[Union[List[Any], Dict[str, Any]]] = None
+
+class AutoRobotResponse(BaseModel):
+    id: int
+    title: str
+    category: str
+    target_platform: str
+    status: str
+    sample_url: str
+    description: Optional[str] = None
+    dynamic_fields: List[DynamicFieldSchema]
+    sample_schema: Union[List[Any], Dict[str, Any]]
+    created_at: str
+    updated_at: Optional[str] = None
+
+class AutoRobotListResponse(BaseModel):
+    status_code: int = 200
+    status: str = "success"
+    data: List[AutoRobotResponse]
+    total_count: int

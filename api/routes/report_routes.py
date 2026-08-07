@@ -121,20 +121,27 @@ def report_issue(
 
         email_sent = False
         if admin_email:
+            admin_emails = [email.strip() for email in admin_email.split(",") if email.strip()]
             try:
                 email_service = EmailService(smtp_config)
-                email_sent = email_service.send_report_issue_email(
-                    to_email=admin_email,
-                    url_affected=payload.url_affected,
-                    issue_related_to=payload.issue_related_to,
-                    explanation=payload.explanation,
-                    report_id=report_id,
-                    user_id=user_id,
-                )
-            except Exception as email_err:
-                logger.warning(f"Could not send admin email for report #{report_id}: {email_err}")
+                for target_email in admin_emails:
+                    try:
+                        sent = email_service.send_report_issue_email(
+                            to_email=target_email,
+                            url_affected=payload.url_affected,
+                            issue_related_to=payload.issue_related_to,
+                            explanation=payload.explanation,
+                            report_id=report_id,
+                            user_id=user_id,
+                        )
+                        if sent:
+                            email_sent = True
+                    except Exception as email_err:
+                        logger.warning(f"Could not send admin email for report #{report_id} to {target_email}: {email_err}")
+            except Exception as service_err:
+                logger.warning(f"Could not initialize EmailService for report #{report_id}: {service_err}")
         else:
-            logger.warning("ADMIN_EMAIL not configured; skipping admin notification email.")
+            logger.warning("Admin emails not configured in database; skipping admin notification email.")
 
         return ReportIssueResponse(
             status_code=201,

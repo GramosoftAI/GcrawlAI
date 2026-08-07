@@ -187,20 +187,26 @@ class PageCrawler(BasePageCrawler, CloakCrawlerMixin):
         try:
             from api.core.config_setup import load_config
             from api.services.email_service import EmailService
+            from api.core.database import get_admin_recipient_emails
             
-            admin_email = os.getenv("ADMIN_EMAIL")
-            if admin_email:
+            admin_emails_str = get_admin_recipient_emails()
+            if admin_emails_str:
+                admin_emails = [email.strip() for email in admin_emails_str.split(",") if email.strip()]
                 config = load_config()
                 smtp_config = config.get("email", {})
                 email_service = EmailService(smtp_config)
                 
                 last_error = result.get('error') if result else 'Unknown'
-                email_service.send_report_issue_email(
-                    to_email=admin_email,
-                    url_affected=url,
-                    issue_related_to=["Crawler Proxy Exhaustion", "All Providers Failed"],
-                    explanation=f"The crawler failed to process this URL across Nodemaven, Thordata, and Evomi.\\n\\nLast Error: {last_error}"
-                )
+                for admin_email in admin_emails:
+                    try:
+                        email_service.send_report_issue_email(
+                            to_email=admin_email,
+                            url_affected=url,
+                            issue_related_to=["Crawler Proxy Exhaustion", "All Providers Failed"],
+                            explanation=f"The crawler failed to process this URL across Nodemaven, Thordata, and Evomi.\\n\\nLast Error: {last_error}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send alert email for proxy exhaustion to {admin_email}: {e}")
         except Exception as e:
             logger.error(f"Failed to send alert email for proxy exhaustion: {e}")
             

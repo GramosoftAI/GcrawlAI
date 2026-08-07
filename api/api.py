@@ -143,6 +143,7 @@ async def startup_event():
         db_setup.create_subscription_plans_tables()
         db_setup.create_admin_error_logs_table()
         db_setup.create_admin_emails_table()
+        db_setup.create_auto_robots_table()
         
         # Initialize Grag partitioned tables
         from grag.db_setup import init_gsearch_database

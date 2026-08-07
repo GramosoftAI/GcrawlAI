@@ -259,25 +259,31 @@ def _send_crawl_error_notification(
             cfg = _substitute_config(yaml.safe_load(f))
             
         smtp_cfg = cfg.get("email", {})
-        admin_email = os.getenv("ADMIN_EMAIL")
+        from api.core.database import get_admin_recipient_emails
+        admin_emails_str = get_admin_recipient_emails()
         
-        if not admin_email:
-            logger.info("Admin email is not set. Skipping crawl error email notification.")
+        if not admin_emails_str:
+            logger.info("Admin email is not set in database. Skipping crawl error email notification.")
             return
 
         if not smtp_cfg:
             logger.warning("Email configuration not found in config.yaml")
             return
 
+        admin_emails = [email.strip() for email in admin_emails_str.split(",") if email.strip()]
         email_service = EmailService(smtp_cfg)
-        email_service.send_crawl_error_email(
-            to_email=admin_email,
-            crawl_id=crawl_id,
-            url=url,
-            error_source=error_source,
-            reason=reason,
-            blocked_message=blocked_message
-        )
+        for admin_email in admin_emails:
+            try:
+                email_service.send_crawl_error_email(
+                    to_email=admin_email,
+                    crawl_id=crawl_id,
+                    url=url,
+                    error_source=error_source,
+                    reason=reason,
+                    blocked_message=blocked_message
+                )
+            except Exception as e:
+                logger.error(f"Failed to send crawl error email to {admin_email}: {e}")
     except Exception as e:
         logger.warning(f"⚠ Could not send crawl error email: {e}")
 
