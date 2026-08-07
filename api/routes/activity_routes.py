@@ -16,6 +16,7 @@ def fetch_activity_logs(
     days: int = 7,
     endpoint: Optional[str] = None
 ):
+    """Fetch and return activity logs."""
     try:
         user_id = validate_recaptcha_or_jwt(
             auth_header=authorization,
@@ -63,6 +64,7 @@ def fetch_activity_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ):
+    """Fetch and return activity summary."""
     import datetime
     try:
         user_id = validate_recaptcha_or_jwt(

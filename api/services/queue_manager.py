@@ -18,6 +18,7 @@ PLAN_PRIORITIES = {
 
 class QueueItem:
     def __init__(self, priority: int, user_id: Union[int, str], func: Callable, kwargs: dict):
+        """Init."""
         self.priority = priority
         self.timestamp = time.time()
         self.user_id = user_id
@@ -33,6 +34,7 @@ class QueueItem:
 
 class PriorityQueueManager:
     def __init__(self, global_limit: int = 90):
+        """Init."""
         self.queue = asyncio.PriorityQueue()
         self.global_limit = global_limit
         self.active_global = 0
@@ -43,6 +45,7 @@ class PriorityQueueManager:
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=global_limit)
 
     def start_workers(self):
+        """Start workers."""
         if self._is_running:
             return
         self._is_running = True
@@ -52,6 +55,7 @@ class PriorityQueueManager:
         logger.info(f"🚀 Started {self.global_limit} Global Priority Queue Workers")
 
     async def stop_workers(self):
+        """Stop workers."""
         self._is_running = False
         for w in self._workers:
             w.cancel()
@@ -60,6 +64,7 @@ class PriorityQueueManager:
         self.thread_pool.shutdown(wait=False)
 
     def get_user_lock(self, user_id: Union[int, str]) -> asyncio.Lock:
+        """Return user lock."""
         if user_id not in self.user_locks:
             self.user_locks[user_id] = asyncio.Lock()
         return self.user_locks[user_id]
@@ -107,6 +112,7 @@ class PriorityQueueManager:
         
         # Create a wrapper function that will enforce limits BEFORE execution inside the worker
         async def _background_wrapper():
+            """Background wrapper."""
             lock = self.get_user_lock(user_id)
             while True:
                 async with lock:

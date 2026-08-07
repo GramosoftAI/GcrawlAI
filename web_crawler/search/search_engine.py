@@ -87,6 +87,7 @@ def get_detected_locale(ip: Optional[str] = None) -> dict:
 
 
 def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
+    """Searxng search."""
     global _SEARXNG_LAST_FAILURE
     url = os.getenv("SEARXNG_ENDPOINT")
     if not url:
@@ -164,6 +165,7 @@ def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dic
 
 
 def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
+    """Ddg search."""
     try:
         location_data = get_detected_locale(ip)
         city = location_data["city"]
@@ -194,31 +196,23 @@ def _is_valid_google_result(results: Any) -> bool:
     non-empty list of search results.
 
     scrape_google() returns:
-      - []                          → timeout / exception (treat as failure)
-      - [{"url": ..., ...}, ...]    → success
-      - {"error": ..., ...}         → error dict leaked from search() (treat as failure)
-
-    Any dict at the top level (including error dicts) is a failure. Only a
-    non-empty list whose first item is a dict with a "url" key is a success.
+      - {"results": []}                          → timeout / exception (treat as failure)
+      - {"results": [{"url": ..., ...}, ...], "proxy_usage": ...}    → success
     """
-    if not results:
+    if not isinstance(results, dict):
         return False
-    if isinstance(results, dict):
-        # Should not happen after the async wrapper, but guard anyway
+    res_list = results.get("results", [])
+    if not res_list:
         return False
-    if not isinstance(results, list):
-        return False
-    # Confirm it looks like actual search results, not a list of error dicts
-    first = results[0] if results else {}
+    first = res_list[0] if res_list else {}
     if not isinstance(first, dict):
         return False
-    # A valid result must have a url; an error result has an "error" key
     if "error" in first and "url" not in first:
         return False
     return True
 
 
-async def execute_search_router(query: str, limit: int, ip: Optional[str] = None, proxy_geo: Optional[str] = None) -> List[Dict[str, str]]:
+async def execute_search_router(query: str, limit: int, ip: Optional[str] = None, proxy_geo: Optional[str] = None) -> Dict:
     """
     Implements a robust search router with aggressive Google retry.
 
@@ -236,9 +230,19 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
     start_time = time.time()
 
     def _finalize(res):
+        """Finalize."""
         elapsed = time.time() - start_time
         logger.info(f"⏱️ [SEARCH] Total execution time: {elapsed:.2f} seconds")
-        return filter_and_deduplicate(res, limit)
+        
+        # Ensure we always return a dict
+        if isinstance(res, list):
+            res_list = res
+            res = {"results": res_list}
+        else:
+            res_list = res.get("results", [])
+            
+        res["results"] = filter_and_deduplicate(res_list, limit)
+        return res
 
     search_limit = max(int(limit * 1.5) + 5, limit + 5)
 
@@ -249,7 +253,7 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
         results = await scrape_google(query, limit, ip, headless=True, fast_mode=False, proxy_geo=proxy_geo)
 
         if _is_valid_google_result(results):
-            logger.info(f"✅ [SEARCH] Google search successful. Found {len(results)} results.")
+            logger.info(f"✅ [SEARCH] Google search successful. Found {len(results.get('results', []))} results.")
             return _finalize(results)
         else:
             last_google_error = f"Google returned unusable result: {str(results)[:120]}"
@@ -313,6 +317,7 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
 
 
 def filter_and_deduplicate(results: List[Dict[str, str]], limit: int) -> List[Dict[str, str]]:
+    """Filter and deduplicate."""
     seen_urls = set()
     filtered = []
 

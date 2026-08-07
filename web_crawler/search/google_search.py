@@ -48,6 +48,7 @@ _MAX_CONCURRENT_GOOGLE_REQUESTS: int = 30
 _google_request_semaphore: Optional[asyncio.Semaphore] = None
 
 def _get_semaphore():
+    """Return semaphore."""
     global _google_request_semaphore
     if _google_request_semaphore is None:
         _google_request_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_GOOGLE_REQUESTS)
@@ -75,12 +76,14 @@ _request_counter_lock = asyncio.Lock()
 # ─────────────────────────────────────────────────────────────────────────────
 class _ResultCache:
     def __init__(self, maxsize: int, ttl: float):
+        """Init."""
         self.maxsize = maxsize
         self.ttl = ttl
         self.cache: OrderedDict = OrderedDict()
         self.lock = asyncio.Lock()
 
     async def get(self, key: str) -> Optional[Dict]:
+        """Get."""
         if not _CACHING_ENABLED: return None
         async with self.lock:
             if key not in self.cache:
@@ -93,6 +96,7 @@ class _ResultCache:
             return data
 
     async def put(self, key: str, value: Dict) -> None:
+        """Put."""
         if not _CACHING_ENABLED: return
         async with self.lock:
             self.cache[key] = (value, time.time())
@@ -100,9 +104,6 @@ class _ResultCache:
             if len(self.cache) > self.maxsize:
                 self.cache.popitem(last=False)
 
-    async def invalidate_all(self):
-        async with self.lock:
-            self.cache.clear()
 
 _cache = _ResultCache(_CACHE_MAX_SIZE, _CACHE_TTL_SECONDS)
 
@@ -111,6 +112,7 @@ _cache = _ResultCache(_CACHE_MAX_SIZE, _CACHE_TTL_SECONDS)
 # ─────────────────────────────────────────────────────────────────────────────
 class _BrowserPool:
     def __init__(self, minsize: int, maxsize: int, timeout: int = 120):
+        """Init."""
         self.minsize = minsize
         self.maxsize = maxsize
         self.timeout = timeout
@@ -121,6 +123,7 @@ class _BrowserPool:
         self._initialized = False
 
     async def initialize(self):
+        """Initialize."""
         if self._lock is None:
             self._lock = asyncio.Lock()
         if self._available is None:
@@ -137,6 +140,7 @@ class _BrowserPool:
             logger.info(f"[BrowserPool] Pool ready.")
 
     def _create_instance(self):
+        """Create instance."""
         is_headless = os.getenv("CRAWL_HEADLESS", "true").strip().lower() == "true"
         return PersistentStealthyFetcher(
             headless=is_headless,
@@ -149,6 +153,7 @@ class _BrowserPool:
         )
 
     async def borrow(self) -> PersistentStealthyFetcher:
+        """Borrow."""
         if not self._initialized:
             await self.initialize()
 
@@ -177,11 +182,13 @@ class _BrowserPool:
             raise TimeoutError("Browser pool exhausted")
 
     async def return_fetcher(self, fetcher: PersistentStealthyFetcher):
+        """Return fetcher."""
         async with self._lock:
             self._in_use_count -= 1
         await self._available.put(fetcher)
 
     async def close_all(self):
+        """Close all."""
         if not self._lock: return
         async with self._lock:
             for f in self._all_fetchers:
@@ -210,6 +217,7 @@ async def _apply_provider_throttle(provider: str):
     _provider_last_req[provider] = time.time()
 
 def _build_proxy_config(session_id: Optional[str] = None, proxy_geo: Optional[str] = None) -> Dict:
+    """Build proxy config."""
     if proxy_geo and proxy_geo.strip().lower() != "default":
         return _pm.get_playwright_proxy(
             target_url="https://www.google.com",
@@ -252,6 +260,7 @@ _proactor_loop = None
 _proactor_thread = None
 
 def _get_or_start_proactor_thread():
+    """Return or start proactor thread."""
     global _proactor_loop, _proactor_thread
     if _proactor_thread is not None and _proactor_thread.is_alive():
         return _proactor_loop
@@ -260,6 +269,7 @@ def _get_or_start_proactor_thread():
     import asyncio
     
     def run_loop():
+        """Run loop."""
         global _proactor_loop, _pool
         try:
             if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
@@ -293,7 +303,7 @@ def _get_or_start_proactor_thread():
         
     return _proactor_loop
 
-async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, **kwargs) -> List[Dict]:
+async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, **kwargs) -> Dict:
     """FastAPI-friendly async entry point."""
     import sys
     import asyncio
@@ -318,22 +328,23 @@ async def scrape_google(query: str, limit: int = 10, ip: Optional[str] = None, *
                 # Wrap the concurrent.futures.Future in an asyncio Future to await it non-blocking
                 results = await asyncio.wrap_future(future)
                 if isinstance(results, dict) and "error" in results:
-                    return []
-                return results.get("results", [])
+                    return {"results": []}
+                return results
             except Exception as e:
                 logger.error(f"Windows persistent thread search failed: {e}")
-                return []
+                return {"results": []}
                 
     try:
         results = await search(query, limit=limit, proxy_geo=proxy_geo)
         if isinstance(results, dict) and "error" in results:
-            return []
-        return results.get("results", [])
+            return {"results": []}
+        return results
     except Exception as e:
         logger.error(f"scrape_google failed: {e}")
-        return []
+        return {"results": []}
 
 async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -> Dict:
+    """Search."""
     global _pool
     if _pool is None:
         # Lazy initialization for non-SelectorEventLoop or CLI execution
@@ -375,6 +386,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
         await _apply_provider_throttle("evomi")
         
         async def fetch_page(start: int):
+            """Fetch and return page."""
             fetcher = await _pool.borrow()
             try:
                 url = f"https://www.google.com/search?q={query.replace(' ', '+')}&start={start}&filter=0"
@@ -394,6 +406,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
                 await _pool.return_fetcher(fetcher)
 
         async def fetch_page_with_retry(start: int):
+            """Fetch and return page with retry."""
             page_results = []
             page_response = None
             for attempt in range(3):  # Try up to 3 times to get this specific page
@@ -413,6 +426,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
         combined = []
         seen_urls = set()
         valid_response = None
+        total_search_bytes = 0
         
         # Process tasks in sorted start order to maintain correct Google ranking.
         for start in sorted(starts):
@@ -420,6 +434,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
                 page_results, page_response = await async_tasks[start]
                 if page_response:
                     valid_response = page_response
+                    total_search_bytes += getattr(page_response, 'bandwidth_bytes', 0)
                 
                 # Log if a page failed completely but continue to show other pages' results
                 if not page_response or not page_response.ok:
@@ -444,6 +459,7 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
                 page_results, page_response = await fetch_page_with_retry(next_start)
                 if page_response:
                     valid_response = page_response
+                    total_search_bytes += getattr(page_response, 'bandwidth_bytes', 0)
                 if not page_response or not page_response.ok:
                     logger.warning(f"[Thread-{tid}] Subsequent page start={next_start} failed completely after retries. Stopping.")
                     break
@@ -474,7 +490,8 @@ async def search(query: str, limit: int = 10, proxy_geo: Optional[str] = None) -
             "count": len(final_results),
             "query": query,
             "final_url": response.url if response else f"https://www.google.com/search?q={query.replace(' ', '+')}",
-            "status": response.status if response else 200
+            "status": response.status if response else 200,
+            "proxy_usage": {"nodemaven": round(total_search_bytes / (1024 * 1024), 2)}
         }
         
         if final_results:
@@ -519,7 +536,3 @@ def extract_search_results(response: Any, limit: int) -> Dict:
                 
     return {"results": results, "count": len(results)}
 
-# Lifecycle helpers
-async def shutdown():
-    await _pool.close_all()
-    logger.info("Browser pool shutdown.")

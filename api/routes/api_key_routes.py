@@ -27,13 +27,14 @@ import jwt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from pathlib import Path
-from cryptography.fernet import Fernet
-
 from fastapi import APIRouter, HTTPException, Depends, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from psycopg2.extras import RealDictCursor
 import psycopg2
+from api.core.database import get_db_connection, get_ist_now
+from api.core.security import get_current_user_from_token
+from cryptography.fernet import Fernet
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +82,7 @@ def _substitute_env_vars(data):
     elif isinstance(data, str):
         # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
         def replace_var(match):
+            """Replace var."""
             var_name = match.group(1)
             default_value = match.group(2)
             return os.getenv(var_name, default_value or "")
@@ -92,32 +94,6 @@ def _substitute_env_vars(data):
 
 # Load config at module level
 _CONFIG = load_config()
-
-
-# ==================== DATABASE UTILITIES ====================
-
-def get_db_connection():
-    """
-    Create and return a database connection
-    
-    Returns:
-        psycopg2 connection object
-    """
-    try:
-        db_config = _CONFIG.get('postgres', {})
-        conn = psycopg2.connect(
-            host=db_config.get('host'),
-            port=db_config.get('port'),
-            database=db_config.get('database'),
-            user=db_config.get('user'),
-            password=db_config.get('password')
-        )
-        return conn
-    
-    except psycopg2.Error as e:
-        logger.error(f"Database connection error: {e}", exc_info=True)
-        raise
-
 
 # ==================== ENCRYPTION UTILITIES ====================
 
@@ -265,39 +241,12 @@ def verify_jwt_token(token: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Failed to verify token")
 
 
-async def get_current_user_from_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> Dict[str, Any]:
-    """
-    Extract current user from JWT token
-    This is a helper for API key routes
-    """
-    try:
-        token = credentials.credentials
-        
-        # Verify token directly
-        token_data = verify_jwt_token(token)
-        
-        if not token_data:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-        
-        user_id = token_data.get('user_id')
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token data")
-        
-        return {'user_id': user_id, 'email': token_data.get('email')}
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error extracting user from token: {e}", exc_info=True)
-        raise HTTPException(status_code=401, detail="Failed to authenticate user")
-
-
 # ==================== API KEY ROUTES ====================
 
 @router.post("/generate", response_model=ApiKeyResponse, status_code=201)
-async def create_api_key(current_user: Dict[str, Any] = Depends(get_current_user_from_token)):
+async def create_api_key(
+    current_user: Dict[str, Any] = Depends(get_current_user_from_token)
+):
     """
     Generate a new API key for the authenticated user.
     Only one API key is allowed per user.
@@ -561,7 +510,7 @@ def validate_api_key_from_header(api_key: str) -> Optional[Dict[str, Any]]:
         
         # Check if key is expired
         if result['expires_at']:
-            if datetime.utcnow() > result['expires_at']:
+            if get_ist_now() > result['expires_at']:
                 logger.warning("API key has expired")
                 return None
         

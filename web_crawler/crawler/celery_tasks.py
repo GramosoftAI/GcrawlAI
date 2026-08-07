@@ -106,24 +106,43 @@ def crawl_website(
         
         # Add task metadata
         summary['task_id'] = task_id
-        summary['status'] = 'completed'
+        if summary.get('status') != 'failed':
+            summary['status'] = 'completed'
 
-        from api.core.database import get_pooled_connection
+        from api.core.database import get_pooled_connection, update_activity_log_status, update_activity_log_time, get_ist_now
+        from api.core.security import increment_used_requests
         from datetime import datetime
         try:
             with get_pooled_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "UPDATE crawl_jobs SET updated_at = %s WHERE crawl_id = %s",
-                        (datetime.now(), task_id)
+                        (get_ist_now(), task_id)
                     )
-                    if user_id and user_id != "demo":
-                        charge_amount = 1 if crawl_mode == "links" else config.max_pages
-                        cur.execute(
-                            "UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s",
-                            (charge_amount, user_id)
-                        )
                 conn.commit()
+
+            # Billing: calculate charge and deduct using centralized rollover-aware function
+            if user_id and user_id != "demo":
+                if crawl_mode == "links":
+                    links_found = summary.get("total_links_found", 1)
+                    charge_amount = (links_found + 9) // 10
+                elif crawl_mode == "screenshot":
+                    charge_amount = 1
+                else:
+                    enabled_formats_count = sum(bool(x) for x in [enable_md, enable_html, enable_ss, enable_seo, enable_images])
+                    if crawl_mode == "single":
+                        charge_amount = enabled_formats_count or 1
+                    else:
+                        pages_crawled = summary.get("pages_crawled", 1)
+                        charge_amount = pages_crawled * (enabled_formats_count or 1)
+
+                increment_used_requests(user_id, amount=charge_amount)
+            
+            # Update activity log status and latency
+            status = "FAILED" if summary.get("status") == "failed" else "COMPLETED"
+            update_activity_log_status(task_id, status)
+            if summary.get("time_taken"):
+                update_activity_log_time(task_id, summary.get("time_taken"))
         except Exception as db_e:
             logger.error(f"Failed to update database records for task {task_id}: {db_e}")
 
@@ -147,55 +166,6 @@ def crawl_website(
             }
 
 
-@celery_app.task(
-    name='celery_tasks.crawl_single_page',
-    bind=True,
-    max_retries=2,
-    time_limit=300,  # 5 minutes max
-)
-def crawl_single_page(self, url: str, config_dict: Dict) -> Dict:
-    """
-    Celery task to crawl a single page (faster, for single-page mode)
-    """
-    return crawl_website(
-        self,
-        start_url=url,
-        config_dict=config_dict,
-        crawl_mode="single",
-        enable_md=True,
-        enable_html=False,
-        enable_ss=False,
-        enable_json=True,
-        enable_links=True,
-        enable_seo=False,
-        enable_images=True,
-    )
-
-@celery_app.task(
-    name='celery_tasks.crawl_links',
-    bind=True,
-    max_retries=2,
-    time_limit=300,  # 5 minutes max
-)
-def crawl_links(self, url: str, config_dict: Dict) -> Dict:
-    """
-    Celery task to crawl a single page (faster, for single-page mode)
-    """
-    return crawl_website(
-        self,
-        start_url=url,
-        config_dict=config_dict,
-        crawl_mode="links",
-        enable_md=True,
-        enable_html=False,
-        enable_ss=False,
-        enable_json=True,
-        enable_links=True,
-        enable_seo=False,
-        enable_images=True,
-    )
-
-
 @celery_app.task(name='celery_tasks.cleanup_old_results')
 def cleanup_old_results(days_old: int = 7):
     """
@@ -203,11 +173,11 @@ def cleanup_old_results(days_old: int = 7):
     """
     import shutil
     from datetime import datetime, timedelta
-    from api.core.database import get_pooled_connection
+    from api.core.database import get_pooled_connection, get_ist_now
     
     # 1. Cleanup Filesystem (legacy or local assets)
     base_dir = Path(__file__).parent.parent / "crawl_output-api"
-    cutoff_date = datetime.now() - timedelta(days=days_old)
+    cutoff_date = (get_ist_now() - timedelta(days=days_old)).replace(tzinfo=None)
     
     deleted_dirs = 0
     if base_dir.exists():
@@ -246,6 +216,186 @@ def cleanup_old_results(days_old: int = 7):
             conn.commit()
     except Exception as e:
         logger.error(f"Error dropping old partitions: {e}")
+        
+    # 3. Cleanup Grag Database Partitions (older than 2 days)
+    dropped_grag_partitions = 0
+    try:
+        from grag.db_setup import drop_old_gsearch_partitions
+        dropped_grag_partitions = drop_old_gsearch_partitions(days_old=2)
+    except Exception as e:
+        logger.error(f"Failed to drop old Grag partitions: {e}")
     
-    logger.info(f"Cleaned up {deleted_dirs} old crawl directories and {dropped_partitions} DB partitions")
-    return {'deleted_dirs': deleted_dirs, 'dropped_partitions': dropped_partitions}
+    logger.info(f"Cleaned up {deleted_dirs} old crawl directories, {dropped_partitions} DB partitions, and {dropped_grag_partitions} Grag partitions")
+    return {'deleted_dirs': deleted_dirs, 'dropped_partitions': dropped_partitions, 'dropped_grag_partitions': dropped_grag_partitions}
+
+
+# =========================================================
+# GRAG BATCH LINKS SCRAPING WORKERS & TASKS
+# =========================================================
+
+@celery_app.task(
+    name='celery_tasks.scrape_links_task',
+    bind=True,
+    time_limit=3600
+)
+def scrape_links_task(self, gsearch_id: str, urls: list):
+    """Celery task to scrape a batch of URLs with max 5 concurrent browsers"""
+    logger.info(f"Starting Grag Celery scrape task for gsearch_id: {gsearch_id}")
+    run_scrape_links_worker(gsearch_id, urls)
+
+def local_scrape_links_worker(gsearch_id: str, urls: list):
+    """Local ThreadPool task to scrape a batch of URLs with max 5 concurrent browsers"""
+    logger.info(f"Starting Grag Local ThreadPool scrape task for gsearch_id: {gsearch_id}")
+    run_scrape_links_worker(gsearch_id, urls)
+
+def run_scrape_links_worker(gsearch_id: str, urls: list):
+    """Executes the scraping of URLs using ThreadPoolExecutor(max_workers=5)"""
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from web_crawler.crawler.page_crawler import PageCrawler
+    from web_crawler.common.config import CrawlConfig
+    
+    total_urls = len(urls)
+    completed_count = 0
+    lock = threading.Lock()
+    
+    def scrape_single(url, index):
+        nonlocal completed_count
+        logger.info(f"Grag scraping page [{index+1}/{total_urls}]: {url}")
+        
+        config = CrawlConfig(
+            headless=True,
+            use_stealth=True,
+            js_render=False,
+            auto_scroll=False,
+            markdown_clean=False
+        )
+        config.raw_payload = {"url": url, "gsearch_id": gsearch_id}
+        
+        try:
+            crawler = PageCrawler(config)
+            result = crawler.crawl_page(
+                url=url,
+                count=index + 1,
+                enable_md=True,
+                enable_html=False,
+                enable_ss=False,
+                enable_seo=False,
+                enable_images=False,
+                enable_json=False,
+                client_id=None,
+                websocket_manager=None
+            )
+            
+            if result and "error" not in result:
+                md = result.get("markdown_content") or ""
+                _upsert_gsearch_result(gsearch_id, url, md, status="success")
+                _publish_grag_progress(gsearch_id, url, "success", index + 1, total_urls, markdown=md)
+            else:
+                err_msg = result.get("error") if result else "Failed to scrape page"
+                _upsert_gsearch_result(gsearch_id, url, "", status="failed", error=err_msg)
+                _publish_grag_progress(gsearch_id, url, "failed", index + 1, total_urls, error=err_msg)
+        except Exception as ex:
+            logger.error(f"Error scraping {url} in grag: {ex}")
+            _upsert_gsearch_result(gsearch_id, url, "", status="failed", error=str(ex))
+            _publish_grag_progress(gsearch_id, url, "failed", index + 1, total_urls, error=str(ex))
+            
+        with lock:
+            completed_count += 1
+            
+    # Process up to 5 URLs concurrently
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(scrape_single, url, i) for i, url in enumerate(urls)]
+        for fut in futures:
+            try:
+                fut.result()
+            except Exception as e:
+                logger.error(f"Thread execution failed: {e}")
+                
+    # Mark task as completed in DB
+    _mark_gsearch_completed(gsearch_id)
+    
+    # Publish completion event
+    _publish_grag_completed(gsearch_id, total_urls)
+    logger.info(f"✅ Completed all scraping for gsearch_id: {gsearch_id}")
+
+def _upsert_gsearch_result(gsearch_id: str, url: str, markdown: str, status: str = "success", error: str = None) -> None:
+    from api.core.database import get_pooled_connection, get_ist_now
+    from datetime import datetime
+    import json
+    
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                page_result = {
+                    "url": url,
+                    "status": status,
+                    "markdown_content": markdown,
+                    "error": error,
+                    "scraped_at": get_ist_now().isoformat()
+                }
+                
+                payload_str = json.dumps([page_result])
+                
+                cursor.execute(
+                    "UPDATE gsearch_results SET json_content = json_content || %s::jsonb WHERE gsearch_id = %s",
+                    (payload_str, gsearch_id)
+                )
+                
+                if cursor.rowcount == 0:
+                    cursor.execute(
+                        "INSERT INTO gsearch_results (gsearch_id, json_content, status) VALUES (%s, %s::jsonb, 'processing')",
+                        (gsearch_id, payload_str)
+                    )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to upsert gsearch result for {gsearch_id}: {e}")
+
+def _mark_gsearch_completed(gsearch_id: str) -> None:
+    from api.core.database import get_pooled_connection
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE gsearch_results SET status = 'completed' WHERE gsearch_id = %s",
+                    (gsearch_id,)
+                )
+            conn.commit()
+            logger.info(f"Updated status to completed in DB for gsearch_id: {gsearch_id}")
+    except Exception as e:
+        logger.error(f"Failed to mark gsearch completed in DB: {e}")
+
+def _publish_grag_progress(gsearch_id: str, url: str, status: str, page_no: int, total_pages: int, markdown: str = None, error: str = None):
+    import redis
+    import os
+    import json
+    try:
+        r_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+        payload = {
+            "type": "page_processed",
+            "url": url,
+            "status": status,
+            "page": page_no,
+            "total_pages": total_pages,
+            "markdown_content": markdown,
+            "error": error
+        }
+        r_client.publish(f"grag:{gsearch_id}", json.dumps(payload))
+    except Exception as e:
+        logger.warning(f"Could not publish grag event to Redis: {e}")
+
+def _publish_grag_completed(gsearch_id: str, total_pages: int):
+    import redis
+    import os
+    import json
+    try:
+        r_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+        payload = {
+            "type": "gsearch_completed",
+            "gsearch_id": gsearch_id,
+            "status": "completed",
+            "total_pages": total_pages
+        }
+        r_client.publish(f"grag:{gsearch_id}", json.dumps(payload))
+    except Exception as e:
+        logger.warning(f"Could not publish completion event to Redis: {e}")

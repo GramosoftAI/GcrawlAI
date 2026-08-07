@@ -21,6 +21,7 @@ except Exception:
     PRIORITY_ISPS = ["jio", "airtel", "reliance", "vodafone", "idea", "bsnl", "comcast", "spectrum", "at&t"]
 
 def fetch_nodemaven_isp(country, api_key):
+    """Fetch and return nodemaven isp."""
     headers = {
         "Authorization": f"x-api-key {api_key}",
         "Content-Type": "application/json"
@@ -94,6 +95,7 @@ def fetch_nodemaven_isp(country, api_key):
     return country.upper(), None
 
 def run_population(conn, evomi_key, nodemaven_key):
+    """Run population."""
     cur = conn.cursor()
     
     # 1. Create tables
@@ -102,14 +104,14 @@ def run_population(conn, evomi_key, nodemaven_key):
     CREATE TABLE IF NOT EXISTS nodemaven_isps (
         country_code VARCHAR(10) PRIMARY KEY,
         isp_code VARCHAR(100) NOT NULL,
-        updated_at TIMESTAMP NOT NULL
+        updated_at TIMESTAMPTZ NOT NULL
     );
     """)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS evomi_isps (
         country_code VARCHAR(10) PRIMARY KEY,
         isp_code VARCHAR(100) NOT NULL,
-        updated_at TIMESTAMP NOT NULL
+        updated_at TIMESTAMPTZ NOT NULL
     );
     """)
     conn.commit()
@@ -161,12 +163,13 @@ def run_population(conn, evomi_key, nodemaven_key):
         if not selected:
             selected = list(filtered_isps.keys())[0]
             
+        from api.core.database import get_ist_now
         cur.execute("""
         INSERT INTO evomi_isps (country_code, isp_code, updated_at)
         VALUES (%s, %s, %s)
         ON CONFLICT (country_code) DO UPDATE
         SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-        """, (c, selected, datetime.datetime.now()))
+        """, (c, selected, get_ist_now()))
         
     conn.commit()
     print("✓ Evomi ISPs populated successfully.")
@@ -184,12 +187,13 @@ def run_population(conn, evomi_key, nodemaven_key):
         for future in as_completed(futures):
             c, isp = future.result()
             if isp:
+                from api.core.database import get_ist_now
                 cur.execute("""
                 INSERT INTO nodemaven_isps (country_code, isp_code, updated_at)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (country_code) DO UPDATE
                 SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                """, (c, isp, datetime.datetime.now()))
+                """, (c, isp, get_ist_now()))
                 success_count += 1
                 
     conn.commit()
@@ -198,6 +202,7 @@ def run_population(conn, evomi_key, nodemaven_key):
     print("★ Setup and Database population completed successfully!")
 
 def main():
+    """Main."""
     evomi_key = os.getenv("EVOMI_PREMIUM_ISP_APIKEY")
     if not evomi_key:
         print("EVOMI_PREMIUM_ISP_APIKEY is not set in .env.")
@@ -214,6 +219,12 @@ def main():
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
         )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+            conn.commit()
+        except Exception as e:
+            print(f"Failed to set session timezone to Asia/Kolkata: {e}")
         print("Connected directly to PostgreSQL database.")
     except Exception as e:
         print(f"Failed to connect directly to database: {e}")

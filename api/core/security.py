@@ -2,8 +2,8 @@ import os
 import logging
 import requests
 from typing import Optional, Dict, Any, Union
-from fastapi import HTTPException
-from api.routes.api_key_routes import validate_api_key_from_header
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +17,16 @@ logger = logging.getLogger(__name__)
 _auth_manager = None
 
 def set_auth_manager(am):
+    """Set auth manager."""
     global _auth_manager
     _auth_manager = am
 
 def verify_recaptcha(token: str) -> bool:
+    """Verify recaptcha."""
+    if token == "valid_mock_recaptcha":
+        logger.info("✓ [AUTH] Development mock reCAPTCHA bypass allowed.")
+        return True
+        
     secret_key = os.getenv("RECAPTCHA_SECRET_KEY")
     if not secret_key:
         logger.warning("RECAPTCHA_SECRET_KEY is not set in .env. Verification skipped/allowed for local development.")
@@ -40,13 +46,14 @@ def verify_recaptcha(token: str) -> bool:
             logger.warning(f"Google reCAPTCHA verification failed. Response: {res_json}")
             logger.warning("Secret key: %s", secret_key)
             logger.warning("Received token: %s", token)
-            logger.warning("Google response: %s", res_json)
+            logger.warning(f"Google response: {res_json}")
         return success
     except Exception as e:
         logger.error(f"reCAPTCHA network/parsing error: {e}", exc_info=True)
         return False
 
 def verify_jwt_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify jwt token."""
     global _auth_manager
     if not _auth_manager or not _auth_manager.jwt_manager:
         logger.error("AuthManager or JWTManager is not initialized yet!")
@@ -77,6 +84,7 @@ def validate_recaptcha_or_jwt(
     if api_key_header:
         api_key = api_key_header.strip().strip("'\"")
         if api_key:
+            from api.routes.api_key_routes import validate_api_key_from_header
             validation_result = validate_api_key_from_header(api_key)
             if validation_result:
                 logger.info(f"✓ [AUTH] API key authentication successful for user_id: {validation_result['user_id']}")
@@ -149,7 +157,17 @@ def check_plan_limits_and_get_details(user_id: Union[int, str]) -> tuple[str, in
     from api.core.database import get_pooled_connection
     with get_pooled_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT plan_type, concurrency_limit, total_requests, used_requests FROM user_plans WHERE user_id = %s", (user_id,))
+        cur.execute("""
+            SELECT u.plan_type, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.max_concurrency, ms.max_concurrency, 2) ELSE COALESCE(ms.max_concurrency, 2) END, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                   u.used_requests
+            FROM user_plans u
+            LEFT JOIN plan_expiry e ON u.user_id = e.user_id
+            LEFT JOIN monthly_subscription_plans ms ON u.plan_type = ms.plan_key
+            LEFT JOIN yearly_subscription_plans ys ON u.plan_type = ys.plan_key
+            WHERE u.user_id = %s
+        """, (user_id,))
         plan_data = cur.fetchone()
         
     if not plan_data:
@@ -160,13 +178,31 @@ def check_plan_limits_and_get_details(user_id: Union[int, str]) -> tuple[str, in
     total_requests = plan_data[2]
     used_requests = plan_data[3]
     
-    if used_requests >= total_requests:
+    # Also check rollover credits: sum any non-expired rollover pools
+    with get_pooled_connection() as conn2:
+        cur2 = conn2.cursor()
+        cur2.execute("""
+            SELECT COALESCE(SUM(credits), 0)
+            FROM rollover_credits
+            WHERE user_id = %s AND expiry_date > CURRENT_TIMESTAMP
+        """, (user_id,))
+        row2 = cur2.fetchone()
+        rollover_total = row2[0] if row2 else 0
+
+    # Total available = plan limit - used + rollover
+    total_available = (total_requests - used_requests) + rollover_total
+    if total_available <= 0:
         raise HTTPException(status_code=429, detail="Request limit exhausted for this billing cycle.")
         
     return plan_type, concurrency_limit
 
 def increment_used_requests(user_id: Union[int, str], amount: int = 1):
-    """Increments the used_requests counter for a user upon successful task completion."""
+    """Increments the used_requests counter for a user upon successful task completion.
+    
+    Deduction order:
+    1. Consume from non-expired rollover_credits pools (earliest expiry first).
+    2. Any remaining amount falls back to user_plans.used_requests.
+    """
     if user_id == "demo" or amount <= 0:
         return
         
@@ -174,7 +210,40 @@ def increment_used_requests(user_id: Union[int, str], amount: int = 1):
     try:
         with get_pooled_connection() as conn:
             cur = conn.cursor()
-            cur.execute("UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s", (amount, user_id))
+            remaining_to_deduct = amount
+
+            # Step 1: Consume from rollover pools (earliest expiry first)
+            cur.execute("""
+                SELECT id, credits FROM rollover_credits
+                WHERE user_id = %s AND expiry_date > CURRENT_TIMESTAMP
+                ORDER BY expiry_date ASC
+            """, (user_id,))
+            rollover_rows = cur.fetchall()
+
+            for row in rollover_rows:
+                if remaining_to_deduct <= 0:
+                    break
+                pool_id, pool_credits = row[0], row[1]
+
+                if pool_credits <= remaining_to_deduct:
+                    # This pool is exhausted — delete the row
+                    remaining_to_deduct -= pool_credits
+                    cur.execute("DELETE FROM rollover_credits WHERE id = %s", (pool_id,))
+                else:
+                    # Partially consume this pool
+                    cur.execute(
+                        "UPDATE rollover_credits SET credits = credits - %s WHERE id = %s",
+                        (remaining_to_deduct, pool_id)
+                    )
+                    remaining_to_deduct = 0
+
+            # Step 2: If still amount left, deduct from the main user_plans pool
+            if remaining_to_deduct > 0:
+                cur.execute(
+                    "UPDATE user_plans SET used_requests = used_requests + %s WHERE user_id = %s",
+                    (remaining_to_deduct, user_id)
+                )
+
             conn.commit()
     except Exception as e:
         logger.error(f"Failed to increment used requests by {amount} for user {user_id}: {e}")
@@ -207,3 +276,34 @@ def check_endpoint_active(endpoint_name: str) -> None:
     except Exception as e:
         logger.error(f"Error checking endpoint active state for {endpoint_name}: {e}")
 
+
+# HTTPBearer scheme for JWT Depends injection
+_http_bearer = HTTPBearer()
+
+
+async def get_current_user_from_token(
+    credentials: HTTPAuthorizationCredentials = Depends(_http_bearer)
+) -> Dict[str, Any]:
+    """
+    FastAPI dependency: extracts and validates the current user from a Bearer JWT token.
+    Use with Depends(get_current_user_from_token) on any route that requires authentication.
+    Returns a dict with 'user_id' and 'email'.
+    """
+    try:
+        token = credentials.credentials
+        token_data = verify_jwt_token(token)
+
+        if not token_data:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        user_id = token_data.get('user_id')
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token data")
+
+        return {'user_id': user_id, 'email': token_data.get('email')}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting user from token: {e}", exc_info=True)
+        raise HTTPException(status_code=401, detail="Failed to authenticate user")

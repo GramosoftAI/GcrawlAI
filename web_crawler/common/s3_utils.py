@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_s3_client():
+    """Return s3 client."""
     region = os.getenv("AWS_REGION", "ap-south-1")
     access_key = os.getenv("AWS_ACCESS_KEY_ID")
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -32,7 +33,7 @@ def upload_to_s3(file_bytes: bytes, crawl_id: str, filename: str, content_type: 
         return ""
         
     bucket = os.getenv("AWS_S3_BUCKET", "gramosoft")
-    key = f"gcrawl_artifacts/{crawl_id}/{filename}"
+    key = f"gcrawl_outputs/{crawl_id}/{filename}"
     
     try:
         s3.put_object(

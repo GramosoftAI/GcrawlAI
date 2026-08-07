@@ -18,6 +18,7 @@ load_dotenv(dotenv_path, override=True)
 import datetime
 
 def _get_isp_from_db(table_name: str, country: str) -> Optional[str]:
+    """Return isp from db."""
     if table_name not in ("nodemaven_isps", "evomi_isps"):
         return None
     
@@ -43,6 +44,13 @@ def _get_isp_from_db(table_name: str, country: str) -> Optional[str]:
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
         )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to set session timezone to Asia/Kolkata: {e}")
+            
         with conn:
             with conn.cursor() as cur:
                 cur.execute(f"SELECT isp_code FROM {table_name} WHERE country_code = %s", (country.upper(),))
@@ -53,12 +61,13 @@ def _get_isp_from_db(table_name: str, country: str) -> Optional[str]:
         return None
 
 def _save_isp_to_db(table_name: str, country: str, isp_code: str):
+    """Save isp to db."""
     if table_name not in ("nodemaven_isps", "evomi_isps"):
         return
         
     # 1. Try pooled connection
     try:
-        from api.core.database import get_pooled_connection
+        from api.core.database import get_pooled_connection, get_ist_now
         conn_ctx = get_pooled_connection()
         with conn_ctx as conn:
             with conn.cursor() as cur:
@@ -67,7 +76,7 @@ def _save_isp_to_db(table_name: str, country: str, isp_code: str):
                 VALUES (%s, %s, %s)
                 ON CONFLICT (country_code) DO UPDATE
                 SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                """, (country.upper(), isp_code, datetime.datetime.now()))
+                """, (country.upper(), isp_code, get_ist_now()))
                 conn.commit()
                 return
     except Exception as e:
@@ -83,6 +92,13 @@ def _save_isp_to_db(table_name: str, country: str, isp_code: str):
             user=os.getenv("POSTGRES_USER", "postgres"),
             password=os.getenv("POSTGRES_PASSWORD", "Ramkumar1+")
         )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to set session timezone to Asia/Kolkata: {e}")
+            
         with conn:
             with conn.cursor() as cur:
                 cur.execute(f"""
@@ -90,7 +106,7 @@ def _save_isp_to_db(table_name: str, country: str, isp_code: str):
                 VALUES (%s, %s, %s)
                 ON CONFLICT (country_code) DO UPDATE
                 SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                """, (country.upper(), isp_code, datetime.datetime.now()))
+                """, (country.upper(), isp_code, get_ist_now()))
                 conn.commit()
     except Exception as ex:
         logger.error(f"[ProxyManager] Error saving to {table_name} for country={country} (direct connection): {ex}")
@@ -104,6 +120,7 @@ GENERIC_CCTLDS = {
 }
 
 def get_domain_geo(url_str: str) -> dict:
+    """Return domain geo."""
     domain = urlparse(url_str).netloc.split(":")[0].lower()
 
     if domain in ("localhost", "127.0.0.1", "::1"):
@@ -161,21 +178,16 @@ EVOMI_PORT = os.getenv("EVOMI_PORT", os.getenv("ATTEMPT_3_PROXY_PORT"))
 EVOMI_USER = os.getenv("EVOMI_USER", os.getenv("ATTEMPT_3_PROXY_USER"))
 EVOMI_PASS = os.getenv("EVOMI_PASS", os.getenv("ATTEMPT_3_PROXY_PASS"))
 
-EVOMI_PREMIUM_HOST = os.getenv("EVOMI_PREMIUM_HOST", os.getenv("ATTEMPT_2_PROXY_HOST"))
-EVOMI_PREMIUM_PORT = os.getenv("EVOMI_PREMIUM_PORT", os.getenv("ATTEMPT_2_PROXY_PORT"))
-EVOMI_PREMIUM_USER = os.getenv("EVOMI_PREMIUM_USER", os.getenv("ATTEMPT_2_PROXY_USER"))
-EVOMI_PREMIUM_PASS = os.getenv("EVOMI_PREMIUM_PASS", os.getenv("ATTEMPT_2_PROXY_PASS"))
-
 # Clean Evomi passwords to remove any hardcoded suffixes (like _isp- or _country- or _mode-)
 EVOMI_PASS_CLEAN = EVOMI_PASS
 if EVOMI_PASS and "_" in EVOMI_PASS:
     if any(ind in EVOMI_PASS for ind in ["_country-", "_isp-", "_session-", "_mode-"]):
         EVOMI_PASS_CLEAN = EVOMI_PASS.split("_")[0]
 
-EVOMI_PREMIUM_PASS_CLEAN = EVOMI_PREMIUM_PASS
-if EVOMI_PREMIUM_PASS and "_" in EVOMI_PREMIUM_PASS:
-    if any(ind in EVOMI_PREMIUM_PASS for ind in ["_country-", "_isp-", "_session-", "_mode-"]):
-        EVOMI_PREMIUM_PASS_CLEAN = EVOMI_PREMIUM_PASS.split("_")[0]
+THORDATA_HOST = os.getenv("THORDATA_HOST", os.getenv("ATTEMPT_2_PROXY_HOST", "6pe5309b.pr.thordata.net"))
+THORDATA_PORT = os.getenv("THORDATA_PORT", os.getenv("ATTEMPT_2_PROXY_PORT", "9999"))
+THORDATA_USER = os.getenv("THORDATA_USER", os.getenv("ATTEMPT_2_PROXY_USER", "td-customer-ENdFXb8mvwfd"))
+THORDATA_PASS = os.getenv("THORDATA_PASS", os.getenv("ATTEMPT_2_PROXY_PASS", "uCrIpqdjdrux"))
 
 # Fast consumer ISP keywords to prioritize globally
 PRIORITY_ISPS = [
@@ -185,6 +197,7 @@ PRIORITY_ISPS = [
 ]
 
 def build_nodemaven_proxy(geo: dict, session_id: Optional[str] = None, isp_code: Optional[str] = None) -> str:
+    """Build nodemaven proxy."""
     parts = [NODEMAVEN_BASE_USER]
     if geo.get("country"):
         parts.append(f"country-{geo['country'].lower()}")
@@ -203,6 +216,7 @@ def build_nodemaven_proxy(geo: dict, session_id: Optional[str] = None, isp_code:
     return proxy_url
 
 def build_evomi_proxy(geo: dict, session_id: Optional[str] = None) -> str:
+    """Build evomi proxy."""
     country = geo.get("country")
     if country and country != "any":
         password = f"{EVOMI_PASS_CLEAN}_country-{country.upper()}"
@@ -214,29 +228,26 @@ def build_evomi_proxy(geo: dict, session_id: Optional[str] = None) -> str:
     logger.info(f"[Evomi Core] country={country.upper() if (country and country != 'any') else 'ANY'}")
     return proxy_url
 
-def build_evomi_premium_proxy(geo: dict, session_id: Optional[str] = None, isp_code: Optional[str] = None) -> str:
+def build_thordata_proxy(geo: dict, session_id: Optional[str] = None) -> str:
+    """Build thordata proxy."""
+    parts = [THORDATA_USER]
     country = geo.get("country")
     if country and country != "any":
-        if isp_code:
-            password = f"{EVOMI_PREMIUM_PASS_CLEAN}_country-{country.upper()}_isp-{isp_code}"
-        else:
-            password = f"{EVOMI_PREMIUM_PASS_CLEAN}_country-{country.upper()}"
-    else:
-        password = EVOMI_PREMIUM_PASS_CLEAN
-    
-    # Append mode-speed for speed optimization
-    password = f"{password}_mode-speed"
-    
+        parts.append(f"country-{country.upper()}")
+        region = geo.get("region")
+        if region:
+            parts.append(f"state-{region.lower()}")
+            
     if session_id:
-        password = f"{password}_session-{session_id}"
-    proxy_url = f"https://{EVOMI_PREMIUM_USER}:{password}@{EVOMI_PREMIUM_HOST}:{EVOMI_PREMIUM_PORT}"
-    if isp_code:
-        logger.info(f"[Evomi Premium] country={country.upper()} isp={isp_code}")
-    else:
-        logger.info(f"[Evomi Premium] country={country.upper() if (country and country != 'any') else 'ANY'}")
+        parts.append(f"sessid-{session_id}")
+        
+    username = "-".join(parts)
+    proxy_url = f"http://{username}:{THORDATA_PASS}@{THORDATA_HOST}:{THORDATA_PORT}"
+    logger.info(f"[Thordata] username={username} host={THORDATA_HOST}")
     return proxy_url
 
 def parse_proxy_for_playwright(proxy_url: str) -> dict:
+    """Parse proxy for playwright."""
     if not proxy_url:
         return None
 
@@ -267,9 +278,11 @@ class ProxyManager:
     _evomi_settings_data = None
 
     def __init__(self, **kwargs):
+        """Init."""
         pass
 
     def _fetch_nodemaven_isp(self, country_code: str) -> Optional[str]:
+        """Fetch and return nodemaven isp."""
         if not country_code:
             country_code = "US"
         country = country_code.lower()
@@ -398,6 +411,7 @@ class ProxyManager:
         return selected
 
     def _fetch_evomi_isp(self, country_code: str) -> Optional[str]:
+        """Fetch and return evomi isp."""
         if not country_code:
             country_code = "US"
         country = country_code.upper()
@@ -478,6 +492,7 @@ class ProxyManager:
         return selected
         
     def get_requests_proxies(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
+        """Return requests proxies."""
         if provider == "direct":
             return None
         if proxy_geo and proxy_geo.strip().lower() != "default":
@@ -506,7 +521,7 @@ class ProxyManager:
                     pass
                 elif in_evomi:
                     if provider == "nodemaven":
-                        provider = "evomi_premium"
+                        provider = "thordata"
                 else:
                     geo["country"] = "us"
             else:
@@ -516,11 +531,9 @@ class ProxyManager:
         if use_high_speed and geo.get("country"):
             if provider == "nodemaven":
                 isp_code = self._fetch_nodemaven_isp(geo["country"])
-            elif provider == "evomi_premium":
-                isp_code = self._fetch_evomi_isp(geo["country"])
 
-        if provider == "evomi_premium":
-            proxy_url = build_evomi_premium_proxy(geo, session_id, isp_code)
+        if provider == "thordata":
+            proxy_url = build_thordata_proxy(geo, session_id)
         elif provider == "evomi_core":
             proxy_url = build_evomi_proxy(geo, session_id)
         else:
@@ -528,6 +541,7 @@ class ProxyManager:
         return {"http": proxy_url, "https": proxy_url}
 
     def get_playwright_proxy(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
+        """Return playwright proxy."""
         if provider == "direct":
             return None
         if proxy_geo and proxy_geo.strip().lower() != "default":
@@ -556,7 +570,7 @@ class ProxyManager:
                     pass
                 elif in_evomi:
                     if provider == "nodemaven":
-                        provider = "evomi_premium"
+                        provider = "thordata"
                 else:
                     geo["country"] = "us"
             else:
@@ -566,11 +580,9 @@ class ProxyManager:
         if use_high_speed and geo.get("country"):
             if provider == "nodemaven":
                 isp_code = self._fetch_nodemaven_isp(geo["country"])
-            elif provider == "evomi_premium":
-                isp_code = self._fetch_evomi_isp(geo["country"])
 
-        if provider == "evomi_premium":
-            proxy_url = build_evomi_premium_proxy(geo, session_id, isp_code)
+        if provider == "thordata":
+            proxy_url = build_thordata_proxy(geo, session_id)
         elif provider == "evomi_core":
             proxy_url = build_evomi_proxy(geo, session_id)
         else:

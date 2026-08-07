@@ -8,6 +8,7 @@ import logging
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import yaml
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 import os
@@ -15,10 +16,16 @@ import re
 import datetime
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Set project root in sys.path to allow running from any subdirectory
+BASE_DIR_PATH = Path(__file__).resolve().parent.parent.parent
+if str(BASE_DIR_PATH) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR_PATH))
+
+from api.core.database import get_ist_now
 from dotenv import load_dotenv
 
 # Load environment variables
-BASE_DIR_PATH = Path(__file__).resolve().parent.parent.parent
 dotenv_path = BASE_DIR_PATH / '.env'
 load_dotenv(dotenv_path, override=True)
 
@@ -63,6 +70,7 @@ class DatabaseSetup:
             return [DatabaseSetup._substitute_env_vars(item) for item in data]
         elif isinstance(data, str):
             def replace_var(match):
+                """Replace var."""
                 var_name = match.group(1)
                 default_value = match.group(2)
                 return os.getenv(var_name, default_value or "")
@@ -87,19 +95,26 @@ class DatabaseSetup:
             password = password or self.db_config.get("password")
 
         # Set standard defaults
-        host = host or "localhost"
-        port = port or "5432"
-        database = database or "Dev_tamil"
-        user = user or "postgres"
-        password = password or ""
+        host = host
+        port = port
+        database = database
+        user = user
+        password = password
 
-        return psycopg2.connect(
+        conn = psycopg2.connect(
             host=host,
             port=port,
             database=database,
             user=user,
             password=password
         )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to set session timezone to Asia/Kolkata: {e}")
+        return conn
 
     def execute_query(self, query: str, params: Optional[tuple] = None, commit: bool = True) -> bool:
         """Helper to safely execute a SQL query"""
@@ -132,9 +147,9 @@ class DatabaseSetup:
             password_salt TEXT NOT NULL,
             is_active BOOLEAN DEFAULT TRUE,
             admin_login BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMPTZ
         );
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
@@ -150,10 +165,10 @@ class DatabaseSetup:
             name VARCHAR(255) NOT NULL,
             password_hash TEXT NOT NULL,
             password_salt TEXT NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
             attempts INTEGER DEFAULT 0,
             is_verified BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_signup_otps_expires_at ON signup_otps(expires_at);
         CREATE INDEX IF NOT EXISTS idx_signup_otps_is_verified ON signup_otps(is_verified);
@@ -169,7 +184,7 @@ class DatabaseSetup:
             url TEXT NOT NULL,
             crawl_mode VARCHAR(20) NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP,
+            updated_at TIMESTAMPTZ,
             SEO BOOLEAN DEFAULT FALSE,
             HTML BOOLEAN DEFAULT FALSE,
             Screenshot BOOLEAN DEFAULT FALSE,
@@ -181,28 +196,6 @@ class DatabaseSetup:
         """
         return self.execute_query(query)
 
-    def create_crawl_artifacts_table(self) -> bool:
-        """Create crawl_artifacts table"""
-        query = """
-        CREATE TABLE IF NOT EXISTS crawl_artifacts (
-            artifact_id VARCHAR(64) PRIMARY KEY,
-            crawl_id VARCHAR(64) NOT NULL,
-            page_url TEXT NOT NULL DEFAULT '',
-            artifact_type VARCHAR(50) NOT NULL,
-            content_kind VARCHAR(20) NOT NULL DEFAULT 'text',
-            title TEXT,
-            content TEXT NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT fk_crawl_artifact_job
-                FOREIGN KEY (crawl_id)
-                REFERENCES crawl_jobs (crawl_id)
-                ON DELETE CASCADE,
-            CONSTRAINT unique_crawl_artifact
-                UNIQUE (crawl_id, page_url, artifact_type)
-        );
-        """
-        return self.execute_query(query)
 
     def create_reported_issues_table(self) -> bool:
         """Create reported_issues table and index"""
@@ -212,10 +205,40 @@ class DatabaseSetup:
             url_affected TEXT NOT NULL,
             issue_related_to TEXT[] NOT NULL,
             explanation TEXT NOT NULL,
-            email TEXT,
+            email TEXT NOT NULL,
+            user_id VARCHAR(255),
+            status VARCHAR(50) NOT NULL DEFAULT 'Pending',
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_reported_issues_created_at ON reported_issues(created_at);
+        """
+        success = self.execute_query(query)
+        if success:
+            conn = None
+            try:
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);")
+                cursor.execute("ALTER TABLE reported_issues ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'Pending';")
+                cursor.execute("ALTER TABLE reported_issues ALTER COLUMN email SET NOT NULL;")
+                conn.commit()
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Failed to run migration query for reported_issues table: {e}")
+            finally:
+                if conn:
+                    conn.close()
+        return success
+
+    def create_admin_emails_table(self) -> bool:
+        """Create admin_emails table and index"""
+        query = """
+        CREATE TABLE IF NOT EXISTS admin_emails (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_emails_email ON admin_emails(email);
         """
         return self.execute_query(query)
 
@@ -228,9 +251,9 @@ class DatabaseSetup:
             key_hash VARCHAR(64) NOT NULL,
             encrypted_key TEXT NOT NULL,
             status VARCHAR(20) DEFAULT 'active',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ,
             UNIQUE(user_id)
         );
         CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
@@ -271,10 +294,32 @@ class DatabaseSetup:
             url TEXT NOT NULL,
             status VARCHAR(50) NOT NULL,
             time_taken VARCHAR(50),
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
         CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
+        """
+        return self.execute_query(query)
+
+    def create_admin_error_logs_table(self) -> bool:
+        """Create admin_error_logs table and indexes"""
+        query = """
+        CREATE TABLE IF NOT EXISTS admin_error_logs (
+            id SERIAL PRIMARY KEY,
+            log_id VARCHAR(64) NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            source_tool VARCHAR(50) NOT NULL,
+            target_domain TEXT NOT NULL,
+            error_type VARCHAR(100) NOT NULL,
+            severity VARCHAR(50) NOT NULL,
+            proxy_ip TEXT,
+            error_details TEXT,
+            request_params JSONB,
+            stack_trace TEXT,
+            user_id VARCHAR(255)
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_error_logs_log_id ON admin_error_logs(log_id);
+        CREATE INDEX IF NOT EXISTS idx_admin_error_logs_created_at ON admin_error_logs(timestamp DESC);
         """
         return self.execute_query(query)
 
@@ -297,25 +342,53 @@ class DatabaseSetup:
             cursor.execute(create_table_query)
             
             # Pre-create daily partitions for yesterday, today, and the next 10 days
-            for i in range(-2, 11):
-                d = (datetime.datetime.now() + datetime.timedelta(days=i)).date()
-                d_next = d + datetime.timedelta(days=1)
-                part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
+            try:
+                for i in range(-2, 11):
+                    d = (get_ist_now() + datetime.timedelta(days=i)).date()
+                    d_next = d + datetime.timedelta(days=1)
+                    part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
+                    
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {part_name} PARTITION OF job_results 
+                        FOR VALUES FROM ('{d.strftime('%Y-%m-%d')} 00:00:00+05:30') TO ('{d_next.strftime('%Y-%m-%d')} 00:00:00+05:30')
+                    """)
+                    cursor.execute(f"""
+                        ALTER TABLE {part_name} SET (
+                            autovacuum_vacuum_scale_factor = 0.01,
+                            autovacuum_analyze_scale_factor = 0.01,
+                            autovacuum_vacuum_cost_delay = 2,
+                            autovacuum_vacuum_threshold = 50
+                        )
+                    """)
+                conn.commit()
+            except Exception as partition_err:
+                conn.rollback()
+                logger.warning(f"⚠ Partition creation failed ({partition_err}). Dropping job_results table to re-align timezone partitions...")
+                cursor.execute("DROP TABLE IF EXISTS job_results CASCADE;")
+                conn.commit()
                 
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {part_name} PARTITION OF job_results 
-                    FOR VALUES FROM ('{d.strftime('%Y-%m-%d')}') TO ('{d_next.strftime('%Y-%m-%d')}')
-                """)
-                cursor.execute(f"""
-                    ALTER TABLE {part_name} SET (
-                        autovacuum_vacuum_scale_factor = 0.01,
-                        autovacuum_analyze_scale_factor = 0.01,
-                        autovacuum_vacuum_cost_delay = 2,
-                        autovacuum_vacuum_threshold = 50
-                    )
-                """)
+                # Re-create table and retry partition registration
+                cursor.execute(create_table_query)
+                for i in range(-2, 11):
+                    d = (get_ist_now() + datetime.timedelta(days=i)).date()
+                    d_next = d + datetime.timedelta(days=1)
+                    part_name = f"job_results_{d.strftime('%Y_%m_%d')}"
+                    
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {part_name} PARTITION OF job_results 
+                        FOR VALUES FROM ('{d.strftime('%Y-%m-%d')} 00:00:00+05:30') TO ('{d_next.strftime('%Y-%m-%d')} 00:00:00+05:30')
+                    """)
+                    cursor.execute(f"""
+                        ALTER TABLE {part_name} SET (
+                            autovacuum_vacuum_scale_factor = 0.01,
+                            autovacuum_analyze_scale_factor = 0.01,
+                            autovacuum_vacuum_cost_delay = 2,
+                            autovacuum_vacuum_threshold = 50
+                        )
+                    """)
+                conn.commit()
+                logger.info("✓ Re-created partitioned job_results table and partitions successfully after timezone alignment.")
                 
-            conn.commit()
             cursor.close()
             return True
         except Exception as e:
@@ -336,7 +409,7 @@ class DatabaseSetup:
             query TEXT NOT NULL,
             "limit" INTEGER NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP,
+            updated_at TIMESTAMPTZ,
             user_id VARCHAR(255)
         );
         CREATE INDEX IF NOT EXISTS idx_search_jobs_search_id ON search_jobs(search_id);
@@ -370,7 +443,7 @@ class DatabaseSetup:
             url_path VARCHAR(255) NOT NULL,
             status VARCHAR(50) NOT NULL DEFAULT 'Active',
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
         seed_query = """
@@ -401,46 +474,117 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
-    def create_subscription_plans_table(self) -> bool:
-        """Create subscription_plans table and seed default pricing plans"""
-        create_table_query = """
-        CREATE TABLE IF NOT EXISTS subscription_plans (
+    def create_subscription_plans_tables(self) -> bool:
+        """Create monthly and yearly subscription plans tables and seed default pricing plans"""
+        drop_old_query = """
+        DROP TABLE IF EXISTS subscription_plans CASCADE;
+        """
+
+        create_monthly_query = """
+        CREATE TABLE IF NOT EXISTS monthly_subscription_plans (
             id SERIAL PRIMARY KEY,
             plan_name VARCHAR(100) UNIQUE NOT NULL,
             plan_key VARCHAR(100) UNIQUE NOT NULL,
-            price VARCHAR(100) NOT NULL,
+            price_usd VARCHAR(100) NOT NULL,
+            price_inr VARCHAR(100) NOT NULL,
             credits_included INTEGER NOT NULL,
             max_concurrency INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            monthly_product_id_inr VARCHAR(255),
+            monthly_product_id_usd VARCHAR(255),
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
-        seed_query = """
-        INSERT INTO subscription_plans (plan_name, plan_key, price, credits_included, max_concurrency)
+        
+        create_yearly_query = """
+        CREATE TABLE IF NOT EXISTS yearly_subscription_plans (
+            id SERIAL PRIMARY KEY,
+            plan_name VARCHAR(100) UNIQUE NOT NULL,
+            plan_key VARCHAR(100) UNIQUE NOT NULL,
+            price_usd VARCHAR(100) NOT NULL,
+            price_inr VARCHAR(100) NOT NULL,
+            credits_included INTEGER NOT NULL,
+            max_concurrency INTEGER NOT NULL,
+            yearly_product_id_inr VARCHAR(255),
+            yearly_product_id_usd VARCHAR(255),
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        
+        seed_monthly_query = """
+        INSERT INTO monthly_subscription_plans (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency)
         VALUES 
-            ('Free', 'free', '$0/mo', 500, 2),
-            ('Starter', 'starter', '$19/mo', 3000, 5),
-            ('Growth', 'growth', '$29/mo', 50000, 15),
-            ('Pro', 'pro', '$49/mo', 150000, 25)
+            ('Free', 'free', '$0/mo', 'Rs.0/mo', 500, 2),
+            ('Starter', 'starter', '$19/mo', 'Rs.1599/mo', 3000, 5),
+            ('Growth', 'growth', '$29/mo', 'Rs.2499/mo', 50000, 15),
+            ('Pro', 'pro', '$49/mo', 'Rs.4199/mo', 150000, 25)
         ON CONFLICT (plan_key) DO NOTHING;
         """
+        
+        seed_yearly_query = """
+        INSERT INTO yearly_subscription_plans (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency)
+        VALUES 
+            ('Free', 'free', '$0/yr', 'Rs.0/yr', 500, 2),
+            ('Starter', 'starter', '$190/yr', 'Rs.15990/yr', 36000, 5),
+            ('Growth', 'growth', '$290/yr', 'Rs.24990/yr', 600000, 15),
+            ('Pro', 'pro', '$490/yr', 'Rs.41990/yr', 1800000, 25)
+        ON CONFLICT (plan_key) DO NOTHING;
+        """
+        
         conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(create_table_query)
-            cursor.execute(seed_query)
+            cursor.execute(drop_old_query)
+            cursor.execute(create_monthly_query)
+            cursor.execute(create_yearly_query)
+            cursor.execute(seed_monthly_query)
+            cursor.execute(seed_yearly_query)
             conn.commit()
             cursor.close()
             return True
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"✗ Failed to create/seed subscription_plans: {e}", exc_info=True)
+            logger.error(f"✗ Failed to create/seed monthly/yearly subscription plans: {e}", exc_info=True)
             return False
         finally:
             if conn:
                 conn.close()
+    def create_custom_requests_table(self) -> bool:
+        """Create custom_requests table for storing public custom scraping requests"""
+        query = """
+        CREATE TABLE IF NOT EXISTS custom_requests (
+            id SERIAL PRIMARY KEY,
+            full_name VARCHAR(255) NOT NULL,
+            work_email VARCHAR(255) NOT NULL,
+            company VARCHAR(255),
+            expected_volume VARCHAR(100) NOT NULL,
+            request_type VARCHAR(100) NOT NULL,
+            target_websites TEXT NOT NULL,
+            description TEXT NOT NULL,
+            status VARCHAR(50) DEFAULT 'New',
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(query)
+            conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"✗ Failed to create custom_requests table: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
 
     def create_payment_tables(self) -> bool:
         """Create billing and plans tables (user_plans, payment_requests, plan_expiry, subscriptions)"""
@@ -450,11 +594,18 @@ class DatabaseSetup:
                 id BIGSERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
                 plan_type VARCHAR(50) NOT NULL DEFAULT 'free',
-                total_requests BIGINT NOT NULL,
                 used_requests BIGINT NOT NULL DEFAULT 0,
-                concurrency_limit INTEGER NOT NULL DEFAULT 2,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS rollover_credits (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                credits BIGINT NOT NULL,
+                expiry_date TIMESTAMP WITH TIME ZONE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
             """,
             """
@@ -506,6 +657,11 @@ class DatabaseSetup:
             cursor = conn.cursor()
             for q in queries:
                 cursor.execute(q)
+            
+            # Drop obsolete columns from user_plans if they exist
+            cursor.execute("ALTER TABLE user_plans DROP COLUMN IF EXISTS total_requests;")
+            cursor.execute("ALTER TABLE user_plans DROP COLUMN IF EXISTS concurrency_limit;")
+            
             conn.commit()
             
             # Post-check: ensure all existing users are assigned a free plan limits entry
@@ -516,8 +672,8 @@ class DatabaseSetup:
                 cursor.execute("SELECT id FROM user_plans WHERE user_id = %s", (uid,))
                 if not cursor.fetchone():
                     cursor.execute("""
-                        INSERT INTO user_plans (user_id, plan_type, total_requests, used_requests, concurrency_limit)
-                        VALUES (%s, 'free', 500, 0, 2)
+                        INSERT INTO user_plans (user_id, plan_type, used_requests)
+                        VALUES (%s, 'free', 0)
                     """, (uid,))
                     cursor.execute("""
                         INSERT INTO plan_expiry (user_id, plan_type, subscript_type, expiry_date, is_active)
@@ -542,14 +698,14 @@ class DatabaseSetup:
             CREATE TABLE IF NOT EXISTS nodemaven_isps (
                 country_code VARCHAR(10) PRIMARY KEY,
                 isp_code VARCHAR(100) NOT NULL,
-                updated_at TIMESTAMP NOT NULL
+                updated_at TIMESTAMPTZ NOT NULL
             );
             """,
             """
             CREATE TABLE IF NOT EXISTS evomi_isps (
                 country_code VARCHAR(10) PRIMARY KEY,
                 isp_code VARCHAR(100) NOT NULL,
-                updated_at TIMESTAMP NOT NULL
+                updated_at TIMESTAMPTZ NOT NULL
             );
             """
         ]
@@ -579,6 +735,43 @@ class DatabaseSetup:
         if not evomi_key and not nodemaven_key:
             logger.info("ℹ Skipping ISP tables population (EVOMI_PREMIUM_ISP_APIKEY / NODEMAVEN_ISP_APIKEY not found in .env)")
             return
+
+        # Check if tables are already populated to avoid redundant API hits and duplicate inserts
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            
+            nodemaven_populated = False
+            try:
+                cur.execute("SELECT COUNT(*) FROM nodemaven_isps")
+                if cur.fetchone()[0] > 0:
+                    nodemaven_populated = True
+            except Exception:
+                pass
+                
+            evomi_populated = False
+            try:
+                cur.execute("SELECT COUNT(*) FROM evomi_isps")
+                if cur.fetchone()[0] > 0:
+                    evomi_populated = True
+            except Exception:
+                pass
+                
+            cur.close()
+            
+            # If the tables corresponding to the provided keys are already populated, skip!
+            skip_nodemaven = (nodemaven_key and nodemaven_populated) or (not nodemaven_key)
+            skip_evomi = (evomi_key and evomi_populated) or (not evomi_key)
+            
+            if skip_nodemaven and skip_evomi:
+                logger.info("ℹ Skipping ISP tables population because tables are already populated.")
+                return
+        except Exception as check_err:
+            logger.warning(f"Could not check existing ISP table counts: {check_err}")
+        finally:
+            if conn:
+                conn.close()
 
         conn = None
         try:
@@ -625,7 +818,7 @@ class DatabaseSetup:
                             VALUES (%s, %s, %s)
                             ON CONFLICT (country_code) DO UPDATE
                             SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                            """, (c, selected, datetime.datetime.now()))
+                            """, (c, selected, get_ist_now()))
                         conn.commit()
                         logger.info("✓ Evomi ISP settings successfully populated in database.")
                 except Exception as e:
@@ -639,6 +832,7 @@ class DatabaseSetup:
                 logger.info("Fetching and storing Nodemaven ISPs in parallel...")
                 
                 def _fetch_nodemaven(country):
+                    """Fetch and return nodemaven."""
                     headers = {"Authorization": f"x-api-key {nodemaven_key}", "Content-Type": "application/json"}
                     url = "https://api.nodemaven.com/api/v2/base/locations/isps/"
                     params = {"country__code": country.lower(), "limit": 100, "offset": 0}
@@ -704,7 +898,7 @@ class DatabaseSetup:
                             VALUES (%s, %s, %s)
                             ON CONFLICT (country_code) DO UPDATE
                             SET isp_code = EXCLUDED.isp_code, updated_at = EXCLUDED.updated_at
-                            """, (c, isp, datetime.datetime.now()))
+                            """, (c, isp, get_ist_now()))
                             success_count += 1
                 conn.commit()
                 logger.info(f"✓ Nodemaven ISPs populated successfully. Total records stored: {success_count}")
@@ -716,9 +910,97 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_proxy_bandwidth_usage_table(self) -> bool:
+        """Create proxy_bandwidth_usage table"""
+        query = """
+        CREATE TABLE IF NOT EXISTS proxy_bandwidth_usage (
+            id SERIAL PRIMARY KEY,
+            job_id VARCHAR(64),
+            user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
+            endpoint VARCHAR(50) NOT NULL,
+            url_or_query TEXT NOT NULL,
+            nodemaven BIGINT DEFAULT NULL,
+            thordata BIGINT DEFAULT NULL,
+            evomi_premium BIGINT DEFAULT NULL,
+            evomi_core BIGINT DEFAULT NULL,
+            final_status VARCHAR(20) DEFAULT 'success',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_job_id ON proxy_bandwidth_usage(job_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_user_id ON proxy_bandwidth_usage(user_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_bandwidth_usage_created_at ON proxy_bandwidth_usage(created_at);
+        """
+        success = self.execute_query(query)
+        if success:
+            try:
+                self.execute_query("ALTER TABLE proxy_bandwidth_usage ADD COLUMN IF NOT EXISTS job_id VARCHAR(64);")
+                self.execute_query("ALTER TABLE proxy_bandwidth_usage ADD COLUMN IF NOT EXISTS thordata BIGINT DEFAULT NULL;")
+            except Exception as e:
+                logger.warning(f"Failed to run migration query for proxy_bandwidth_usage table: {e}")
+        return success
+
+    def migrate_columns_to_timestamptz(self) -> bool:
+        """Migrate any existing TIMESTAMP columns to TIMESTAMPTZ to support global timezone alignment"""
+        migrations = [
+            ("users", "created_at"),
+            ("users", "updated_at"),
+            ("users", "last_login"),
+            ("signup_otps", "expires_at"),
+            ("signup_otps", "created_at"),
+            ("crawl_jobs", "updated_at"),
+            ("api_keys", "created_at"),
+            ("api_keys", "updated_at"),
+            ("api_keys", "expires_at"),
+            ("activity_logs", "created_at"),
+            ("search_jobs", "updated_at"),
+            ("api_endpoints", "updated_at"),
+            ("monthly_subscription_plans", "created_at"),
+            ("monthly_subscription_plans", "updated_at"),
+            ("yearly_subscription_plans", "created_at"),
+            ("yearly_subscription_plans", "updated_at"),
+            ("custom_requests", "created_at"),
+            ("nodemaven_isps", "updated_at"),
+            ("evomi_isps", "updated_at"),
+            ("proxy_bandwidth_usage", "created_at"),
+        ]
+        
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            for table, column in migrations:
+                # Check if table and column exist, and check their data type
+                cursor.execute("""
+                    SELECT data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = %s AND column_name = %s;
+                """, (table, column))
+                row = cursor.fetchone()
+                if row and row[0].upper() == "TIMESTAMP WITHOUT TIME ZONE":
+                    logger.info(f"Migrating column {table}.{column} from TIMESTAMP to TIMESTAMPTZ...")
+                    cursor.execute(f"""
+                        ALTER TABLE {table} 
+                        ALTER COLUMN {column} TYPE TIMESTAMPTZ 
+                        USING {column} AT TIME ZONE 'Asia/Kolkata';
+                    """)
+            conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"✗ Failed to migrate columns to TIMESTAMPTZ: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     def setup_all_tables(self) -> bool:
         """Execute table creation and population in topological order of dependencies"""
         logger.info("Starting GcrawlAI database setup...")
+        
+        # Migrate existing columns to TIMESTAMPTZ first
+        self.migrate_columns_to_timestamptz()
 
         # 1. Base identity tables
         if not self.create_users_table(): return False
@@ -727,7 +1009,7 @@ class DatabaseSetup:
 
         # 2. Crawler & search tables
         if not self.create_crawl_jobs_table(): return False
-        if not self.create_crawl_artifacts_table(): return False
+
         if not self.create_crawl_errors_table(): return False
         if not self.create_search_jobs_table(): return False
         if not self.create_search_errors_table(): return False
@@ -736,12 +1018,16 @@ class DatabaseSetup:
         if not self.create_job_results_table(): return False
         if not self.create_activity_logs_table(): return False
         if not self.create_reported_issues_table(): return False
+        if not self.create_admin_error_logs_table(): return False
+        if not self.create_admin_emails_table(): return False
+        if not self.create_proxy_bandwidth_usage_table(): return False
 
         # 4. System config & payment tables
         if not self.create_api_endpoints_table(): return False
-        if not self.create_subscription_plans_table(): return False
+        if not self.create_subscription_plans_tables(): return False
         if not self.create_payment_tables(): return False
         if not self.create_isp_tables(): return False
+        if not self.create_custom_requests_table(): return False
 
         # 5. Dynamic population of ISP config tables (conditional)
         self.populate_isps_if_keys_exist()
@@ -750,13 +1036,14 @@ class DatabaseSetup:
         return True
 
     def verify_tables_exist(self) -> bool:
-        """Verify existence of all 19 target system database tables"""
+        """Verify existence of all 20 target system database tables"""
         required_tables = [
-            'users', 'signup_otps', 'crawl_jobs', 'crawl_artifacts', 
-            'reported_issues', 'api_keys', 'crawl_errors', 'activity_logs', 
+            'users', 'signup_otps', 'crawl_jobs', 'reported_issues', 
+            'api_keys', 'crawl_errors', 'activity_logs', 
             'job_results', 'search_jobs', 'search_errors', 'api_endpoints', 
-            'subscription_plans', 'user_plans', 'payment_requests', 
-            'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps'
+            'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
+            'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
+            'admin_error_logs', 'custom_requests', 'admin_emails'
         ]
         
         verify_query = """
@@ -793,10 +1080,11 @@ class DatabaseSetup:
     def drop_all_tables(self) -> bool:
         """Drop all GcrawlAI tables (USE WITH EXTREME CAUTION)"""
         tables = [
-            'signup_otps', 'users', 'crawl_jobs', 'crawl_artifacts', 'reported_issues', 
+            'signup_otps', 'users', 'crawl_jobs', 'reported_issues', 
             'api_keys', 'crawl_errors', 'activity_logs', 'job_results', 'search_jobs', 
-            'search_errors', 'api_endpoints', 'subscription_plans', 'user_plans', 
-            'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps'
+            'search_errors', 'api_endpoints', 'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
+            'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
+            'admin_error_logs', 'custom_requests', 'admin_emails'
         ]
         
         conn = None

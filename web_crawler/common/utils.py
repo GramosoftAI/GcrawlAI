@@ -50,32 +50,6 @@ def normalize_url(url: str) -> str:
     return normalized.geturl()
 
 
-def is_valid_url(url: str, base_origin: str) -> bool:
-    """
-    Check if URL should be crawled
-    """
-    try:
-        parsed = urlparse(url)
-        base = urlparse(base_origin)
-
-        if parsed.scheme not in ("http", "https"):
-            return False
-
-        if parsed.netloc != base.netloc:
-            return False
-
-        lower = url.lower()
-
-        if lower.endswith(BLOCKED_EXTENSIONS):
-            return False
-
-        if any(b in lower for b in BLOCKED_KEYWORDS):
-            return False
-
-        return True
-    except Exception:
-        return False
-
 
 def absolutize_url(href: str, base_url: str) -> str:
     """

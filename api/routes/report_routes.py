@@ -2,7 +2,7 @@ import os
 import logging
 from typing import List, Optional
 from pydantic import BaseModel, field_validator
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from api.core.database import get_pooled_connection
 from api.core.config_setup import load_config
 from api.services.email_service import EmailService
@@ -15,11 +15,12 @@ class ReportIssueRequest(BaseModel):
     url_affected: str
     issue_related_to: List[str]
     explanation: str
-    email: Optional[str] = None
+    email: str
 
     @field_validator("url_affected")
     @classmethod
     def url_must_not_be_empty(cls, v: str) -> str:
+        """Url must not be empty."""
         v = v.strip()
         if not v:
             raise ValueError("url_affected must not be empty")
@@ -28,6 +29,7 @@ class ReportIssueRequest(BaseModel):
     @field_validator("issue_related_to")
     @classmethod
     def issues_must_not_be_empty(cls, v: List[str]) -> List[str]:
+        """Issues must not be empty."""
         if not v:
             raise ValueError("issue_related_to must contain at least one item")
         return [item.strip() for item in v if item.strip()]
@@ -35,6 +37,7 @@ class ReportIssueRequest(BaseModel):
     @field_validator("explanation")
     @classmethod
     def explanation_must_not_be_empty(cls, v: str) -> str:
+        """Explanation must not be empty."""
         v = v.strip()
         if not v:
             raise ValueError("explanation must not be empty")
@@ -42,13 +45,14 @@ class ReportIssueRequest(BaseModel):
 
     @field_validator("email")
     @classmethod
-    def email_must_be_valid(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
+    def email_must_be_valid(cls, v: str) -> str:
+        """Email must be valid."""
         v = v.strip()
-        if v and "@" not in v:
+        if not v:
+            raise ValueError("email must not be empty")
+        if "@" not in v:
             raise ValueError("email must be a valid email address")
-        return v or None
+        return v
 
 
 class ReportIssueResponse(BaseModel):
@@ -60,41 +64,60 @@ class ReportIssueResponse(BaseModel):
 
 
 @router.post("/report-issue", response_model=ReportIssueResponse, status_code=201, tags=["Report Issue"])
-def report_issue(payload: ReportIssueRequest):
+def report_issue(
+    payload: ReportIssueRequest,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    recaptcha_token: Optional[str] = Header(None, alias="recaptcha-token")
+):
     """
     Submit an issue report.
 
     Stores the report in the `reported_issues` PostgreSQL table and
     sends an HTML notification email to the admin via the existing SMTP service.
     """
+    from api.core.security import validate_recaptcha_or_jwt
+
+    user_id = None
+    if x_api_key or authorization or recaptcha_token:
+        try:
+            val_user_id = validate_recaptcha_or_jwt(
+                auth_header=authorization,
+                recaptcha_header=recaptcha_token,
+                api_key_header=x_api_key
+            )
+            user_id = "demo" if val_user_id == "demo" else str(val_user_id)
+        except Exception as auth_err:
+            logger.warning(f"Optional authentication for report issue failed: {auth_err}")
+
     try:
         report_id = None
         with get_pooled_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO reported_issues (url_affected, issue_related_to, explanation, email)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    payload.url_affected,
-                    payload.issue_related_to,
-                    payload.explanation,
-                    payload.email,
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO reported_issues (url_affected, issue_related_to, explanation, email, user_id, status)
+                    VALUES (%s, %s, %s, %s, %s, 'Pending')
+                    RETURNING id
+                    """,
+                    (
+                        payload.url_affected,
+                        payload.issue_related_to,
+                        payload.explanation,
+                        payload.email,
+                        user_id
+                    )
                 )
-            )
-            row = cur.fetchone()
-            report_id = row[0] if row else None
-            conn.commit()
-            cur.close()
+                row = cur.fetchone()
+                report_id = row[0] if row else None
+                conn.commit()
 
         logger.info(f"Issue report #{report_id} stored in DB")
 
+        from api.core.database import get_admin_recipient_emails
+        admin_email = get_admin_recipient_emails()
         config = load_config()
         smtp_config = config.get("email", {})
-
-        admin_email = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
 
         email_sent = False
         if admin_email:
@@ -106,6 +129,7 @@ def report_issue(payload: ReportIssueRequest):
                     issue_related_to=payload.issue_related_to,
                     explanation=payload.explanation,
                     report_id=report_id,
+                    user_id=user_id,
                 )
             except Exception as email_err:
                 logger.warning(f"Could not send admin email for report #{report_id}: {email_err}")

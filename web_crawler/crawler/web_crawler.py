@@ -18,7 +18,6 @@ from threading import Semaphore, Thread
 from concurrent.futures import ThreadPoolExecutor
 
 from web_crawler.common.config import CrawlConfig
-from web_crawler.crawler.helpers.file_manager import FileManager
 from web_crawler.crawler.page_crawler import PageCrawler
 from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
 from web_crawler.common.utils import normalize_url
@@ -147,9 +146,9 @@ class WebCrawler:
     """Main crawler orchestrator"""
 
     def __init__(self, config: CrawlConfig):
+        """Init."""
         self.config = config
-        self.file_manager = FileManager()
-        self.page_crawler = PageCrawler(config, self.file_manager)
+        self.page_crawler = PageCrawler(config)
 
         # Shared state
         self.visited: Set[str] = set()
@@ -158,21 +157,14 @@ class WebCrawler:
         self.all_links: Set[str] = set()
         self.pages_data: List[Dict] = []
         
+        self.proxy_usage_aggregate = {"nodemaven": 0, "thordata": 0, "evomi_core": 0}
+        
         self.successful_pages = 0
         self.attempted_pages = 0
 
     def _effective_proxy_mode(self) -> str:
-        mode = (self.config.proxy_mode or "auto").strip().lower()
-        if mode in {"basic", "stealth", "enhanced", "auto"}:
-            return mode
+        """Effective proxy mode."""
         return "auto"
-
-    def _initial_proxy_type(self) -> str:
-        """
-        In auto mode, start with basic and escalate later only if needed.
-        """
-        mode = self._effective_proxy_mode()
-        return "basic" if mode == "auto" else mode
 
     def _crawl_worker(
         self,
@@ -194,6 +186,7 @@ class WebCrawler:
         seen_raw,
         queue
     ):
+        """Crawl worker."""
         try:
             proxy_type = self._effective_proxy_mode()
             result = self.page_crawler.crawl_page(
@@ -209,6 +202,12 @@ class WebCrawler:
                 websocket_manager=websocket_manager,
                 crawl_mode=crawl_mode
             )
+
+            if result:
+                usage = result.get("proxy_usage", {})
+                with lock:
+                    for k, v in usage.items():
+                        self.proxy_usage_aggregate[k] += v
 
             if not result or "error" in result:
                 with lock:
@@ -270,6 +269,7 @@ class WebCrawler:
                         self.all_links.add(link)
 
                         def normalize_host(h):
+                            """Normalize host."""
                             h = h.lower()
                             return h[4:] if h.startswith("www.") else h
 
@@ -327,22 +327,55 @@ class WebCrawler:
         logger.info("🚀 Crawl started")
 
         # =========================================================
+        # PRE-POPULATE CRAWL QUEUE USING BROWSER-FIRST MAP DISCOVERY
+        # =========================================================
+        if crawl_mode == "all" and max_pages > 1:
+            logger.info("🗺️  Pre-populating crawl queue using browser-first map discovery...")
+            providers = [
+                ("Nodemaven", "nodemaven"),
+                ("Thordata", "thordata"),
+                ("Evomi Core", "evomi_core")
+            ]
+            discovered_urls = []
+            for attempt, (provider_name, provider_id) in enumerate(providers, 1):
+                logger.info(f"  → Attempting pre-crawl map discovery with {provider_name} proxy (Attempt {attempt}/{len(providers)})...")
+                proxy_geo = getattr(self.config, "proxy_geo", None)
+                use_hs = (provider_id in {"nodemaven", "thordata"})
+                p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
+                    target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
+                )
+                if p_dict:
+                    map_result = map_website(start_url, limit=max_pages, proxy_dict=p_dict)
+                    if map_result["total"] > 1:
+                        logger.info(f"  ✓ Pre-crawl map discovery succeeded with {provider_name} ({map_result['total']} links)")
+                        discovered_urls = map_result["urls"]
+                        break
+                    logger.warning(f"  ! Pre-crawl map discovery yielded {map_result['total']} results with {provider_name}. Escalating...")
+            
+            if discovered_urls:
+                for u in discovered_urls:
+                    u_norm = normalize_url(u)
+                    if u_norm not in seen_raw:
+                        seen_raw.add(u_norm)
+                        queue.append((u_norm, "MAP_PREPOPULATE"))
+
+        # =========================================================
         # MAP MODE
         # =========================================================
         if crawl_mode == "links":
             logger.info("🗺️  Map mode — sitemap-based URL discovery (no browser)")
 
             providers = [
-                ("Evomi Premium", "evomi_premium"),
                 ("Nodemaven", "nodemaven"),
+                ("Thordata", "thordata"),
                 ("Evomi Core", "evomi_core")
             ]
             
             map_result = {"total": 0, "urls": []}
             for attempt, (provider_name, provider_id) in enumerate(providers, 1):
-                logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/3)...")
+                logger.info(f"  → Attempting map discovery with {provider_name} proxy (Attempt {attempt}/{len(providers)})...")
                 proxy_geo = getattr(self.config, "proxy_geo", None)
-                use_hs = (provider_id in {"nodemaven", "evomi_premium"})
+                use_hs = (provider_id in {"nodemaven", "thordata"})
                 p_dict = self.page_crawler.proxy_manager.get_requests_proxies(
                     target_url=start_url, provider=provider_id, use_high_speed=use_hs, proxy_geo=proxy_geo
                 )
@@ -360,19 +393,73 @@ class WebCrawler:
             
             if self.config.max_pages and len(discovered_urls) > self.config.max_pages:
                 discovered_urls = discovered_urls[:self.config.max_pages]
-                map_result["total"] = len(discovered_urls)
+
+            # Slice to user limit if specified (since we force config.max_pages=5000 internally)
+            raw_payload = getattr(self.config, "raw_payload", None)
+            user_limit = "auto"
+            if raw_payload and isinstance(raw_payload, dict):
+                links_opt = raw_payload.get("links")
+                if isinstance(links_opt, dict):
+                    user_limit = links_opt.get("limit", 100)
+
+            if isinstance(user_limit, int):
+                discovered_urls = discovered_urls[:user_limit]
+            elif isinstance(user_limit, str) and user_limit.isdigit():
+                discovered_urls = discovered_urls[:int(user_limit)]
+            elif isinstance(user_limit, str) and user_limit.lower() == "auto":
+                pass  # Keep all URLs discovered
+
+            map_result["total"] = len(discovered_urls)
 
             pass
 
-            summary = {
-                "start_url": start_url,
-                "pages_crawled": 0,
-                "pages_failed": 0,
-                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
-                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
-                "crawl_mode": crawl_mode,
-                "links": discovered_urls,
-            }
+            error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
+            if not discovered_urls or len(discovered_urls) <= 1:
+                summary = {
+                    "start_url": start_url,
+                    "pages_crawled": 0,
+                    "pages_failed": 1,
+                    "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                    "crawl_mode": crawl_mode,
+                    "status": "failed",
+                    "error": error_msg,
+                    "links": []
+                }
+                
+                # Record links discovery error in DB tables
+                try:
+                    from web_crawler.crawler.page.page_crawler1 import _record_crawl_error
+                    proxy_attempts = []
+                    for p_name, p_id in providers:
+                        proxy_attempts.append({
+                            "provider": p_name,
+                            "error": "Failed to discover links (yielded <= 1 URL)"
+                        })
+                    
+                    request_params = getattr(self.config, "raw_payload", None)
+                    _record_crawl_error(
+                        crawl_id=client_id,
+                        url=start_url,
+                        error_source="Links Discoverer",
+                        reason="Exhausted all proxy providers without success.",
+                        blocked_message=error_msg,
+                        proxy_attempts=proxy_attempts,
+                        request_params=request_params
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to record links discovery error: {log_err}")
+            else:
+                summary = {
+                    "start_url": start_url,
+                    "pages_crawled": 0,
+                    "pages_failed": 0,
+                    "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                    "crawl_mode": crawl_mode,
+                    "links": discovered_urls,
+                    "total_links_found": len(discovered_urls),
+                }
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Map crawl finished")
@@ -380,9 +467,9 @@ class WebCrawler:
             return summary
 
         # =========================================================
-        # SEARCH MODE
+        # SEARCH MODE (Disabled: allow direct scraping of search URLs)
         # =========================================================
-        if _is_search_url(start_url):
+        if False and _is_search_url(start_url):
             query = _extract_search_query(start_url)
             logger.info(f"🔍 Search URL detected. Routing query '{query}' through search engine router...")
             
@@ -525,7 +612,12 @@ class WebCrawler:
                 crawl_mode=crawl_mode
             )
 
-            if result and "error" not in result:
+            error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
+            if result and not result.get("error"):
+                usage = result.get("proxy_usage", {})
+                for k, v in usage.items():
+                    self.proxy_usage_aggregate[k] += v
+                
                 self.successful_pages = 1
 
             elapsed = perf_counter() - start_perf
@@ -559,6 +651,17 @@ class WebCrawler:
                             
                         summary["seo_md"] = result.get("seo_md")
                         summary["seo_xlsx_s3_url"] = result.get("seo_xlsx_s3_url")
+            else:
+                summary["status"] = "failed"
+                summary["error"] = error_msg
+                summary["html_content"] = None
+                summary["markdown_content"] = None
+                summary["screenshot_s3_url"] = None
+                summary["images_json"] = None
+                summary["seo_json"] = None
+                summary["seo_md"] = None
+                summary["seo_xlsx_s3_url"] = None
+                summary["links"] = []
 
             upsert_job_result(client_id, summary, str(user_id) if user_id else None)
             logger.info("✅ Single-page crawl finished")
@@ -579,6 +682,7 @@ class WebCrawler:
         active_tasks = 0
         
         def worker_task(task_url, task_page_no):
+            """Worker task."""
             nonlocal active_tasks
             try:
                 self._crawl_worker(
@@ -627,6 +731,7 @@ class WebCrawler:
             cleanup_futures = []
             for _ in range(self.config.max_workers):
                 def shutdown_task():
+                    """Shutdown task."""
                     try:
                         from web_crawler.crawler.page.page_crawler1 import browser_manager
                         browser_manager.shutdown()
@@ -646,40 +751,64 @@ class WebCrawler:
         # =========================================================
         elapsed = perf_counter() - start_perf
 
-        summary = {
-            "start_url": start_url,
-            "pages_attempted": self.attempted_pages,
-            "pages_crawled": self.successful_pages,
-            "pages_failed": len(self.failed),
-            "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
-            "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
-        }
-        
-        if enable_seo and self.pages_data:
-            try:
-                from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
-                writer = CrawlReportWriter(self.config.output_dir)
-                domain = urlparse(start_url).netloc
-                all_links_list = sorted(list(self.all_links))
-                
-                summary["seo_aggregated_json"] = json.loads(writer.render_json(self.pages_data, all_links_list))
-                summary["seo_aggregated_md"] = writer.render_markdown(domain, self.pages_data, all_links_list)
-                
-                from web_crawler.common.s3_utils import upload_to_s3
-                seo_excel_b64 = writer.render_excel_base64(self.pages_data)
-                seo_excel_url = upload_to_s3(
-                    base64.b64decode(seo_excel_b64),
-                    client_id if client_id else "unknown_crawl",
-                    f"{domain}_seo.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-                summary["seo_aggregated_xlsx_s3_url"] = seo_excel_url
-            except Exception as e:
-                logger.error(f"Failed to generate SEO report in memory: {e}")
+        error_msg = "We apologize for the inconvenience but we do not support this site. If you are part of an enterprise and want to have a further conversation about this, please fill out the Report issue form."
+        if self.successful_pages == 0:
+            summary = {
+                "start_url": start_url,
+                "pages_attempted": self.attempted_pages,
+                "pages_crawled": 0,
+                "pages_failed": len(self.failed) if len(self.failed) > 0 else 1,
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+                "status": "failed",
+                "error": error_msg,
+                "html_content": None,
+                "markdown_content": None,
+                "screenshot_s3_url": None,
+                "images_json": None,
+                "seo_json": None,
+                "seo_md": None,
+                "seo_xlsx_s3_url": None,
+                "links": []
+            }
+            # For all modes, if it fails completely (no successful pages), save it to DB
+            upsert_job_result(client_id, summary, str(user_id) if user_id else None)
+        else:
+            summary = {
+                "start_url": start_url,
+                "pages_attempted": self.attempted_pages,
+                "pages_crawled": self.successful_pages,
+                "pages_failed": len(self.failed),
+                "started_at": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "time_taken": f"{int(elapsed//60)}m {int(elapsed%60)}s",
+            }
+            
+            if enable_seo and self.pages_data:
+                try:
+                    from web_crawler.crawler.helpers.seo_report import CrawlReportWriter
+                    writer = CrawlReportWriter(self.config.output_dir)
+                    domain = urlparse(start_url).netloc
+                    all_links_list = sorted(list(self.all_links))
+                    
+                    summary["seo_aggregated_json"] = json.loads(writer.render_json(self.pages_data, all_links_list))
+                    summary["seo_aggregated_md"] = writer.render_markdown(domain, self.pages_data, all_links_list)
+                    
+                    from web_crawler.common.s3_utils import upload_to_s3
+                    seo_excel_b64 = writer.render_excel_base64(self.pages_data)
+                    seo_excel_url = upload_to_s3(
+                        base64.b64decode(seo_excel_b64),
+                        client_id if client_id else "unknown_crawl",
+                        f"{domain}_seo.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    summary["seo_aggregated_xlsx_s3_url"] = seo_excel_url
+                except Exception as e:
+                    logger.error(f"Failed to generate SEO report in memory: {e}")
 
-        if crawl_mode != "all":
-            upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
+            if crawl_mode != "all":
+                upsert_job_result(self.config.client_id, summary, str(user_id) if user_id else None)
 
+        summary["proxy_usage"] = {k: round(v / (1024 * 1024), 2) for k, v in self.proxy_usage_aggregate.items()}
         logger.info("✅ Crawl finished")
         html_content = summary.get("html_content")
         if html_content:

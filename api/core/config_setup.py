@@ -18,6 +18,7 @@ def substitute_env_vars(data):
     elif isinstance(data, str):
         # Pattern: ${VAR_NAME} or ${VAR_NAME:default_value}
         def replace_var(match):
+            """Replace var."""
             var_name = match.group(1)
             default_value = match.group(2)
             return os.getenv(var_name, default_value or "")
@@ -27,6 +28,7 @@ def substitute_env_vars(data):
         return data
 
 def load_config():
+    """Load config."""
     global _CONFIG
     if _CONFIG is None:
         config_path = "config.yaml"
@@ -42,14 +44,19 @@ def load_config():
     return _CONFIG
 
 def get_db_config():
+    """Return db config."""
     config = load_config()
     return config["postgres"]
 
 def setup_crawl_config(payload, default_max_pages=10, concurrency_limit=None) -> CrawlConfig:
     # Resolve max pages if crawl options exist
+    """Set up crawl config."""
     max_pages = default_max_pages
     if hasattr(payload, 'crawl') and payload.crawl and payload.crawl.max_pages is not None:
         max_pages = payload.crawl.max_pages
+
+    if isinstance(max_pages, str) and max_pages.lower() == "auto":
+        max_pages = 999999
 
     # Set parallel workers based on user's plan concurrency limits
     max_workers = 4
@@ -104,19 +111,26 @@ def setup_crawl_config(payload, default_max_pages=10, concurrency_limit=None) ->
         config.screenshot_quality = payload.screenshot.quality if payload.screenshot.quality is not None else 90
         screenshot_enabled = payload.screenshot.enabled
         
-        config.js_render = payload.screenshot.js_render if payload.screenshot.js_render is not None else False
-        fields_set = payload.screenshot.model_fields_set if hasattr(payload.screenshot, 'model_fields_set') else set()
+        screenshot = payload.screenshot
+        config.js_render = screenshot.js_render if screenshot.js_render is not None else False
+        
+        # Support both Pydantic v1 (__fields_set__) and Pydantic v2 (model_fields_set)
+        fields_set = set()
+        if hasattr(screenshot, 'model_fields_set'):
+            fields_set = screenshot.model_fields_set
+        elif hasattr(screenshot, '__fields_set__'):
+            fields_set = screenshot.__fields_set__
         
         if config.js_render:
-            config.render_timeout = payload.screenshot.render_timeout if "render_timeout" in fields_set else 10000
-            config.auto_scroll = payload.screenshot.auto_scroll if "auto_scroll" in fields_set else True
-            config.scroll_delay = payload.screenshot.scroll_delay if "scroll_delay" in fields_set else 500
-            config.max_scrolls = payload.screenshot.max_scrolls if "max_scrolls" in fields_set else 1
+            config.render_timeout = screenshot.render_timeout if "render_timeout" in fields_set else 10000
+            config.auto_scroll = screenshot.auto_scroll if "auto_scroll" in fields_set else True
+            config.scroll_delay = screenshot.scroll_delay if "scroll_delay" in fields_set else 500
+            config.max_scrolls = screenshot.max_scrolls if "max_scrolls" in fields_set else 1
         else:
-            config.render_timeout = payload.screenshot.render_timeout if "render_timeout" in fields_set else 30000
-            config.auto_scroll = payload.screenshot.auto_scroll if "auto_scroll" in fields_set else True
-            config.scroll_delay = payload.screenshot.scroll_delay if "scroll_delay" in fields_set else 500
-            config.max_scrolls = payload.screenshot.max_scrolls if "max_scrolls" in fields_set else 2
+            config.render_timeout = screenshot.render_timeout if "render_timeout" in fields_set else 30000
+            config.auto_scroll = screenshot.auto_scroll if "auto_scroll" in fields_set else True
+            config.scroll_delay = screenshot.scroll_delay if "scroll_delay" in fields_set else 500
+            config.max_scrolls = screenshot.max_scrolls if "max_scrolls" in fields_set else 2
 
     else:
         config.screenshot_full_page = False

@@ -3,6 +3,15 @@ import psycopg2
 from psycopg2 import pool as psycopg2_pool
 from contextlib import contextmanager
 from typing import Union
+from datetime import datetime, timezone, timedelta
+
+# India Standard Time (IST) offset is UTC +5:30
+ist_tz = timezone(timedelta(hours=5, minutes=30))
+
+def get_ist_now() -> datetime:
+    """Returns the current timezone-aware datetime in Asia/Kolkata timezone (IST)"""
+    return datetime.now(ist_tz)
+
 
 from api.core.config_setup import get_db_config
 
@@ -41,10 +50,10 @@ def get_pooled_connection(max_retries: int = 3):
         try:
             conn = _db_pool.getconn()
             
-            # Execute a lightweight query to verify the connection is active and stable.
-            # This detects stale/closed SSL connections before yielding them to the caller.
+            # Set connection timezone to Asia/Kolkata (IST).
+            # This also serves as a lightweight health check to verify the connection is active.
             with conn.cursor() as test_cursor:
-                test_cursor.execute("SELECT 1")
+                test_cursor.execute("SET TIME ZONE 'Asia/Kolkata';")
             
             # Connection is valid, exit the retry loop
             break
@@ -92,11 +101,40 @@ def get_pooled_connection(max_retries: int = 3):
             except Exception:
                 pass
 
-# Legacy wrapper for backwards compatibility
+class PooledConnectionWrapper:
+    def __init__(self, pool, conn):
+        """Init."""
+        self._pool = pool
+        self._conn = conn
+
+    def __enter__(self):
+        return self._conn.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._conn.__exit__(exc_type, exc_val, exc_tb)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        """Close."""
+        try:
+            if self._conn and self._pool:
+                self._pool.putconn(self._conn)
+        except Exception as e:
+            logger.warning(f"Error returning connection to pool: {e}")
+        finally:
+            self._conn = None
+            self._pool = None
+
+# Wrapper for backwards compatibility using the pool
 def get_db_connection():
-    """Get a connection from the pool. Caller MUST return it via pool.putconn()."""
+    """Get a connection from the pool. Caller MUST return it via pool.putconn() or conn.close()."""
     global _db_pool
-    return _db_pool.getconn()
+    if _db_pool is None:
+        _init_db_pool()
+    conn = _db_pool.getconn()
+    return PooledConnectionWrapper(_db_pool, conn)
 
 def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str, job_id: str = None, time_taken: str = None) -> None:
     """Log an activity to the activity_logs table"""
@@ -110,6 +148,38 @@ def log_activity(user_id: Union[int, str], endpoint: str, url: str, status: str,
             conn.commit()
     except Exception as e:
         logger.error(f"Failed to log activity for user {user_id}: {e}")
+
+def log_proxy_bandwidth(user_id: Union[int, str], endpoint: str, url_or_query: str, bandwidth_data: dict, status: str = 'success', job_id: str = None) -> None:
+    """Log proxy bandwidth usage to proxy_bandwidth_usage table"""
+    if not bandwidth_data or user_id == "demo":
+        return
+        
+    try:
+        def to_bytes(val):
+            if val is None:
+                return None
+            if isinstance(val, float):
+                return int(val * 1024 * 1024)
+            return int(val)
+
+        nodemaven = to_bytes(bandwidth_data.get('nodemaven'))
+        thordata = to_bytes(bandwidth_data.get('thordata') or bandwidth_data.get('evomi_premium'))
+        evomi_premium = to_bytes(bandwidth_data.get('evomi_premium'))
+        evomi_core = to_bytes(bandwidth_data.get('evomi_core'))
+        
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO proxy_bandwidth_usage 
+                    (user_id, endpoint, url_or_query, nodemaven, thordata, evomi_premium, evomi_core, final_status, job_id) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (user_id, endpoint, url_or_query, nodemaven, thordata, evomi_premium, evomi_core, status, job_id)
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log proxy bandwidth for user {user_id}: {e}")
 
 def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = None) -> list:
     """Fetch activity logs for a specific user"""
@@ -152,6 +222,19 @@ def update_activity_log_time(job_id: str, time_taken: str) -> None:
             conn.commit()
     except Exception as e:
         logger.error(f"Failed to update activity log time for job {job_id}: {e}")
+
+def update_activity_log_status(job_id: str, status: str) -> None:
+    """Update the status column for a specific job in the activity_logs table"""
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE activity_logs SET status = %s WHERE job_id = %s",
+                    (status.upper(), job_id)
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update activity log status for job {job_id}: {e}")
 
 import json
 
@@ -233,10 +316,16 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
             
         with get_pooled_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT total_requests, used_requests FROM user_plans WHERE user_id = %s",
-                    (db_user_id,)
-                )
+                cursor.execute("""
+                    SELECT 
+                        CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                        u.used_requests
+                    FROM user_plans u
+                    LEFT JOIN plan_expiry e ON u.user_id = e.user_id
+                    LEFT JOIN monthly_subscription_plans ms ON u.plan_type = ms.plan_key
+                    LEFT JOIN yearly_subscription_plans ys ON u.plan_type = ys.plan_key
+                    WHERE u.user_id = %s
+                """, (db_user_id,))
                 row = cursor.fetchone()
                 if row:
                     total, used = row[0], row[1]
@@ -246,3 +335,35 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
     except Exception as e:
         logger.error(f"Failed to fetch remaining credits for user {user_id}: {e}")
         return 0
+
+def get_admin_recipient_emails() -> str:
+    """
+    Get admin recipient email addresses.
+    First tries to retrieve from the `admin_emails` table in the database.
+    If none are found, falls back to the ADMIN_EMAIL environment variable or config email setting.
+    """
+    import os
+    from api.core.config_setup import load_config
+    
+    emails = []
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cur:
+                # We query from public.admin_emails table
+                cur.execute("SELECT email FROM admin_emails ORDER BY id ASC")
+                rows = cur.fetchall()
+                emails = [r[0] for r in rows if r[0]]
+    except Exception as e:
+        logger.warning(f"Failed to fetch admin emails from database (it might not exist yet): {e}")
+
+    if emails:
+        return ",".join(emails)
+
+    try:
+        config = load_config()
+        smtp_config = config.get("email", {})
+        fallback = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
+        return fallback
+    except Exception as e:
+        logger.error(f"Failed to load fallback admin email: {e}")
+        return os.getenv("ADMIN_EMAIL", "")

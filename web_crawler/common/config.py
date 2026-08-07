@@ -58,12 +58,7 @@ class CrawlConfig:
     proxy_username: Optional[str] = None
     proxy_password: Optional[str] = None
 
-    # New Firecrawl-like multi-tier proxy settings
-    basic_proxies: Optional[Union[str, list]] = None
-    stealth_proxies: Optional[Union[str, list]] = None
-    enhanced_proxies: Optional[Union[str, list]] = None
-    proxy_mode: str = "auto"  # "auto", "basic", "stealth", "enhanced"
-    default_tier: int = 1
+    raw_payload: Optional[dict] = None
 
     def __post_init__(self):
         # Allow overriding headless mode from environment variable
@@ -71,7 +66,6 @@ class CrawlConfig:
         if crawl_headless_env is not None:
             self.headless = crawl_headless_env.strip().lower() == "true"
 
-        self.default_tier = int(os.getenv("DEFAULT_TIER", "1"))
         self.proxy_server = self._clean_env(self.proxy_server or os.getenv("PROXY_SERVER", os.getenv("EVOMI_PROXY_SERVER")))
         self.proxy_username = self._clean_env(self.proxy_username or os.getenv("PROXY_USERNAME", os.getenv("EVOMI_PROXY_USERNAME")))
         self.proxy_password = self._clean_env(self.proxy_password or os.getenv("PROXY_PASSWORD", os.getenv("EVOMI_PROXY_PASSWORD")))
@@ -83,25 +77,6 @@ class CrawlConfig:
         # Load from env if not explicitly provided
         if self.proxy is None:
             self.proxy = os.getenv("CRAWL_PROXY")
-        
-        if self.basic_proxies is None:
-            self.basic_proxies = os.getenv("BASIC_PROXIES")
-        
-        if self.stealth_proxies is None:
-            self.stealth_proxies = os.getenv("STEALTH_PROXIES")
-
-        if self.enhanced_proxies is None:
-            self.enhanced_proxies = os.getenv("ENHANCED_PROXIES")
-
-        # Backward-compatible alias: if enhanced pool is not explicitly set,
-        # reuse stealth pool.
-        if self.enhanced_proxies is None:
-            self.enhanced_proxies = self.stealth_proxies
-        
-        raw_proxy_mode = self.proxy_mode
-        if raw_proxy_mode is None or str(raw_proxy_mode).strip().lower() == "auto":
-            raw_proxy_mode = os.getenv("PROXY_MODE", raw_proxy_mode)
-        self.proxy_mode = self._normalize_proxy_mode(raw_proxy_mode)
 
         # If legacy CRAWL_PROXY is not set, derive requests-compatible proxies from BYOP env.
         if self.proxy is None and self.proxy_server:
@@ -111,31 +86,12 @@ class CrawlConfig:
                 password=self.proxy_password,
             )
             self.proxy = base_url
-            
-            # Populate different tiers with different regions for the auto-escalation mechanism
-            if not self.basic_proxies:
-                self.basic_proxies = base_url
-            
-            if not self.stealth_proxies:
-                india_url = self._compose_proxy_url(
-                    server=self.proxy_server,
-                    username=self.proxy_username,
-                    password=self.proxy_password_india or f"{self.proxy_password}_country-IN"
-                )
-                self.stealth_proxies = india_url
-
-            if not self.enhanced_proxies:
-                us_url = self._compose_proxy_url(
-                    server=self.proxy_server,
-                    username=self.proxy_username,
-                    password=self.proxy_password_us
-                )
-                self.enhanced_proxies = us_url
         
         self.rebuild_paths()
 
     @staticmethod
     def _clean_env(value: Optional[str]) -> Optional[str]:
+        """Clean env."""
         if value is None:
             return None
         trimmed = value.strip()
@@ -164,15 +120,7 @@ class CrawlConfig:
 
         return f"{scheme}://{auth}{host}{port}"
 
-    @staticmethod
-    def _normalize_proxy_mode(value: Optional[str]) -> str:
-        """
-        Normalize proxy mode to supported values.
-        Unknown values are treated as "auto" to preserve resiliency.
-        """
-        allowed = {"auto", "basic", "stealth", "enhanced"}
-        mode = (value or "auto").strip().lower()
-        return mode if mode in allowed else "auto"
+
 
 
     def rebuild_paths(self):

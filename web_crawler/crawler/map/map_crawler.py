@@ -14,6 +14,7 @@ from urllib.parse import urlparse, urljoin
 import requests
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
+import xml.etree.ElementTree as ET
 
 # Import split components
 from web_crawler.crawler.map.map_crawler_utils import (
@@ -28,7 +29,6 @@ from web_crawler.crawler.map.map_crawler_utils import (
     MAX_URLS,
 )
 from web_crawler.crawler.map.map_crawler_xml import (
-    _find_sitemaps_from_robots,
     _collect_sitemap_urls,
 )
 
@@ -119,49 +119,58 @@ def _collect_homepage_links_from_resp(
     return added
 
 
-def _collect_homepage_links(
-    base_url: str, 
-    collected: Set[str], 
-    lock: threading.Lock,
-    proxy_dict: Optional[dict] = None,
-    limit: int = MAX_URLS,
-) -> int:
-    """
-    Fetch the homepage and extract internal links.
-    (Used as fallback when pre-fetching is not used.)
-    """
-    with lock:
-        if len(collected) >= limit:
-            logger.info("⛔ Limit already reached — skipping homepage link extraction")
-            return 0
-
-    logger.info(f"🔗 Fetching homepage links: {base_url}")
-    resp = _get(base_url, timeout=_PAGE_TIMEOUT, proxy_dict=proxy_dict)
-    if not resp:
-        logger.warning("Homepage fetch failed — skipping link extraction")
-        return 0
-
-    added = _parse_homepage_html(resp, base_url, collected, lock, limit)
-    logger.info(f"  → added {added} new URLs from homepage (pool: {len(collected)})")
-    return added
-
 
 # ── Step 4: Browser-based link extraction (fallback) ────────────────────────
 
-def _browser_extract_links(
+def _parse_sitemap_xml_local(content: str, base_url: str) -> tuple:
+    """Parse sitemap XML content or extract links from HTML sitemap page."""
+    page_urls = []
+    child_sitemaps = []
+    _SITEMAP_XML_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
+    try:
+        root = ET.fromstring(content.encode('utf-8', errors='ignore'))
+        tag = root.tag
+        if "sitemapindex" in tag:
+            for sitemap_el in root.iter(f"{_SITEMAP_XML_NS}sitemap"):
+                loc_el = sitemap_el.find(f"{_SITEMAP_XML_NS}loc")
+                if loc_el is not None and loc_el.text:
+                    child_url = loc_el.text.strip()
+                    if _same_host(child_url, base_url):
+                        child_sitemaps.append(child_url)
+        elif "urlset" in tag:
+            for url_el in root.iter(f"{_SITEMAP_XML_NS}url"):
+                loc_el = url_el.find(f"{_SITEMAP_XML_NS}loc")
+                if loc_el is not None and loc_el.text:
+                    page_url = loc_el.text.strip()
+                    if _same_host(page_url, base_url) and _is_page_url(page_url):
+                        page_urls.append(_clean_url(page_url))
+    except Exception:
+        # Fallback to HTML parsing
+        soup = BeautifulSoup(content, "lxml")
+        base_host = urlparse(base_url).netloc.lower()
+        if base_host.startswith("www."): base_host = base_host[4:]
+        for anchor in soup.find_all("a", href=True):
+            href = anchor["href"].strip()
+            abs_url = urljoin(base_url, href)
+            url_host = urlparse(abs_url).netloc.lower()
+            if url_host.startswith("www."): url_host = url_host[4:]
+            if url_host == base_host and _is_page_url(abs_url):
+                page_urls.append(_clean_url(abs_url))
+    return child_sitemaps, page_urls
+
+
+def _browser_map_website(
     start_url: str,
     collected: Set[str],
     lock: threading.Lock,
     limit: int = MAX_URLS,
     proxy_dict: Optional[dict] = None,
-) -> int:
+) -> bool:
     """
-    Render the homepage with Playwright/ClockBrowser and extract internal links
-    from the fully-rendered DOM using multiple rotated proxy attempts running in parallel.
-
-    Returns the number of NEW URLs added to `collected`.
+    Perform a complete map/sitemap URL discovery using CloakBrowser.
+    Returns True if successfully retrieved page URLs.
     """
-    logger.info("🌐 Browser fallback — rendering homepage with CloakBrowser...")
+    logger.info("🌐 Browser-first map flow started with CloakBrowser...")
     added_links = []
     success_event = threading.Event()
     success_lock = threading.Lock()
@@ -179,7 +188,6 @@ def _browser_extract_links(
 
             base_host = urlparse(start_url).netloc.lower()
 
-            # Parse proxy settings if available and rotate session ID to get a clean IP
             pw_proxy = None
             if proxy_dict:
                 proxy_url = proxy_dict.get("https") or proxy_dict.get("http")
@@ -188,7 +196,6 @@ def _browser_extract_links(
                     proxy_url = re.sub(r'session-[a-zA-Z0-9]+', f'session-{new_session}', proxy_url)
                     pw_proxy = parse_proxy_for_playwright(proxy_url)
 
-            # Generate human-like random fingerprint configuration for CloakBrowser
             platform_choice = random.choices(["windows", "macos", "linux"], weights=[85, 10, 5])[0]
             seed = random.randint(100000, 9999999)
             width, height = 1920, 1080
@@ -212,7 +219,6 @@ def _browser_extract_links(
             browser = cloakbrowser.launch(humanize=True, **launch_args)
             page = browser.new_page()
 
-            # Block heavy/unnecessary resources for ultra-fast loading
             def block_resources(route):
                 req_type = route.request.resource_type
                 if req_type in ["image", "stylesheet", "font", "media"]:
@@ -226,41 +232,136 @@ def _browser_extract_links(
                 return
 
             page.goto(start_url, wait_until="domcontentloaded", timeout=20_000)
+            
+            try:
+                page.wait_for_load_state("networkidle", timeout=3000)
+            except Exception:
+                pass
+
             page_title = page.title()
             
-            # Extract links
+            # Extract DOM links
             raw_links = page.evaluate("""
                 () => Array.from(document.querySelectorAll('a[href]'))
                           .map(a => a.href)
             """)
 
+            # Fetch robots.txt via browser fetch
+            robots_text = page.evaluate("""
+                async () => {
+                    try {
+                        const r = await fetch('/robots.txt');
+                        return r.status === 200 ? await r.text() : '';
+                    } catch (e) {
+                        return '';
+                    }
+                }
+            """)
+
+            browser_collected = set()
+            browser_collected.add(_clean_url(start_url))
+
+            for href in raw_links:
+                if not href or not href.startswith("http"):
+                    continue
+                parsed = urlparse(href)
+                link_host = parsed.netloc.lower()
+                base_bare = base_host.replace("www.", "")
+                link_bare = link_host.replace("www.", "")
+                if link_bare != base_bare:
+                    continue
+                if not _is_page_url(href):
+                    continue
+                clean = _clean_url(href)
+                browser_collected.add(clean)
+
+            # Parse sitemap hints from robots.txt
+            sitemaps = []
+            if robots_text:
+                for line in robots_text.splitlines():
+                    stripped = line.strip()
+                    if stripped.lower().startswith("sitemap:"):
+                        s_url = stripped.split(":", 1)[1].strip()
+                        if s_url.startswith("http") and _same_host(s_url, start_url):
+                            sitemaps.append(s_url)
+
+            if not sitemaps:
+                origin = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
+                sitemaps = [
+                    f"{origin}/sitemap_index.xml",
+                    f"{origin}/sitemap.xml",
+                    f"{origin}/sitemap",
+                    f"{origin}/privacy",
+                    f"{origin}/terms_and_condition",
+                ]
+
+            # Sitemap BFS in browser context
+            visited_sitemaps = set()
+            queue = list(sitemaps)
+            for s in sitemaps:
+                visited_sitemaps.add(s)
+
+            max_sitemaps_to_crawl = 20
+            sitemaps_crawled_count = 0
+
+            while queue and sitemaps_crawled_count < max_sitemaps_to_crawl:
+                if success_event.is_set():
+                    break
+                if len(browser_collected) >= limit:
+                    break
+
+                batch = queue[:8]
+                queue = queue[8:]
+
+                js_paths = []
+                for s_url in batch:
+                    parsed = urlparse(s_url)
+                    path = parsed.path
+                    if parsed.query:
+                        path += "?" + parsed.query
+                    js_paths.append((s_url, path))
+
+                paths_only = [p[1] for p in js_paths]
+                
+                results = page.evaluate("""
+                    async (paths) => {
+                        return Promise.all(paths.map(async (path) => {
+                            try {
+                                const r = await fetch(path);
+                                const text = r.status === 200 ? await r.text() : '';
+                                return { path, text, success: r.status === 200 };
+                            } catch (e) {
+                                return { path, text: '', success: false };
+                            }
+                        }));
+                    }
+                """, paths_only)
+
+                sitemaps_crawled_count += len(batch)
+
+                for item in results:
+                    sitemap_url = next(x[0] for x in js_paths if x[1] == item['path'])
+                    if item['success'] and item['text']:
+                        child_sitemaps, page_urls = _parse_sitemap_xml_local(item['text'], start_url)
+                        for cs in child_sitemaps:
+                            if cs not in visited_sitemaps:
+                                visited_sitemaps.add(cs)
+                                queue.append(cs)
+                        for pu in page_urls:
+                            browser_collected.add(pu)
+                    else:
+                        if item['success'] and any(x in sitemap_url for x in ["/privacy", "/terms_and_condition"]):
+                            browser_collected.add(_clean_url(sitemap_url))
+
             browser.close()
 
-            if page_title and len(raw_links) > 0:
+            if page_title and len(browser_collected) > 0:
                 with success_lock:
                     if not success_event.is_set():
                         success_event.set()
-                        logger.info(f"  ✓ Parallel Attempt {attempt_idx} succeeded! Title: {page_title}, Links: {len(raw_links)}")
-                        
-                        # Process links inside the lock to avoid concurrency issues
-                        for href in raw_links:
-                            if not href or not href.startswith("http"):
-                                continue
-                            parsed = urlparse(href)
-                            link_host = parsed.netloc.lower()
-                            base_bare = base_host.replace("www.", "")
-                            link_bare = link_host.replace("www.", "")
-                            if link_bare != base_bare:
-                                continue
-                            if not _is_page_url(href):
-                                continue
-                            clean = _clean_url(href)
-                            added_links.append(clean)
-            else:
-                logger.warning(f"  ⚠ Parallel Attempt {attempt_idx} got blocked (Title empty or 0 links found).")
-
-        except ImportError:
-            logger.warning(f"  ⚠ Parallel Attempt {attempt_idx} failed: Playwright or cloakbrowser not installed")
+                        logger.info(f"  ✓ Parallel Attempt {attempt_idx} succeeded! Title: {page_title}, Discovered links: {len(browser_collected)}")
+                        for url in browser_collected:
+                            added_links.append(url)
         except Exception as e:
             logger.warning(f"  ⚠ Parallel Attempt {attempt_idx} failed: {e}")
             if browser:
@@ -269,7 +370,6 @@ def _browser_extract_links(
                 except:
                     pass
 
-    # Try up to 2 rounds of parallel attempts (total 6 attempts)
     for round_idx in range(1, 3):
         logger.info(f"🌐 Threaded browser fallback: Starting Round {round_idx}/2...")
         threads = []
@@ -278,31 +378,25 @@ def _browser_extract_links(
             t = threading.Thread(target=_worker_attempt, args=(attempt_idx,))
             threads.append(t)
             t.start()
-            # Stagger the thread starts slightly to prevent Playwright process spawning race conditions in uvloop
             time.sleep(1.5)
 
-        # Wait for all attempts in this round to finish/terminate
         for t in threads:
             t.join()
 
-        # If any attempt succeeded in this round, break the round loop early!
         if success_event.is_set():
-            logger.info(f"  ✓ Threaded browser fallback: Success in Round {round_idx}!")
+            logger.info(f"  ✓ Threaded browser map: Success in Round {round_idx}!")
             break
         else:
-            logger.warning(f"  ⚠ Round {round_idx} failed to retrieve any links.")
+            logger.warning(f"  ⚠ Round {round_idx} failed to map the website.")
 
-    added = 0
-    with lock:
-        for url in added_links:
-            if len(collected) >= limit:
-                break
-            if url not in collected:
+    if success_event.is_set():
+        with lock:
+            for url in added_links:
+                if len(collected) >= limit:
+                    break
                 collected.add(url)
-                added += 1
-
-    logger.info(f"  → Browser fallback added {added} new URLs (pool: {len(collected)})")
-    return added
+        return True
+    return False
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
@@ -320,7 +414,27 @@ def map_website(start_url: str, limit: int = MAX_URLS, proxy_dict: Optional[dict
     # Always seed with the start URL itself
     collected.add(_clean_url(start_url))
 
-    # ── Pre-fetch robots.txt AND homepage HTML in parallel ───────────────────
+    # ── Try Browser-First Scan ───────────────────────────────────────────────
+    t_start = time.perf_counter()
+    browser_success = _browser_map_website(start_url, collected, lock, limit, proxy_dict)
+
+    if browser_success:
+        sorted_urls = sorted(collected)
+        total = len(sorted_urls)
+        capped = total >= limit
+        logger.info(f"✅ Map complete via browser-first flow — {total} unique URLs (time: {time.perf_counter()-t_start:.2f}s)")
+        return {
+            "urls":          sorted_urls,
+            "total":         total,
+            "capped":        capped,
+            "from_sitemap":  total - 1,
+            "from_homepage": 0,
+            "sitemaps_used": [],
+        }
+
+    logger.warning("⚠ Browser-first flow failed — falling back to static HTML scan")
+
+    # ── Static Scan Fallback ─────────────────────────────────────────────────
     t_total = time.perf_counter()
 
     with ThreadPoolExecutor(max_workers=2) as pre_exec:

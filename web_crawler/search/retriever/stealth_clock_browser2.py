@@ -17,10 +17,7 @@ import cloakbrowser
 from .response import Response
 from .stealth_clock_browser import (
     _StealthMixin,
-    _human_pre_navigation_async,
-    _human_post_navigation_async,
     _build_context_options,
-    HARMFUL_ARGS,
     ALL_LAUNCH_ARGS,
     BLOCK_RESOURCE_TYPES,
     _get_random_stealth_ua,
@@ -49,6 +46,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         solve_cloudflare: bool = True,
         use_random_fingerprint: bool = True,
     ):
+        """Init."""
         self.headless = headless
         self.user_agent = user_agent or _get_random_stealth_ua()
         self.locale = locale
@@ -71,6 +69,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         self._browser = None
 
     async def _is_alive(self) -> bool:
+        """Return True if alive."""
         try:
             return (
                 self._browser is not None
@@ -80,6 +79,7 @@ class PersistentStealthyFetcher(_StealthMixin):
             return False
 
     async def _start(self) -> None:
+        """Start."""
         if await self._is_alive():
             return
 
@@ -133,6 +133,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         self._browser = None
 
     async def close(self) -> None:
+        """Close."""
         async with self._lock:
             await self._reset()
 
@@ -143,13 +144,15 @@ class PersistentStealthyFetcher(_StealthMixin):
         import re
         new_session = "".join(random.choices("0123456789abcdef", k=8))
         
-        # 1. Rotate Nodemaven session ID in username if present (-session- or -sid-)
+        # 1. Rotate Nodemaven/Thordata session ID in username if present (-session- or -sid- or -sessid-)
         username = self.proxy.get("username", "")
         if username:
             if "-session-" in username:
                 self.proxy["username"] = re.sub(r"-session-[a-zA-Z0-9]+", f"-session-{new_session}", username)
             elif "-sid-" in username:
                 self.proxy["username"] = re.sub(r"-sid-[a-zA-Z0-9]+", f"-sid-{new_session}", username)
+            elif "-sessid-" in username:
+                self.proxy["username"] = re.sub(r"-sessid-[a-zA-Z0-9]+", f"-sessid-{new_session}", username)
                 
         # 2. Rotate Evomi session ID in password if present (_session-)
         password = self.proxy.get("password", "")
@@ -165,6 +168,7 @@ class PersistentStealthyFetcher(_StealthMixin):
         referer: str = "https://www.google.com/",
         retries: int = 3,
     ) -> Response:
+        """Fetch."""
         await self._start()
 
         for attempt in range(retries):
@@ -209,12 +213,27 @@ class PersistentStealthyFetcher(_StealthMixin):
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout)
 
+                # Track total bytes downloaded via proxy
+                total_bytes = [0]
+                async def handle_response_bandwidth(response):
+                    try:
+                        hdrs = response.headers
+                        size = 0
+                        if 'content-length' in hdrs:
+                            size += int(hdrs['content-length'])
+                        size += sum(len(k.encode('utf-8')) + len(v.encode('utf-8')) for k, v in hdrs.items())
+                        total_bytes[0] += size
+                    except Exception:
+                        pass
+                page.on("response", handle_response_bandwidth)
+
                 # Layer 11: Advanced Deep Stealth Script Injection (Bypass CAPTCHA) - Handled natively by cloakbrowser binary
                 # stealth_script = ...
                 # await page.add_init_script(stealth_script)
 
                 if self.block_resources:
                     async def _block(route):
+                        """Block."""
                         if route.request.resource_type in BLOCK_RESOURCE_TYPES:
                             await route.abort()
                         else:
@@ -288,7 +307,7 @@ class PersistentStealthyFetcher(_StealthMixin):
 
                 logger.info(f"[PersistentFetcher] ✅ {url} (status={status})")
                 return Response(content=content, headers=headers, status=status,
-                                url=final_url, ok=status < 400)
+                                url=final_url, ok=status < 400, bandwidth_bytes=total_bytes[0])
 
             except Exception as e:
                 if "ERR_TIMED_OUT" in str(e) or "Timeout" in str(e):
@@ -316,6 +335,4 @@ class PersistentStealthyFetcher(_StealthMixin):
                          ok=False, error="Max retries exhausted")
 
 
-class AsyncStealthyFetcher(PersistentStealthyFetcher):
-    """Alias for consistency."""
-    pass
+
