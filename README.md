@@ -1,7 +1,7 @@
 <h3 align="center">
   <a name="readme-top"></a>
   <img
-    src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/Crawl%20Logo.svg"
+    src="https://gcrawlai.com/Logo.svg"
     height="200"
     alt="GcrawlAI Logo"
   >
@@ -19,7 +19,7 @@
 <div>
   <p align="center">
     <a href="https://x.com/Gramosoftpvtltd?s=20" target="_blank">
-      <img src="https://camo.githubusercontent.com/8c6c7b3530573136a2550b2858664b1e2f38d3926e8b844a051f4ec182c99fac/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f466f6c6c6f772532306f6e253230582d3030303030303f7374796c653d666f722d7468652d6261646765266c6f676f3d78266c6f676f436f6c6f723d7768697465" alt="Follow on X" />
+      <img src="https://camo.githubusercontent.com/8c6c7b3530573136a2550b2858664b1e2f38d3926e8b844a051f4ec182c99fac/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f466f6c6c6f772532306f6e253230582d3030303030303f7374796c653d666f722d7468652d6261646765266c6f676f3d78266c6f676f3d78266c6f676f436f6c6f723d7768697465" alt="Follow on X" />
     </a>
     <a href="https://www.linkedin.com/showcase/gcrawlai/" target="_blank">
       <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/linked_in.svg" alt="Follow on LinkedIn" />
@@ -29,42 +29,157 @@
 
 ---
 
-## 🚀 Welcome to GcrawlAI
-**GcrawlAI** is a high-performance, enterprise-grade distributed web crawler, scraper, and AI-agent extraction platform. Designed to feed retrieval-augmented generation (RAG) pipelines, LLMs, and semantic search indexes, it converts complex, noisy web structures into clean Markdown, structured JSON metadata, and full-page screenshots.
+## 🤔 Why GcrawlAI?
+
+**GcrawlAI** is a high-performance, enterprise-grade, distributed web crawler, scraper, and extraction platform. Designed to feed retrieval-augmented generation (RAG) pipelines, LLMs, and semantic search indexes, it converts complex, noisy web structures into clean Markdown, structured JSON metadata, and full-page screenshots.
 
 GcrawlAI automates browser steering, stealth obfuscation, anti-bot evasion, and distributed scaling so that you can focus on building AI features rather than managing crawling blockages.
 
 ---
 
-## ✨ Core Platforms & Modules
+## ✨ Features
 
-### 1. 🥷 Anti-Bot Evasion & Stealth Crawling Engine
-Built directly into the core browser stack, GcrawlAI implements state-of-the-art fingerprint evasion techniques:
-* **CloakBrowser & Custom Stealth Drivers**: Seamless integration with premium browser stealth extensions to mask automated runtimes, user-agents, canvas fingerprints, and WebGL signatures.
-* **Stepped Residential Proxy Rotation**: Multi-tier automatic proxy escalation (`Evomi Premium` ➔ `Nodemaven` ➔ `Evomi Core`). It leverages geo-IP targeting to match the site's local region and dynamically generates clean residential ISP sessions.
-* **Cinematic Human-Like Auto-Scrolling**: A physics-based, constant-speed scroll mechanism (`600px/second` or `24px` increments at `40ms` / 25 FPS) mimicking real human reading trajectories. It budgets and waits for the full configured `scroll_delay` between steps to force lazy-loaded images, assets, and scripts to initialize without causing blur or motion glitches in screenshots.
-* **Automated Interaction & Bypass**: Proactively cleans and closes cookie consent banners, popups, and screen overlays before taking screenshots or processing HTML to ensure a clean capture.
+- **🥷 Fingerprint Hygiene & Stealth Browsing**: Mask automated runtimes, WebGL signatures, canvas fingerprints, and automation leaks to seamlessly bypass aggressive anti-bot protections.
+- **🔀 Stepped Residential Proxy Rotation**: Multi-tier automatic proxy escalation with geographic IP targeting matching the target site's local region.
+- **✨ Fit-Markdown Extraction**: Converts pages to clean, LLM-ready markdown (pruning HTML boilerplate, menus, footers, and advertisements).
+- **💾 Offline HTML Bundle**: Downloads full pages along with CSS, images, and other assets, packaging them into a single ZIP file for local offline rendering.
+- **📊 SEO Data Collection**: Automatically extracts metadata, headers, titles, descriptions, open graph tags, and links structure from crawled pages.
+- **📸 High-Resolution Screenshotting & Document Parsing**: Physics-based scrolling to capture lazy-loaded content correctly.
+- **🗺️ URL Mapping**: `/links` endpoint discovers sitemap/internal links in seconds to build domain crawls.
+- **🔎 Unified Search Engine**: Developed a custom router to fetch and process Google search results with automatic search engine fallbacks.
+- **📦 Distributed Celery Architecture**: Massively parallel crawling backed by Redis and Celery.
+- **⚡ Smart Browser Pooling & Plan-based Concurrency**: Optimized browser resource pooling with dynamic execution concurrency limits enforced based on the user's active subscription plan to guarantee high performance and resource availability.
+- **🔒 Production Database Layer**: Secure API key issuance, rate limiting, and PostgreSQL Range Partitioning for search logs.
 
-### 2. 🤖 LLM-Powered Agentic Extraction Pipeline
-For highly ambiguous or dynamic tasks, GcrawlAI features a complete multi-step agentic search and extraction system:
-* **LLM Planner & Reasoner**: Utilizing state-of-the-art models (GPT-4o, Claude 3.5 Sonnet) to analyze user extraction schemas and plan query strategies.
-* **Autonomous Web Search**: Resolves relevant content in real-time utilizing integrations like Tavily, DuckDuckGo, and SerpAPI.
-* **Semantic Extractor**: Parses scraped page content into custom schemas, converting raw, unstructured HTML into clean, validated JSON output.
-* **Credit Billing system**: Built-in billing metrics to calculate exact token usage, search operations, and scraping queries, deducting credits relative to plan structures.
+---
 
-### 3. 📦 Distributed Scale Crawling Engine
-For large-scale, full-site crawling:
-* **Celery Task Queue**: Out-of-the-box parallel crawling using Celery backed by Redis.
-* **Sitemap XML Parsing**: Automated discovery of sitemaps to map and scrape thousands of internal URLs rapidly.
-* **AWS S3 / Cloud Artifact Storage**: Automatically uploads HTML outputs, screenshots, and metadata to cloud object storage.
-* **Real-time Live Progress tracking**: Streams real-time progress indicators, title updates, and page metrics back to the client via WebSockets.
+## 🔮 Roadmap / Coming Soon
 
-### 4. 🔒 Enterprise Auth, Pricing & Billing API
-A complete, production-ready SaaS administration layer:
-* **FastAPI Gateways**: Secure API key issuance, rate limiting, and route security.
-* **User Authentication**: JWT-based security flow coupled with reliable SMTP Email OTP verification for signups and password resets.
-* **Subcription Pricing Plans**: Pre-built plans (Free, Starter, Growth, Pro) integrated with Stripe payments, plan expiry dates, usage tracking, and concurrency limits.
-* **PostgreSQL Range Partitioning**: `job_results` table is range partitioned daily to support rapid queries and autovacuum performance under high-concurrency loads.
+- **🤖 Extractors (Auto Robots)**: Custom, pre-configured crawling robots designed to scrape and collect data from popular services like **Google Flights**, **Google Maps**, **Justdial**, and others based on specific user requirements.
+
+---
+
+## 📦 Python SDK (`gcrawl_sdk`)
+
+GcrawlAI provides an official, developer-friendly Python SDK (`gcrawl_sdk`) to interact with all API endpoints programmatically.
+
+### Installation
+
+```bash
+pip install gcrawl-sdk
+```
+
+### Quick Usage Examples
+
+#### 1. Scrape Endpoint (Single Page Extraction)
+Converts web pages to clean Markdown, HTML, or JSON.
+```python
+from gcrawl_sdk import GcrawlClient
+
+client = GcrawlClient(api_key="Your_Gcrawl_APIKey")
+result = client.scrape(
+    url="https://simplfin.tech",
+    formats=["markdown"],
+    geo="IN",
+    wait=True
+)
+print(result.markdown)
+```
+
+#### 2. Crawl Endpoint (Multi-Page Crawling)
+Initiates a deep website crawl up to a specified depth limit.
+```python
+from gcrawl_sdk import GcrawlClient
+
+client = GcrawlClient(api_key="Your_Gcrawl_APIKey")
+result = client.crawl(
+    url="https://simplfin.tech",
+    limit=50,
+    formats=["markdown"],
+    geo="IN",
+    wait=True
+)
+for page in result.pages:
+    print(f"Page: {page.url}")
+    print(page.markdown)
+```
+
+#### 3. Links Endpoint (Link Extraction)
+Extracts all hyperlinks discovered on a webpage.
+```python
+from gcrawl_sdk import GcrawlClient
+
+client = GcrawlClient(api_key="Your_Gcrawl_APIKey")
+result = client.links(
+    url="https://simplfin.tech",
+    limit=50,
+    geo="default",
+    wait=True
+)
+for link in result.links:
+    print(link)
+```
+
+#### 4. Screenshot Endpoint (Stealth Captures)
+Captures full-page screenshots bypassing lazy-loading limitations.
+```python
+from gcrawl_sdk import GcrawlClient
+
+client = GcrawlClient(api_key="Your_Gcrawl_APIKey")
+result = client.screenshot(
+    url="https://simplfin.tech",
+    geo="IN",
+    wait=True
+)
+print(result.screenshot_url)
+```
+
+#### 5. Search Endpoint (Google Search API)
+Queries Google using our unified search engine (utilizing Google search results API, Google Scraper, and DuckDuckGo fallbacks).
+```python
+from gcrawl_sdk import GcrawlClient
+
+client = GcrawlClient(api_key="Your_Gcrawl_APIKey")
+result = client.search(
+    query="gramosoft tech",
+    limit=10,
+    geo="IN"
+)
+for item in result.results:
+    print(f"Rank {item.position}: {item.title} -> {item.url}")
+```
+
+---
+
+## 🧭 Feature & API Options Guide
+
+### 1. Scrape API Configuration Options
+
+The `POST /api/v1/scrape` endpoint takes a JSON body specifying the target `url` and optional configurations for output types:
+
+| Object | Field | Default | Description |
+|---|---|---|---|
+| **proxy** | `geo` | `None` | Country code for proxy routing (e.g. `"US"`, `"IN"`) |
+| **markdown** | `enabled` | `False` | Enable extraction of Fit-Markdown output |
+| | `clean` | `True` | Strip standard boilerplate nodes (nav, footer, ads) |
+| **html** | `enabled` | `False` | Enable raw/cleaned HTML output |
+| | `clean` | `True` | Clean HTML content |
+| | `remove_external_links` | `False` | Strip outgoing external link tags |
+| **screenshot** | `enabled` | `False` | Capture screenshot image |
+| | `full_page` | `False` | Capture entire scrolling length of page |
+| | `auto_scroll` | `True` | Scroll mimicking human speed to load lazy elements |
+| **seo** | `enabled` | `False` | Extract page title, descriptions, open graph tags |
+
+### 2. Batch/Crawl Configuration Options
+
+The `POST /api/v1/crawl` endpoint initiates asynchronous background crawls:
+
+| Field | Default | Description |
+|---|---|---|
+| `url` | *Required* | Starting homepage or domain URL |
+| `crawl.max_pages` | `10` | Hard cap on pages to crawl |
+| `crawl.same_domain_only` | `True` | Restrict crawling strictly to base domain |
+| `crawl.include_subdomains` | `False` | Expand domain matching to subdomains |
 
 ---
 
@@ -75,8 +190,7 @@ A complete, production-ready SaaS administration layer:
 * **Distributed Task Queue**: [Celery](https://github.com/celery/celery)
 * **Cache / Message Broker**: [Redis](https://github.com/redis/redis)
 * **Relational Database**: [PostgreSQL](https://www.postgresql.org) (with partitioning and custom indexing)
-* **Browser Automation**: [Playwright](https://github.com/microsoft/playwright) / CloakBrowser
-* **AI Framework & LLMs**: OpenAI GPT, Anthropic Claude
+* **Browser Automation**: [Playwright](https://github.com/microsoft/playwright) (with stealth features)
 
 ---
 
@@ -189,7 +303,7 @@ See the [Angular Frontend README](https://github.com/GramosoftAI/GcrawlAI/blob/m
 │   ├── crawler/                # Orchestrators and distributed queues
 │   │   ├── helpers/            # Popups removal, captcha bypass, screenshots, SEO
 │   │   ├── map/                # Sitemap XML discovery & map crawlers
-│   │   └── page/               # Multi-tier page crawlers (1, 2, 3, Cloak)
+│   │   └── page/               # Multi-tier page crawlers (1, 2, 3, stealth)
 │   └── search/                 # Search engine retrievers
 ├── scripts/                    # Database ISPs and billing utility scripts
 ├── config.yaml                 # Core configuration profile
@@ -202,21 +316,15 @@ See the [Angular Frontend README](https://github.com/GramosoftAI/GcrawlAI/blob/m
 
 * **Scraper & Crawler API**:
   * `POST /api/v1/scrape`: Instant single page rendering & extraction (HTML, Markdown, screenshots, images, SEO).
+  * `POST /api/v1/scrape/offline-bundle`: Generate a complete offline package (HTML + css + js + assets inside a ZIP bundle).
   * `POST /api/v1/crawl`: Distributed asynchronous crawling of deep websites.
   * `POST /api/v1/links`: Rapid link mapping of target domains.
   * `POST /api/v1/screenshot`: High-resolution stealth page screenshots.
-  * `GET /crawler/status/{task_id}`: Celery task progress lookup.
-  * `GET /crawler/data/{crawl_id}`: Fetch crawled output results.
-  * `GET /crawl/get/content`: Fetch parsed HTML/Markdown artifacts.
-* **AI Agent API**:
-  * `POST /api/v1/agent`: Launch an asynchronous schema-driven extraction job.
-  * `GET /api/v1/agent/{job_id}`: Lookup agent execution status & results.
-  * `DELETE /api/v1/agent/{job_id}`: Cancel a running agent pipeline.
-* **SaaS Auth API**:
-  * `POST /api/v1/auth/signup/send-otp`: Dispatches validation code to sign up.
-  * `POST /api/v1/auth/signup/verify-otp`: Confirms validation and activates account.
-  * `POST /api/v1/auth/signin`: Validates credentials and returns JWT bearer token.
-  * `POST /api/v1/auth/forgot-password` / `/reset-password`: Account recovery endpoints.
+* **Task & Progress API**:
+  * `GET /crawler/status/{job_id}`: Celery task progress lookup.
+  * `GET /crawler/data/{job_id}`: Fetch raw JSON result data.
+  * `GET /crawler/results/{job_id}`: Poll and fetch completed job data.
+  * `GET /crawler/user/{user_id}`: Fetch all crawl job logs for a specific user.
 
 ---
 
@@ -232,6 +340,7 @@ We welcome community contributions! Please review the following workflow:
 ---
 
 ## 📄 License
+
 GcrawlAI is open-source software licensed under the **[MIT License](./LICENSE)**.
 
 <p align="center">
