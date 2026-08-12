@@ -1,0 +1,47 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+venv/
+.venv/
+env/
+.env/
+
+# Playwright / Crawlers
+playwright/.cache/
+browser_data/
+downloads/
+web_crawler/crawl_output-api/
+
+# Logs & temp
+*.log
+tmp/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+firecrawl/
+
+# Config & Secrets
+config.yaml
+config.yml
+secrets.json
+
+# Exclude specific folders
+grag/
+api/routes/admin_routes/
