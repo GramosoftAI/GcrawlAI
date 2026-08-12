@@ -24,6 +24,8 @@ from web_crawler.common.utils import normalize_url
 from web_crawler.crawler.map.map_crawler import map_website
 from api.core.database import upsert_job_result
 
+from justdial.convert_to_html_json import extract_business_listings
+
 # Import search and canonical delegates
 from web_crawler.crawler.helpers.crawler_search import (
     _is_search_url,
@@ -31,115 +33,11 @@ from web_crawler.crawler.helpers.crawler_search import (
     _format_search_results_markdown,
     _format_search_results_html,
 )
-from web_crawler.crawler.helpers.crawler_canonical import resolve_canonical_url
+
 from lxml import html
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
-
-
-def extract_business_listings(
-    html_content,
-    base_url="https://www.justdial.com",
-    main_xpath = "//main"
-    ):
-    """
-    Extract business listings from Justdial search page HTML.
-
-    Args:
-        html_content (str): HTML source
-        base_url (str): Base URL for relative links
-
-    Returns:
-        list[dict]
-    """
-    if not html_content:
-        return []
-
-    try:
-        tree = html.fromstring(html_content)
-
-        # Find the main tag
-        main = tree.xpath("//main")
-        if not main:
-            return []
-
-        main = main[0]
-
-        # Every business card
-        cards = main.xpath('.//div[contains(@class,"resultbox_textbox")]')
-
-        results = []
-
-        for card in cards:
-
-            def first(xpath):
-                value = card.xpath(xpath)
-                if not value:
-                    return None
-
-                if isinstance(value[0], str):
-                    return value[0].strip()
-
-                return value[0].text_content().strip()
-
-            # Name
-            name = first('.//h2//span[contains(@class,"resultbox_title_anchor")]')
-
-            # Profile URL
-            href = first('.//h2/a/@href')
-            if href:
-                href = urljoin(base_url, href)
-
-            # Rating
-            rating = first('.//li[contains(@class,"resultbox_totalrate")]/text()')
-
-            # Rating Count
-            rating_count = first('.//li[contains(@class,"resultbox_countrate")]')
-
-            # Address
-            address = first('.//div[contains(@class,"locatcity")]')
-
-            # Business Status
-            status = first('.//ul[contains(@class,"resultbox_address")][2]//span')
-
-            # Phone
-            phone = first('.//span[contains(@class,"callcontent")]')
-            if phone == "Show Number":
-                phone = "Not Available"
-
-            # WhatsApp Available
-            whatsapp = bool(card.xpath('.//*[contains(text(),"WhatsApp")]'))
-
-            # Respond Time
-            responds_in = first('.//button//*[contains(text(),"Responds")]')
-
-            # Recent Enquiries
-            enquiries = first('.//div[contains(@class,"btnresponse")]')
-
-            # Verified
-            verified = bool(
-                card.xpath('.//img[contains(@src,"verified")]')
-            )
-
-            results.append({
-                "name": name,
-                "url": href,
-                "rating": rating,
-                "rating_count": rating_count,
-                "address": address,
-                "status": status,
-                "phone": phone,
-                "whatsapp": whatsapp,
-                "verified": verified,
-                "responds_in": responds_in,
-                "recent_enquiries": enquiries
-            })
-
-        return results
-    except Exception as e:
-        logger.error(f"Error extracting Justdial business listings: {e}")
-        return []
 
 
 class WebCrawler:

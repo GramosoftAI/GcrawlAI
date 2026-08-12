@@ -12,6 +12,7 @@ from api.routes.admin_error_logs_routes import router as error_logs_router
 from api.routes.admin_email_routes import router as email_router
 from api.routes.admin_overall_logs_routes import router as overall_logs_router
 from api.routes.admin_auto_robots_routes import router as auto_robots_router
+from api.routes.admin_xpaths_routes import router as xpaths_router
 
 router = APIRouter()
 router.include_router(dashboard_router)
@@ -22,3 +23,4 @@ router.include_router(error_logs_router)
 router.include_router(email_router)
 router.include_router(overall_logs_router)
 router.include_router(auto_robots_router)
+router.include_router(xpaths_router)

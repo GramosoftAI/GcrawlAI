@@ -51,7 +51,7 @@ class JustdialRequest(BaseModel):
 
     category: StrictStr
 
-    headers: Optional[Dict[str, str]] = None
+
 
 class JustdialResponse(BaseModel):
     status_code: int = 200

@@ -474,6 +474,63 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_scraper_xpaths_table(self) -> bool:
+        """Create scraper_xpaths table and seed default XPaths for Justdial"""
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS scraper_xpaths (
+            scraper_name VARCHAR(50) NOT NULL,
+            field_name VARCHAR(100) NOT NULL,
+            xpath_value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (scraper_name, field_name)
+        );
+        """
+        seed_query = """
+        INSERT INTO scraper_xpaths (scraper_name, field_name, xpath_value)
+        VALUES 
+            ('justdial', 'main_xpath', '//main'),
+            ('justdial', 'card_xpath', './/div[contains(@class,"resultbox_textbox")]'),
+            ('justdial', 'name_xpath', './/h2//span[contains(@class,"resultbox_title_anchor")]'),
+            ('justdial', 'href_xpath', './/h2/a/@href'),
+            ('justdial', 'rating_xpath', './/li[contains(@class,"resultbox_totalrate")]/text()'),
+            ('justdial', 'rating_count_xpath', './/li[contains(@class,"resultbox_countrate")]'),
+            ('justdial', 'address_xpath', './/div[contains(@class,"locatcity")]'),
+            ('justdial', 'status_xpath', './/ul[contains(@class,"resultbox_address")][2]//span'),
+            ('justdial', 'phone_xpath', './/span[contains(@class,"callcontent")]'),
+            ('justdial', 'whatsapp_xpath', './/*[contains(text(),"WhatsApp")]'),
+            ('justdial', 'responds_in_xpath', './/button//*[contains(text(),"Responds")]'),
+            ('justdial', 'enquiries_xpath', './/div[contains(@class,"btnresponse")]'),
+            ('justdial', 'verified_xpath', './/img[contains(@src,"verified")]'),
+            ('google-flights', 'cards_xpath', '//li[contains(@class, "pIav2d")]'),
+            ('google-flights', 'airline_xpath', './/div[contains(@class,"sSHqwe") and contains(@class,"tPgKwe") and contains(@class,"ogfYpf")]/span'),
+            ('google-flights', 'price_xpath_1', './/span[contains(@aria-label, "rupees")]/text()'),
+            ('google-flights', 'price_xpath_2', './/span[contains(@aria-label, "₹")]/text()'),
+            ('google-flights', 'price_xpath_fallback', './/div[contains(@class,"YMlIz")]//span[contains(text(), "₹")]/text()'),
+            ('google-flights', 'departure_time_xpath', './/div[contains(@class,"wtdjmc")]//text()'),
+            ('google-flights', 'arrival_time_xpath', './/div[contains(@class,"XWcVob")]//text()'),
+            ('google-flights', 'duration_xpath', './/div[contains(@class,"gvkrdb")]//text()'),
+            ('google-flights', 'stops_xpath', './/div[contains(@class,"EfT7Ae")]//text()'),
+            ('google-flights', 'emissions_xpath', './/*[contains(text(),"CO2e")]//text()')
+        ON CONFLICT (scraper_name, field_name) DO NOTHING;
+        """
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(create_table_query)
+            cursor.execute(seed_query)
+            conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"✗ Failed to create/seed scraper_xpaths: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     def create_subscription_plans_tables(self) -> bool:
         """Create monthly and yearly subscription plans tables and seed default pricing plans"""
         drop_old_query = """
