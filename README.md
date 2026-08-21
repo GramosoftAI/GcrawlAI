@@ -1,30 +1,33 @@
 <h3 align="center">
   <a name="readme-top"></a>
-  <img
-    src="https://gcrawlai.com/Logo.svg"
-    height="200"
-    alt="GcrawlAI Logo"
-  >
+  <a href="https://gcrawlai.com/" target="_blank">
+    <img
+      src="https://gcrawlai.com/Logo.svg"
+      height="200"
+      alt="GcrawlAI Logo"
+    >
+  </a>
 </h3>
 
 <div align="center">
-  <a href="#">
-    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/mit-license.svg" alt="License" target="_blank">
+  <a href="https://gcrawlai.com/" target="_blank">
+    <img src="https://img.shields.io/badge/Website-gcrawlai.com-blue?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Official Website">
   </a>
-  <a href="https://gcrawl.gramopro.ai/" target="_blank">
-    <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/visits.svg" alt="Visit gcrawl.ai">
+  <a href="https://gcrawlai.com/docs" target="_blank">
+    <img src="https://img.shields.io/badge/Documentation-docs-darkgreen?style=for-the-badge&logo=gitbook&logoColor=white" alt="Documentation">
+  </a>
+  <a href="https://blog.gcrawlai.com/" target="_blank">
+    <img src="https://img.shields.io/badge/Blog-blog.gcrawlai.com-orange?style=for-the-badge&logo=rss&logoColor=white" alt="Blog">
   </a>
 </div>
 
-<div>
-  <p align="center">
-    <a href="https://x.com/Gramosoftpvtltd?s=20" target="_blank">
-      <img src="https://camo.githubusercontent.com/8c6c7b3530573136a2550b2858664b1e2f38d3926e8b844a051f4ec182c99fac/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f466f6c6c6f772532306f6e253230582d3030303030303f7374796c653d666f722d7468652d6261646765266c6f676f3d78266c6f676f3d78266c6f676f436f6c6f723d7768697465" alt="Follow on X" />
-    </a>
-    <a href="https://www.linkedin.com/showcase/gcrawlai/" target="_blank">
-      <img src="https://raw.githubusercontent.com/GramosoftAI/GcrawlAI/refs/heads/main/img/linked_in.svg" alt="Follow on LinkedIn" />
-    </a>
-  </p>
+<div align="center" style="margin-top: 10px;">
+  <a href="https://www.linkedin.com/showcase/gcrawlai/home/" target="_blank">
+    <img src="https://img.shields.io/badge/LinkedIn-Follow-0077b5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Follow on LinkedIn">
+  </a>
+  <a href="./LICENSE" target="_blank">
+    <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License">
+  </a>
 </div>
 
 ---
