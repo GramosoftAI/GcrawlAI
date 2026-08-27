@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import httpx
 
-from api.models.payloads import (
+from api.models.gcrawl_payloads import (
     SignupOTPRequest,
     VerifyOTPRequest,
     SignInRequest,

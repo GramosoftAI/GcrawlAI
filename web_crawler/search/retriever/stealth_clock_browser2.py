@@ -202,8 +202,18 @@ class PersistentStealthyFetcher(_StealthMixin):
                 
                 # Context UA must match
                 ctx_opts["user_agent"] = current_ua
-                ctx_opts["locale"] = self.locale
-                ctx_opts["timezone_id"] = self.timezone_id
+                
+                # Dynamic GeoIP lookup for locale and timezone
+                current_locale = self.locale
+                current_timezone = self.timezone_id
+                if self.proxy:
+                    from web_crawler.common.proxy_manager import get_proxy_geo_info
+                    geo_info = get_proxy_geo_info(self.proxy)
+                    current_locale = geo_info["locale"]
+                    current_timezone = geo_info["timezone"]
+                    
+                ctx_opts["locale"] = current_locale
+                ctx_opts["timezone_id"] = current_timezone
 
                 # Pop browser launch-only parameters that are invalid for new_context()
                 ctx_opts.pop("headless", None)

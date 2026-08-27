@@ -217,6 +217,8 @@ def _record_crawl_error(
             source_tool = "Links"
         elif crawl_mode == "screenshot":
             source_tool = "Screenshot"
+        elif crawl_mode == "extractors":
+            source_tool = "Extractors"
 
         log_admin_error(
             log_id=crawl_id,

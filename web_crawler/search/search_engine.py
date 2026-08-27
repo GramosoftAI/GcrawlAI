@@ -14,14 +14,6 @@ logger = logging.getLogger(__name__)
 _SERVER_LOCALE_CACHE = None
 _USER_LOCALE_CACHE: Dict[str, Any] = {}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SearXNG Circuit Breaker
-# After the first connection failure, skip SearXNG for _SEARXNG_COOLDOWN seconds
-# instead of wasting ~4s per request trying to connect to a dead service.
-# ─────────────────────────────────────────────────────────────────────────────
-_SEARXNG_LAST_FAILURE: Optional[float] = None
-_SEARXNG_COOLDOWN: float = 300.0  # 5 minutes
-
 # DDG Fallback Control — set ALLOW_DDG_FALLBACK=true to enable DDG as last resort
 _ALLOW_DDG_FALLBACK: bool = os.getenv("ALLOW_DDG_FALLBACK", "false").lower() == "true"
 
@@ -85,85 +77,6 @@ def get_detected_locale(ip: Optional[str] = None) -> dict:
 
     return {"locale": "en-US", "city": "", "region": ""}
 
-
-def searxng_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
-    """Searxng search."""
-    global _SEARXNG_LAST_FAILURE
-    url = os.getenv("SEARXNG_ENDPOINT")
-    if not url:
-        return []
-
-    # SearXNG circuit breaker: skip if recently failed
-    if _SEARXNG_LAST_FAILURE is not None:
-        elapsed = time.time() - _SEARXNG_LAST_FAILURE
-        if elapsed < _SEARXNG_COOLDOWN:
-            logger.info(
-                f"⏭️ [SEARCH] SearXNG circuit breaker OPEN — skipping "
-                f"(failed {elapsed:.0f}s ago, cooldown={_SEARXNG_COOLDOWN:.0f}s)"
-            )
-            return []
-        else:
-            logger.info("🔁 [SEARCH] SearXNG circuit breaker HALF-OPEN — retrying")
-            _SEARXNG_LAST_FAILURE = None
-
-    location_data = get_detected_locale(ip)
-    locale = location_data["locale"]
-
-    all_results = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
-    for pageno in range(1, 11):
-        try:
-            with httpx.Client() as client:
-                response = client.get(
-                    url,
-                    params={"q": query, "format": "json", "pageno": pageno, "language": locale},
-                    headers=headers,
-                    timeout=5.0
-                )
-            if response.status_code == 200:
-                # SearXNG is back! Reset circuit breaker
-                if _SEARXNG_LAST_FAILURE is not None:
-                    logger.info("✅ [SEARCH] SearXNG circuit breaker CLOSED (connection restored)")
-                    _SEARXNG_LAST_FAILURE = None
-
-                page_data = response.json()
-                page_results = page_data.get("results", [])
-
-                if not page_results:
-                    break
-
-                all_results.extend(page_results)
-
-                if len(all_results) >= limit:
-                    break
-            else:
-                logger.warning(f"SearXNG pageno {pageno} failed with status {response.status_code}")
-                break
-        except Exception as e:
-            logger.warning(f"SearXNG engine at {url} page {pageno} failed: {e}")
-            # Open circuit breaker on connection failure
-            _SEARXNG_LAST_FAILURE = time.time()
-            logger.warning(
-                f"⚡ [SEARCH] SearXNG circuit breaker OPENED — "
-                f"will skip for {_SEARXNG_COOLDOWN:.0f}s"
-            )
-            break
-
-    formatted = []
-    for r in all_results[:limit]:
-        formatted.append({
-            "url": r.get("url"),
-            "title": r.get("title"),
-            "description": r.get("content", "")
-        })
-    return formatted
-
-
 def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[str, str]]:
     """Ddg search."""
     try:
@@ -190,7 +103,7 @@ def ddg_search(query: str, limit: int, ip: Optional[str] = None) -> List[Dict[st
     return []
 
 
-async def serper_search(query: str, limit: int) -> List[Dict[str, str]]:
+async def serper_search(query: str, limit: int, country_code: Optional[str] = None) -> List[Dict[str, str]]:
     """Search Google using Serper.dev API."""
     from pathlib import Path
     from dotenv import load_dotenv
@@ -213,11 +126,16 @@ async def serper_search(query: str, limit: int) -> List[Dict[str, str]]:
     all_results = []
     page = 1
 
+    gl_code = "in"
+    if country_code and country_code.strip() and country_code.lower() != "default":
+        gl_code = country_code.strip().lower()
+
     # We fetch page-by-page until we reach the requested limit
     while len(all_results) < limit:
         payload = {
             "q": query,
-            "page": page
+            "page": page,
+            "gl": gl_code
         }
         logger.info(f"🔍 [SEARCH] Serper.dev: Fetching page {page} for query: '{query}'")
         try:
@@ -320,9 +238,9 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
     # ── Attempt 0: Serper.dev Search (Primary, if api key is present) ────────
     serper_api_key = os.getenv("SERPER_API_KEY")
     if serper_api_key:
-        logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Serper.dev")
+        logger.info(f"🔍 [SEARCH] Attempting search with primary engine: Serper.dev using country_code={proxy_geo}")
         try:
-            results = await serper_search(query, limit)
+            results = await serper_search(query, limit, country_code=proxy_geo)
             if results:
                 logger.info(f"✅ [SEARCH] Serper.dev search successful. Found {len(results)} results.")
                 return _finalize(results)
@@ -375,14 +293,6 @@ async def execute_search_router(query: str, limit: int, ip: Optional[str] = None
         except Exception as e:
             last_google_error = f"{type(e).__name__}: {e}"
             logger.error(f"❌ [SEARCH] Google retry {retry_num + 1} failed: {last_google_error}")
-
-    # ── SearXNG (only if circuit breaker allows) ────────────────────────────
-    if os.getenv("SEARXNG_ENDPOINT"):
-        logger.info(f"🔍 [SEARCH] Attempting search with secondary engine: SearXNG")
-        results = searxng_search(query, search_limit, ip)
-        if results:
-            logger.info(f"✅ [SEARCH] SearXNG search successful. Found results.")
-            return _finalize(results)
 
     # ── DuckDuckGo (ONLY if explicitly allowed) ─────────────────────────────
     if _ALLOW_DDG_FALLBACK:

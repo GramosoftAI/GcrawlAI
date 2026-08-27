@@ -3,6 +3,7 @@ Celery configuration for distributed crawling
 """
 
 from celery import Celery
+from celery.schedules import crontab
 import os
 
 # Redis connection
@@ -60,7 +61,7 @@ celery_app.conf.update(
     beat_schedule={
         'cleanup-old-results-daily': {
             'task': 'celery_tasks.cleanup_old_results',
-            'schedule': 86400.0,  # Run every 24 hours
+            'schedule': crontab(hour=0, minute=0),  # Run daily at 12:00 AM midnight (IST/Asia/Kolkata)
             'args': (7,)
         },
     }

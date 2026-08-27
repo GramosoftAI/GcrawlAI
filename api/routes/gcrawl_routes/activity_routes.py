@@ -14,9 +14,11 @@ def fetch_activity_logs(
     authorization: Optional[str] = Header(None, description="Authorization: Bearer <token>"),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key", description="API key for client access"),
     days: int = 7,
-    endpoint: Optional[str] = None
+    endpoint: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20
 ):
-    """Fetch and return activity logs."""
+    """Fetch and return activity logs with pagination."""
     try:
         user_id = validate_recaptcha_or_jwt(
             auth_header=authorization,
@@ -28,7 +30,7 @@ def fetch_activity_logs(
             if not endpoint.startswith("/"):
                 endpoint = f"/{endpoint}"
                 
-        logs = get_activity_logs(user_id, days=days, endpoint=endpoint)
+        logs = get_activity_logs(user_id, days=days, endpoint=endpoint, page=page, limit=limit)
         
         # Format the timestamp for the frontend
         formatted_logs = []
@@ -116,6 +118,7 @@ def fetch_activity_summary(
                 "scearch_count": 0,
                 "screenshot_count": 0,
                 "links_count": 0,
+                "extractors_count": 0,
                 "total_count": 0
             }
 
@@ -130,6 +133,7 @@ def fetch_activity_summary(
                     "scearch_count": entry.get("search_count", 0),
                     "screenshot_count": entry.get("screenshot_count", 0),
                     "links_count": entry.get("links_count", 0),
+                    "extractors_count": entry.get("extractors_count", 0),
                     "total_count": entry.get("total_count", 0)
                 })
 

@@ -13,6 +13,26 @@ def is_captcha_page(page: Page) -> bool:
     try:
         title = page.title().lower().strip()
         
+        # Get text content early to check overall text footprint and unconditional text markers
+        text_content = ""
+        try:
+            text_content = page.evaluate("document.body ? document.body.innerText : ''")
+        except:
+            pass
+        
+        text_len = len(text_content.strip())
+        text_lower = text_content.lower()
+
+        # Check highly specific text markers unconditionally (always indicate a block/challenge wall)
+        unconditional_text_markers = [
+            "prove your humanity",
+            "please show you're not a robot",
+            "our systems have detected unusual traffic"
+        ]
+        if any(marker in text_lower for marker in unconditional_text_markers):
+            logger.warning("CAPTCHA/Challenge detected via unconditional text marker.")
+            return True
+
         # 1. Determine if this looks like a WAF challenge/block page by title
         challenge_title_keywords = [
             "just a moment", "attention required", "not a robot", "pardon our interruption",
@@ -39,16 +59,6 @@ def is_captcha_page(page: Page) -> bool:
         if not is_waf_challenge:
             return False
 
-        # Get text content to check overall text footprint
-        text_content = ""
-        try:
-            text_content = page.evaluate("document.body ? document.body.innerText : ''")
-        except:
-            pass
-        
-        text_len = len(text_content.strip())
-        text_lower = text_content.lower()
-
         # Highly specific CAPTCHA text markers
         specific_markers = [
             "our systems have detected unusual traffic",
@@ -56,6 +66,7 @@ def is_captcha_page(page: Page) -> bool:
             "i'm not a robot",
             "i am not a robot",
             "verify you are human",
+            "prove your humanity",
             "click the button below to continue shopping",
             "type the characters you see in this image",
             "enter the characters you see below",

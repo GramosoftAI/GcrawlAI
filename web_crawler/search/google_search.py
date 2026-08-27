@@ -229,20 +229,20 @@ def _build_proxy_config(session_id: Optional[str] = None, proxy_geo: Optional[st
         )
 
     # Switched to Nodemaven residential proxy for higher IP quality and fewer CAPTCHAs
-    host = os.getenv("NODEMAVEN_HOST", os.getenv("ATTEMPT_1_PROXY_HOST"))
-    port = os.getenv("NODEMAVEN_PORT", os.getenv("ATTEMPT_1_PROXY_PORT"))
+    host = os.getenv("ATTEMPT_1_PROXY_HOST")
+    port = os.getenv("ATTEMPT_1_PROXY_PORT")
     server = f"http://{host}:{port}"
     
     base_user = os.getenv("NODEMAVEN_BASE_USER")
     if not base_user:
-        tier1_user = os.getenv("ATTEMPT_1_PROXY_USER")
+        tier1_user = os.getenv("ATTEMPT_1_PROXY_USER", "")
         if "-" in tier1_user:
             base_user = tier1_user.split("-")[0]
         else:
-            base_user = tier1_user
+            base_user = tier1_user or "rajeshm_gramosoft_in"
             
     user = f"{base_user}-country-IN-filter-medium-speed-fast"
-    pw = os.getenv("NODEMAVEN_PASS", os.getenv("ATTEMPT_1_PROXY_PASS"))
+    pw = os.getenv("ATTEMPT_1_PROXY_PASS")
     
     if session_id:
         user = f"{user}-session-{session_id}"

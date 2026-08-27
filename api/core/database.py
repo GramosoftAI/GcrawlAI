@@ -181,9 +181,10 @@ def log_proxy_bandwidth(user_id: Union[int, str], endpoint: str, url_or_query: s
     except Exception as e:
         logger.error(f"Failed to log proxy bandwidth for user {user_id}: {e}")
 
-def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = None) -> list:
-    """Fetch activity logs for a specific user"""
+def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = None, page: int = 1, limit: int = 20) -> list:
+    """Fetch activity logs for a specific user with pagination"""
     try:
+        offset = (page - 1) * limit
         with get_pooled_connection() as conn:
             with conn.cursor() as cursor:
                 query = """
@@ -195,13 +196,17 @@ def get_activity_logs(user_id: Union[int, str], days: int = 7, endpoint: str = N
                 params = [str(user_id), days]
                 
                 if endpoint:
-                    query += " AND a.endpoint = %s"
-                    params.append(endpoint)
+                    if endpoint.upper() == "/EXTRACTORS":
+                        query += " AND a.endpoint IN ('/AMAZON', '/AMAZON-PRODUCT', '/FLIPKART', '/WALMART', '/MYNTRA', '/GOOGLE-FLIGHTS', '/JUSTDIAL')"
+                    else:
+                        query += " AND a.endpoint = %s"
+                        params.append(endpoint)
                     
                 query += """
                     ORDER BY a.created_at DESC
-                    LIMIT 1000
+                    LIMIT %s OFFSET %s
                 """
+                params.extend([limit, offset])
                 
                 cursor.execute(query, tuple(params))
                 columns = [col[0] for col in cursor.description]
@@ -264,6 +269,26 @@ def upsert_job_result(job_id: str, payload: dict, user_id: str = None) -> None:
     except Exception as e:
         logger.error(f"Failed to upsert job result for job {job_id}: {e}")
 
+def save_extractor_result(job_id: str, payload: dict, user_id: str = None) -> None:
+    """Overwrites or inserts the extracted structured JSON payload in the job_results table."""
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                payload_str = json.dumps(payload)
+                cursor.execute(
+                    "UPDATE job_results SET json_content = %s::jsonb WHERE job_id = %s",
+                    (payload_str, job_id)
+                )
+                if cursor.rowcount == 0:
+                    cursor.execute(
+                        "INSERT INTO job_results (job_id, user_id, json_content) VALUES (%s, %s, %s::jsonb)",
+                        (job_id, user_id, payload_str)
+                    )
+            conn.commit()
+            logger.info(f"✅ Successfully saved extractor JSON result in Postgres DB for job_id: {job_id}")
+    except Exception as e:
+        logger.error(f"Failed to save extractor JSON result for job {job_id}: {e}")
+
 def get_usage_summary(user_id: Union[int, str], start_dt, end_dt) -> list:
     """Fetch daily request counts segmented by endpoint for a user in a date range"""
     import datetime
@@ -282,6 +307,7 @@ def get_usage_summary(user_id: Union[int, str], start_dt, end_dt) -> list:
                         COUNT(*) FILTER (WHERE UPPER(endpoint) = '/SEARCH') AS search_count,
                         COUNT(*) FILTER (WHERE UPPER(endpoint) = '/SCREENSHOT') AS screenshot_count,
                         COUNT(*) FILTER (WHERE UPPER(endpoint) = '/LINKS') AS links_count,
+                        COUNT(*) FILTER (WHERE UPPER(endpoint) IN ('/AMAZON', '/AMAZON-PRODUCT', '/FLIPKART', '/WALMART', '/MYNTRA', '/GOOGLE-FLIGHTS', '/JUSTDIAL')) AS extractors_count,
                         COUNT(*) AS total_count
                     FROM activity_logs
                     WHERE user_id = %s AND created_at >= %s AND created_at <= %s
@@ -298,7 +324,8 @@ def get_usage_summary(user_id: Union[int, str], start_dt, end_dt) -> list:
                         "search_count": int(row[3] or 0),
                         "screenshot_count": int(row[4] or 0),
                         "links_count": int(row[5] or 0),
-                        "total_count": int(row[6] or 0)
+                        "extractors_count": int(row[6] or 0),
+                        "total_count": int(row[7] or 0)
                     })
                 return results
     except Exception as e:
@@ -318,7 +345,7 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT 
-                        CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                        CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 0) ELSE COALESCE(ms.credits_included, 0) END as total_requests, 
                         u.used_requests
                     FROM user_plans u
                     LEFT JOIN plan_expiry e ON u.user_id = e.user_id
@@ -338,9 +365,13 @@ def get_user_remaining_credits(user_id: Union[int, str]) -> int:
 
 def get_admin_recipient_emails() -> str:
     """
-    Get admin recipient email addresses from the `admin_emails` table in the database.
-    Does NOT fall back to environment variables or config.yaml settings.
+    Get admin recipient email addresses.
+    First tries to retrieve from the `admin_emails` table in the database.
+    If none are found, falls back to the ADMIN_EMAIL environment variable or config email setting.
     """
+    import os
+    from api.core.config_setup import load_config
+    
     emails = []
     try:
         with get_pooled_connection() as conn:
@@ -350,6 +381,16 @@ def get_admin_recipient_emails() -> str:
                 rows = cur.fetchall()
                 emails = [r[0] for r in rows if r[0]]
     except Exception as e:
-        logger.warning(f"Failed to fetch admin emails from database: {e}")
+        logger.warning(f"Failed to fetch admin emails from database (it might not exist yet): {e}")
 
-    return ",".join(emails)
+    if emails:
+        return ",".join(emails)
+
+    try:
+        config = load_config()
+        smtp_config = config.get("email", {})
+        fallback = os.getenv("ADMIN_EMAIL") or smtp_config.get("from_email", "")
+        return fallback
+    except Exception as e:
+        logger.error(f"Failed to load fallback admin email: {e}")
+        return os.getenv("ADMIN_EMAIL", "")

@@ -34,8 +34,10 @@ class CrawlConfig:
     js_render: bool = True
     render_timeout: int = 30000
     auto_scroll: bool = True
+    auto_scroll_for_html: bool = False
     scroll_delay: int = 500
     max_scrolls: int = 10
+    scroll_iteration_js: Optional[str] = None
     html_clean: bool = True
     html_remove_external_links: bool = False
     html_relative_to_absolute_links: bool = True
@@ -56,6 +58,7 @@ class CrawlConfig:
     proxy_password: Optional[str] = None
 
     raw_payload: Optional[dict] = None
+    plugin_name: Optional[str] = None
 
     def __post_init__(self):
         # Allow overriding headless mode from environment variable

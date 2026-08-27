@@ -1,7 +1,7 @@
 import logging
 from typing import Union, Optional
 from fastapi import APIRouter, HTTPException, Header
-from api.models.payloads import UserCrawlsResponse, UserCrawlJobResponse, CrawlPathsResponse
+from api.models.gcrawl_payloads import UserCrawlsResponse, UserCrawlJobResponse, CrawlPathsResponse
 from api.core.database import get_pooled_connection
 
 logger = logging.getLogger(__name__)

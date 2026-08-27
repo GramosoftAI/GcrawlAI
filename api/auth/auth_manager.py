@@ -1443,23 +1443,29 @@ class AuthManager:
             pw_hash, pw_salt = self.password_hasher.hash_password(random_pw)
 
             with self._db_connection_context() as conn:
-
                 cursor = conn.cursor(cursor_factory=RealDictCursor)
-
                 cursor.execute("""
-
                     INSERT INTO users (name, email, password_hash, password_salt, is_active, created_at)
-
                     VALUES (%s, %s, %s, %s, true, %s)
-
                     RETURNING user_id, name, email, created_at, is_active, admin_login
-
                 """, (name, email.lower().strip(), pw_hash, pw_salt, get_ist_now()))
-
+                 
                 user = cursor.fetchone()
-
+                 
+                if user:
+                    # Insert default Free plan limits
+                    cursor.execute("""
+                        INSERT INTO user_plans (user_id, plan_type, used_requests)
+                        VALUES (%s, 'free', 0)
+                    """, (user['user_id'],))
+                     
+                    # Insert default Free plan expiry
+                    cursor.execute("""
+                        INSERT INTO plan_expiry (user_id, plan_type, subscript_type, expiry_date, is_active)
+                        VALUES (%s, 'free', 'MONTHLY', date_trunc('month', CURRENT_TIMESTAMP) + interval '1 month' - interval '1 second', TRUE)
+                    """, (user['user_id'],))
+                 
                 conn.commit()
-
                 cursor.close()
 
             if not user:

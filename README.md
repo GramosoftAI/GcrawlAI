@@ -45,7 +45,8 @@ GcrawlAI automates browser steering, stealth obfuscation, anti-bot evasion, and 
 - **🥷 Fingerprint Hygiene & Stealth Browsing**: Mask automated runtimes, WebGL signatures, canvas fingerprints, and automation leaks to seamlessly bypass aggressive anti-bot protections.
 - **🔀 Stepped Residential Proxy Rotation**: Multi-tier automatic proxy escalation with geographic IP targeting matching the target site's local region.
 - **✨ Fit-Markdown Extraction**: Converts pages to clean, LLM-ready markdown (pruning HTML boilerplate, menus, footers, and advertisements).
-- **💾 Offline HTML Bundle**: Downloads full pages along with CSS, images, and other assets, packaging them into a single ZIP file for local offline rendering.
+- **💾 Offline HTML Bundle**: Downloads full pages along with CSS, images, and other assets, packaging them into a single ZIP file for local offline rendering. Available both as a REST API endpoint and as browser extensions so you can use it however you prefer.
+- **🔐 Extension-based Cookie Synchronization**: Extract active session cookies and local storage tokens directly from your Chrome/Firefox browser using the official GcrawlAI browser extension. Automatically syncs them with the backend to scrape login-required websites without re-authentication.
 - **📊 SEO Data Collection**: Automatically extracts metadata, headers, titles, descriptions, open graph tags, and links structure from crawled pages.
 - **📸 High-Resolution Screenshotting & Document Parsing**: Physics-based scrolling to capture lazy-loaded content correctly.
 - **🗺️ URL Mapping**: `/links` endpoint discovers sitemap/internal links in seconds to build domain crawls.
@@ -56,9 +57,18 @@ GcrawlAI automates browser steering, stealth obfuscation, anti-bot evasion, and 
 
 ---
 
-## 🔮 Roadmap / Coming Soon
+## 💎 Paid Plans (Premium Features)
 
-- **🤖 Extractors (Auto Robots)**: Custom, pre-configured crawling robots designed to scrape and collect data from popular services like **Google Flights**, **Google Maps**, **Justdial**, and others based on specific user requirements.
+The following advanced custom extractors are exclusive to GcrawlAI's **Paid Plans** and are kept in a closed-source enterprise repository:
+
+- **🤖 Custom Extractors (Auto Robots)**: Specialized crawlers pre-configured to bypass complex site architectures, rate-limits, and structured formats:
+  - **Amazon Search Scraper** : Scrapes product listings, pricing, and reviews.
+  - **Amazon Product Details Scraper** : Extracts detailed spec sheets, histograms, rating metrics, prime tags, and reviews lists by ASIN.
+  - **Flipkart Scraper** : Extracts product listings, details, and specifications.
+  - **Walmart Scraper** : Scrapes product searches and JSON results from Walmart.
+  - **Myntra Scraper** : Scrapes clothing and lifestyle product listings and pricing from Myntra.
+  - **Google Flights Scraper** : Retrieves real-time flight options, schedules, airlines, and prices.
+  - **Justdial Scraper** : Collects local business information, contact details, addresses, and ratings.
 
 ---
 
@@ -323,6 +333,7 @@ See the [Angular Frontend README](https://github.com/GramosoftAI/GcrawlAI/blob/m
   * `POST /api/v1/crawl`: Distributed asynchronous crawling of deep websites.
   * `POST /api/v1/links`: Rapid link mapping of target domains.
   * `POST /api/v1/screenshot`: High-resolution stealth page screenshots.
+  
 * **Task & Progress API**:
   * `GET /crawler/status/{job_id}`: Celery task progress lookup.
   * `GET /crawler/data/{job_id}`: Fetch raw JSON result data.

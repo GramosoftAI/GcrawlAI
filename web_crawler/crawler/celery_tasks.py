@@ -26,9 +26,9 @@ redis_client = redis.Redis.from_url(
     name='celery_tasks.crawl_website',
     bind=True,
     max_retries=3,
-    default_retry_delay=60,  # Retry after 60 seconds
-    time_limit=3600,  # Kill task after 1 hour
-    soft_time_limit=3300,  # Warning at 55 minutes
+    default_retry_delay=60,
+    time_limit=3600,
+    soft_time_limit=3300,  
 )
 def crawl_website(
     self,
@@ -224,9 +224,28 @@ def cleanup_old_results(days_old: int = 7):
         dropped_grag_partitions = drop_old_gsearch_partitions(days_old=2)
     except Exception as e:
         logger.error(f"Failed to drop old Grag partitions: {e}")
+        
+    # 4. Cleanup old activity_logs (older than 30 days)
+    deleted_activity_logs = 0
+    try:
+        with get_pooled_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM activity_logs WHERE created_at < NOW() - INTERVAL '30 days'"
+                )
+                deleted_activity_logs = cursor.rowcount
+            conn.commit()
+        logger.info(f"✓ Cleaned up {deleted_activity_logs} old activity logs older than 30 days")
+    except Exception as e:
+        logger.error(f"Failed to cleanup old activity logs: {e}")
     
-    logger.info(f"Cleaned up {deleted_dirs} old crawl directories, {dropped_partitions} DB partitions, and {dropped_grag_partitions} Grag partitions")
-    return {'deleted_dirs': deleted_dirs, 'dropped_partitions': dropped_partitions, 'dropped_grag_partitions': dropped_grag_partitions}
+    logger.info(f"Cleaned up {deleted_dirs} old crawl directories, {dropped_partitions} DB partitions, {dropped_grag_partitions} Grag partitions, and {deleted_activity_logs} old activity logs")
+    return {
+        'deleted_dirs': deleted_dirs, 
+        'dropped_partitions': dropped_partitions, 
+        'dropped_grag_partitions': dropped_grag_partitions,
+        'deleted_activity_logs': deleted_activity_logs
+    }
 
 
 # =========================================================

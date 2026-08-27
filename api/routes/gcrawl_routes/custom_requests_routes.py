@@ -3,7 +3,7 @@ import os
 import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from api.core.database import get_db_connection
-from api.models.payloads import CustomRequestSubmitPayload, StandardResponse
+from api.models.gcrawl_payloads import CustomRequestSubmitPayload, StandardResponse
 from api.services.email_service import EmailService
 from api.core.config_setup import load_config
 

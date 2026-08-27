@@ -206,10 +206,19 @@ def _browser_map_website(
                 f"--fingerprint-screen-height={height}",
             ]
 
+            # Dynamic GeoIP lookup for locale and timezone
+            current_locale = "en-US"
+            current_timezone = "America/Los_Angeles"
+            if pw_proxy:
+                from web_crawler.common.proxy_manager import get_proxy_geo_info
+                geo_info = get_proxy_geo_info(pw_proxy)
+                current_locale = geo_info["locale"]
+                current_timezone = geo_info["timezone"]
+
             launch_args = {
                 "headless": True,
-                "timezone": "America/Los_Angeles",
-                "locale": "en-US",
+                "timezone": current_timezone,
+                "locale": current_locale,
                 "args": fingerprint_args,
             }
             if pw_proxy:

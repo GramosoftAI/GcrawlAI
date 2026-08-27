@@ -27,10 +27,11 @@ def get_proxy_exit_ip(proxy_settings: dict) -> str:
     provider_name = provider.replace(" ", "")
     if provider_name.lower() == "nodemaven":
         provider_name = "Nodemaven"
-    elif provider_name.lower() == "evomipremium":
-        provider_name = "Evomipremium"
+    elif provider_name.lower() == "thordata":
+        provider_name = "Thordata"
     elif provider_name.lower() == "evomicore":
         provider_name = "Evomicore"
+
 
     # Extract country code from username or password
     country = "US"
@@ -38,8 +39,8 @@ def get_proxy_exit_ip(proxy_settings: dict) -> str:
     if country_match:
         country = country_match.group(1).upper()
 
-    if not server or server == "direct":
-        return f"{provider_name}_{country}_Direct"
+    if not server:
+        return f"{provider_name}_{country}_Unknown"
 
     # Strip scheme from server if present and preserve it (e.g. http vs https)
     from urllib.parse import urlparse
@@ -83,7 +84,7 @@ def resolve_proxy_ips_for_attempts(proxy_attempts: List[Dict[str, Any]]) -> str:
     Resolve proxy IPs in parallel using a ThreadPoolExecutor
     """
     if not proxy_attempts:
-        return "Direct Connection"
+        return "Unknown"
         
     resolved = []
     try:
@@ -100,7 +101,7 @@ def resolve_proxy_ips_for_attempts(proxy_attempts: List[Dict[str, Any]]) -> str:
         logger.error(f"Error in parallel proxy exit IP resolution: {e}")
         
     if not resolved:
-        return "Direct Connection"
+        return "Unknown"
     return ", ".join(resolved)
 
 

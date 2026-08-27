@@ -21,6 +21,7 @@ from api.core.security import set_auth_manager
 from api.services.queue_manager import queue_manager
 
 from api.routes.gcrawl_routes.crawler_routes import router as crawler_router, pre_warm_crawler_workers, keep_alive_browsers_loop
+from api.routes.gcrawl_routes.auth_sites_routes import router as auth_sites_router
 from api.routes.gcrawl_routes.task_routes import router as task_router
 from api.routes.gcrawl_routes.auth_routes import router as auth_router
 from api.routes.gcrawl_routes.ws_routes import router as ws_router
@@ -31,11 +32,20 @@ from api.routes.gcrawl_routes.search_routes import router as search_router
 from api.routes.gcrawl_routes.api_key_routes import router as api_key_router
 from api.routes.gcrawl_routes.activity_routes import router as activity_router
 from api.routes.gcrawl_routes.payment_routes import router as payment_router
+from api.routes.gcrawl_routes.cookie_routes import router as cookie_router
 from api.routes.admin_routes.admin_routes import router as admin_router
 from api.routes.gcrawl_routes.custom_requests_routes import router as custom_requests_router
 from api.routes.admin_routes.admin_custom_requests_routes import router as admin_custom_requests_router
 from api.routes.admin_routes.admin_reported_issues_routes import router as admin_reported_issues_router
 from grag.routes import router as grag_router
+
+from api.routes.extractors_routes.amazon_routes import router as amazon_router
+from api.routes.extractors_routes.flipkart_routes import router as flipkart_router
+from api.routes.extractors_routes.justdial_routes import router as justdial_router
+from api.routes.extractors_routes.google_flights_routes import router as google_flights_router
+from api.routes.extractors_routes.myntra_routes import router as myntra_router
+from api.routes.extractors_routes.walmart_routes import router as walmart_router
+from api.routes.extractors_routes.amazon_product_routes import router as amazon_product_router
 
 # ================= LOGGING =================
 _LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -82,6 +92,7 @@ app.add_middleware(
 # ── Routers ──
 app.include_router(auth_router)
 app.include_router(crawler_router, prefix="/api/v1", tags=["Crawler"])
+app.include_router(auth_sites_router, prefix="/api/v1")
 app.include_router(task_router, prefix="/crawler", tags=["Tasks"])
 app.include_router(ws_router, tags=["WebSocket"])
 app.include_router(report_router, tags=["Report Issue"])
@@ -91,11 +102,19 @@ app.include_router(search_router, prefix="/api/v1")
 app.include_router(api_key_router)
 app.include_router(activity_router, prefix="/api/v1")
 app.include_router(payment_router, prefix="/api/v1")
+app.include_router(cookie_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(custom_requests_router, prefix="/api/v1")
 app.include_router(admin_custom_requests_router, prefix="/api/v1")
 app.include_router(admin_reported_issues_router, prefix="/api/v1")
 app.include_router(grag_router, prefix="/api/v1/grag", tags=["Grag"])
+app.include_router(amazon_router, prefix="/api/v1", tags=["Extractors"])
+app.include_router(flipkart_router, prefix="/api/v1", tags=["Extractors"])
+app.include_router(justdial_router, prefix="/api/v1", tags=["Extractors"])
+app.include_router(google_flights_router, prefix="/api/v1", tags=["Extractors"])
+app.include_router(myntra_router, prefix="/api/v1", tags=["Extractors"])
+app.include_router(walmart_router, prefix="/api/v1", tags=["Extractors"])
+app.include_router(amazon_product_router, prefix="/api/v1", tags=["Extractors"])
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
@@ -144,6 +163,7 @@ async def startup_event():
         db_setup.create_admin_error_logs_table()
         db_setup.create_admin_emails_table()
         db_setup.create_auto_robots_table()
+        db_setup.create_scraper_xpaths_table()
         
         # Initialize Grag partitioned tables
         from grag.db_setup import init_gsearch_database
@@ -170,11 +190,20 @@ async def startup_event():
     set_auth_manager(auth_manager)
     logger.info("✓ AuthManager initialized")
 
+    # Initialize plugins registry and discover plugins
+    from plugins.registry import registry
+    plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
+    registry.discover_plugins(str(plugins_dir))
+
     logger.info("Pre-warming background crawler threads...")
     pre_warm_crawler_workers()
 
     logger.info("Starting background keep-alive loop for pre-warmed browsers...")
     asyncio.create_task(keep_alive_browsers_loop())
+
+    logger.info("Starting daily S3 storage cleanup background loop...")
+    from scripts.cleanup_old_s3_data import run_daily_cleanup_loop
+    asyncio.create_task(run_daily_cleanup_loop())
 
 @app.on_event("shutdown")
 async def shutdown_event():

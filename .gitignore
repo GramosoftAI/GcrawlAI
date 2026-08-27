@@ -42,6 +42,10 @@ config.yaml
 config.yml
 secrets.json
 
-# Exclude specific folders
+# Custom Ignored Directories & Files
+plugins/
 grag/
+api/routes/extractors_routes/
 api/routes/admin_routes/
+api/models/extractors_payload.py
+api/models/admin_payloads.py

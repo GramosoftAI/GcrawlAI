@@ -162,8 +162,8 @@ def get_domain_geo(url_str: str) -> dict:
     logger.info(f"[GeoIP] {domain} -> country={geo['country']} region={geo['region']} city={geo['city']}")
     return geo
 
-NODEMAVEN_HOST = os.getenv("NODEMAVEN_HOST", os.getenv("ATTEMPT_1_PROXY_HOST"))
-NODEMAVEN_PORT = os.getenv("NODEMAVEN_PORT", os.getenv("ATTEMPT_1_PROXY_PORT"))
+NODEMAVEN_HOST = os.getenv("ATTEMPT_1_PROXY_HOST")
+NODEMAVEN_PORT = os.getenv("ATTEMPT_1_PROXY_PORT")
 NODEMAVEN_BASE_USER = os.getenv("NODEMAVEN_BASE_USER")
 tier1_user = os.getenv("ATTEMPT_1_PROXY_USER")
 if tier1_user:
@@ -171,12 +171,12 @@ if tier1_user:
         NODEMAVEN_BASE_USER = tier1_user.split("-")[0]
     else:
         NODEMAVEN_BASE_USER = tier1_user
-NODEMAVEN_PASS = os.getenv("NODEMAVEN_PASS", os.getenv("ATTEMPT_1_PROXY_PASS"))
+NODEMAVEN_PASS = os.getenv("ATTEMPT_1_PROXY_PASS")
 
-EVOMI_HOST = os.getenv("EVOMI_HOST", os.getenv("ATTEMPT_3_PROXY_HOST"))
-EVOMI_PORT = os.getenv("EVOMI_PORT", os.getenv("ATTEMPT_3_PROXY_PORT"))
-EVOMI_USER = os.getenv("EVOMI_USER", os.getenv("ATTEMPT_3_PROXY_USER"))
-EVOMI_PASS = os.getenv("EVOMI_PASS", os.getenv("ATTEMPT_3_PROXY_PASS"))
+EVOMI_HOST = os.getenv("ATTEMPT_3_PROXY_HOST")
+EVOMI_PORT = os.getenv("ATTEMPT_3_PROXY_PORT")
+EVOMI_USER = os.getenv("ATTEMPT_3_PROXY_USER")
+EVOMI_PASS = os.getenv("ATTEMPT_3_PROXY_PASS")
 
 # Clean Evomi passwords to remove any hardcoded suffixes (like _isp- or _country- or _mode-)
 EVOMI_PASS_CLEAN = EVOMI_PASS
@@ -493,8 +493,8 @@ class ProxyManager:
         
     def get_requests_proxies(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
         """Return requests proxies."""
-        if provider == "direct":
-            return None
+        if provider not in {"nodemaven", "thordata", "evomi_core"}:
+            raise ValueError(f"Provider {provider} is not allowed. Only Nodemaven, Thordata, and Evomi Core are supported.")
         if proxy_geo and proxy_geo.strip().lower() != "default":
             geo = {"country": proxy_geo.strip().lower(), "region": "", "city": ""}
         else:
@@ -542,8 +542,8 @@ class ProxyManager:
 
     def get_playwright_proxy(self, target_url: str, provider: str = "nodemaven", session_id: Optional[str] = None, use_high_speed: bool = True, proxy_geo: Optional[str] = None, is_search: bool = False) -> dict:
         """Return playwright proxy."""
-        if provider == "direct":
-            return None
+        if provider not in {"nodemaven", "thordata", "evomi_core"}:
+            raise ValueError(f"Provider {provider} is not allowed. Only Nodemaven, Thordata, and Evomi Core are supported.")
         if proxy_geo and proxy_geo.strip().lower() != "default":
             geo = {"country": proxy_geo.strip().lower(), "region": "", "city": ""}
         else:
@@ -588,3 +588,92 @@ class ProxyManager:
         else:
             proxy_url = build_nodemaven_proxy(geo, session_id, isp_code)
         return parse_proxy_for_playwright(proxy_url)
+
+
+_PROXY_GEO_CACHE = {}
+
+def get_proxy_geo_info(proxy_settings: Optional[dict]) -> dict:
+    """
+    Queries ipinfo.io/json through the provided proxy to resolve timezone and locale dynamically.
+    Caches results by proxy server and username to prevent duplicate network calls.
+    """
+    default_geo = {
+        "country": "US",
+        "timezone": "America/New_York",
+        "locale": "en-US,en;q=0.9"
+    }
+    
+    if not proxy_settings:
+        return default_geo
+        
+    # Extract cache key based on proxy server/host and username/session
+    if "https" in proxy_settings or "http" in proxy_settings:
+        proxy_url = proxy_settings.get("https") or proxy_settings.get("http")
+        from urllib.parse import urlparse
+        parsed = urlparse(proxy_url)
+        server = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            server += f":{parsed.port}"
+        username = parsed.username or ""
+        password = parsed.password or ""
+    else:
+        server = proxy_settings.get("server") or proxy_settings.get("host") or ""
+        username = proxy_settings.get("username") or ""
+        password = proxy_settings.get("password") or ""
+        
+    import re
+    username_clean = re.sub(r"session-[a-zA-Z0-9]+", "session-fixed", username)
+    username_clean = re.sub(r"sessid-[a-zA-Z0-9]+", "sessid-fixed", username_clean)
+    cache_key = f"{server}:{username_clean}"
+    
+    if cache_key in _PROXY_GEO_CACHE:
+        return _PROXY_GEO_CACHE[cache_key]
+        
+    # Format proxy URL for requests
+    from urllib.parse import urlparse
+    parsed = urlparse(str(server))
+    host_port = parsed.netloc if parsed.netloc else server
+    scheme = parsed.scheme if parsed.scheme else "http"
+    
+    if username and password:
+        formatted_proxy_url = f"{scheme}://{username}:{password}@{host_port}"
+    else:
+        formatted_proxy_url = f"{scheme}://{host_port}"
+        
+    proxies = {"http": formatted_proxy_url, "https": formatted_proxy_url}
+    
+    try:
+        logger.info(f"[ProxyGeo] Querying ipinfo.io/json through proxy {host_port}...")
+        r = requests.get("https://ipinfo.io/json", proxies=proxies, timeout=5.0)
+        if r.status_code == 200:
+            data = r.json()
+            country = data.get("country", "US").upper()
+            timezone = data.get("timezone", "America/New_York")
+            
+            # Map country to locale format
+            locale_map = {
+                "IN": "en-IN,en;q=0.9",
+                "US": "en-US,en;q=0.9",
+                "DE": "de-DE,de;q=0.9",
+                "GB": "en-GB,en;q=0.9",
+                "FR": "fr-FR,fr;q=0.9",
+                "IT": "it-IT,it;q=0.9",
+                "ES": "es-ES,es;q=0.9",
+                "JP": "ja-JP,ja;q=0.9",
+                "RU": "ru-RU,ru;q=0.9",
+                "BR": "pt-BR,pt;q=0.9"
+            }
+            locale = locale_map.get(country, f"en-{country},en;q=0.9")
+            
+            geo_info = {
+                "country": country,
+                "timezone": timezone,
+                "locale": locale
+            }
+            _PROXY_GEO_CACHE[cache_key] = geo_info
+            logger.info(f"[ProxyGeo] Resolved proxy geo for {cache_key}: {geo_info}")
+            return geo_info
+    except Exception as e:
+        logger.warning(f"[ProxyGeo] Failed to query ipinfo.io/json: {e}. Falling back to default.")
+        
+    return default_geo

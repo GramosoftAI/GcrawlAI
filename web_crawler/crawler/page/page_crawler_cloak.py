@@ -39,13 +39,26 @@ class CloakCrawlerMixin:
             v_width = getattr(local_data, "width", 1920)
             v_height = getattr(local_data, "height", 1080)
             
+            from web_crawler.common.proxy_manager import get_proxy_geo_info
+            geo_info = get_proxy_geo_info(proxy_settings)
+            
             context_kwargs = dict(
                 viewport={"width": v_width, "height": v_height},
                 java_script_enabled=True,
-                ignore_https_errors=True
+                ignore_https_errors=True,
+                locale=geo_info["locale"],
+                timezone_id=geo_info["timezone"]
             )
             if proxy_settings:
                 context_kwargs["proxy"] = proxy_settings
+
+            # Execute dynamic browser context setup from plugin if available
+            plugin = None
+            if getattr(self.config, "plugin_name", None):
+                from plugins.registry import registry
+                plugin = registry.get_plugin(self.config.plugin_name)
+                if plugin and hasattr(plugin, "setup_browser_context"):
+                    plugin.setup_browser_context(context_kwargs)
 
             # Let CloakBrowser handle User-Agent dynamically based on its stealth initialization
 
@@ -59,6 +72,11 @@ class CloakCrawlerMixin:
             logger.info(f"CloakBrowser context initialized successfully")
 
             page = context.new_page()
+            
+            # Execute dynamic page interactions from plugin if available
+            if plugin and hasattr(plugin, "perform_browser_interactions"):
+                plugin.perform_browser_interactions(page)
+                
             captcha_bypassed = False
             
             total_bytes = [0]
@@ -110,6 +128,28 @@ class CloakCrawlerMixin:
                 nav_timeout = self.config.render_timeout
             else:
                 nav_timeout = attempt_timeout * 1000
+
+            # If the target URL is a Reddit URL, perform proactive warmup
+            if "reddit.com" in url.lower():
+                logger.info("[Stealth Layer] Proactive Reddit Warmup: Loading reddit.com first in the initial tab...")
+                try:
+                    # Quick load to reddit.com
+                    try:
+                        page.goto("https://www.reddit.com/", wait_until="commit", timeout=5000)
+                    except:
+                        pass
+                    page.wait_for_timeout(5000)
+                    # Open a new tab in the same context to carry over the warmed state
+                    new_page = context.new_page()
+                    new_page.on("response", handle_response)
+                    new_page.route("**/*", block_useless_resources)
+                    try:
+                        page.close()
+                    except:
+                        pass
+                    page = new_page
+                except Exception as warmup_err:
+                    logger.warning(f"Reddit proactive warmup failed: {warmup_err}")
 
             try:
                 logger.info(f"Navigating to target URL: {url} (CloakBrowser, timeout={nav_timeout/1000}s)")
@@ -165,6 +205,59 @@ class CloakCrawlerMixin:
                             page.wait_for_load_state("networkidle", timeout=3000)
                         except Exception:
                             pass
+                    
+                    try:
+                        logger.info("Executing fast scroll (500ms) for content trigger before extraction...")
+                        # 1. Wait for dynamic scripts to fetch data
+                        page.wait_for_timeout(2000)
+                        
+                        # 2. Run popup scanner and unlock scroll (removes cookie banners, overflow: hidden, etc.)
+                        try:
+                            self._handle_popups_and_overlays(page)
+                        except Exception as popup_err:
+                            logger.warning(f"Fast scroll popup handler failed: {popup_err}")
+
+                        # 3. Perform scroll to trigger lazy loading
+                        page.evaluate(
+                            """
+                            async () => {
+                                const getScrollContainer = () => {
+                                    const containers = [];
+                                    const all = document.querySelectorAll('*');
+                                    all.forEach(el => {
+                                        const computed = window.getComputedStyle(el);
+                                        if ((computed.overflowY === 'auto' || computed.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 50) {
+                                            containers.push(el);
+                                        }
+                                    });
+                                    containers.sort((a, b) => b.scrollHeight - a.scrollHeight);
+                                    return containers[0] || null;
+                                };
+
+                                const container = getScrollContainer();
+                                const scrollHeight = container ? container.scrollHeight : (document.documentElement.scrollHeight || document.body.scrollHeight);
+                                const clientHeight = container ? container.clientHeight : window.innerHeight;
+                                const maxScroll = scrollHeight - clientHeight;
+
+                                if (maxScroll > 0) {
+                                    if (container) {
+                                        container.scrollTop = maxScroll;
+                                    } else {
+                                        window.scrollTo(0, maxScroll);
+                                    }
+                                    await new Promise(r => setTimeout(r, 1500));
+                                    if (container) {
+                                        container.scrollTop = 0;
+                                    } else {
+                                        window.scrollTo(0, 0);
+                                    }
+                                    await new Promise(r => setTimeout(r, 200));
+                                }
+                            }
+                            """
+                        )
+                    except Exception as fast_scroll_err:
+                        logger.warning(f"Fast scroll trigger failed: {fast_scroll_err}")
                         
                     result = self.process_page(page, url, count, enable_md, enable_html, enable_ss, enable_seo, enable_images, enable_json, client_id, status_code=status_code)
                     if result and isinstance(result, dict):
@@ -311,6 +404,13 @@ class CloakCrawlerMixin:
                                         let stepCount = 0;
 
                                         while (stepCount < maxScrolls) {
+                                            if (args.scrollIterationJs) {
+                                                try {
+                                                    eval(args.scrollIterationJs);
+                                                } catch (e) {
+                                                    console.error("Error evaluating scrollIterationJs", e);
+                                                }
+                                            }
                                             const currentClientHeight = container ? container.clientHeight : window.innerHeight;
                                             const currentScrollHeight = container ? container.scrollHeight : (document.documentElement.scrollHeight || document.body.scrollHeight);
                                             const maxScrollPos = currentScrollHeight - currentClientHeight;
@@ -361,7 +461,7 @@ class CloakCrawlerMixin:
                                     return metrics;
                                 }
                                 """,
-                                {"delay": self.config.scroll_delay, "maxScrolls": self.config.max_scrolls}
+                                {"delay": self.config.scroll_delay, "maxScrolls": self.config.max_scrolls, "scrollIterationJs": getattr(self.config, "scroll_iteration_js", None)}
                             )
                             logger.info(f"Custom auto-scroll completed. Metrics: {metrics}")
                         except Exception as scroll_err:

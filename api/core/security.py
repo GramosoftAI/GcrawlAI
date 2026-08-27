@@ -160,7 +160,7 @@ def check_plan_limits_and_get_details(user_id: Union[int, str]) -> tuple[str, in
         cur.execute("""
             SELECT u.plan_type, 
                    CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.max_concurrency, ms.max_concurrency, 2) ELSE COALESCE(ms.max_concurrency, 2) END, 
-                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 0) ELSE COALESCE(ms.credits_included, 0) END as total_requests, 
                    u.used_requests
             FROM user_plans u
             LEFT JOIN plan_expiry e ON u.user_id = e.user_id

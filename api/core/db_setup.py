@@ -261,6 +261,23 @@ class DatabaseSetup:
         """
         return self.execute_query(query)
 
+    def create_user_cookies_table(self) -> bool:
+        """Create user_cookies table and indexes"""
+        query = """
+        CREATE TABLE IF NOT EXISTS user_cookies (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            cookies_ls JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, url)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_cookies_user_id ON user_cookies(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_cookies_url ON user_cookies(url);
+        """
+        return self.execute_query(query)
+
     def create_crawl_errors_table(self) -> bool:
         """Create crawl_errors table and indexes"""
         query = """
@@ -475,6 +492,99 @@ class DatabaseSetup:
             if conn:
                 conn.close()
 
+    def create_scraper_xpaths_table(self) -> bool:
+        """Create scraper_xpaths table and seed default XPaths for Justdial"""
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS scraper_xpaths (
+            scraper_name VARCHAR(50) NOT NULL,
+            field_name VARCHAR(100) NOT NULL,
+            xpath_value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (scraper_name, field_name)
+        );
+        """
+        seed_query = """
+        INSERT INTO scraper_xpaths (scraper_name, field_name, xpath_value)
+        VALUES 
+            ('justdial', 'main_xpath', '//main'),
+            ('justdial', 'card_xpath', './/div[contains(@class,"resultbox_textbox")]'),
+            ('justdial', 'name_xpath', './/h2//span[contains(@class,"resultbox_title_anchor")]'),
+            ('justdial', 'href_xpath', './/h2/a/@href'),
+            ('justdial', 'rating_xpath', './/li[contains(@class,"resultbox_totalrate")]/text()'),
+            ('justdial', 'rating_count_xpath', './/li[contains(@class,"resultbox_countrate")]'),
+            ('justdial', 'address_xpath', './/div[contains(@class,"locatcity")]'),
+            ('justdial', 'status_xpath', './/ul[contains(@class,"resultbox_address")][2]//span'),
+            ('justdial', 'phone_xpath', './/span[contains(@class,"callcontent")]'),
+            ('justdial', 'whatsapp_xpath', './/*[contains(text(),"WhatsApp")]'),
+            ('justdial', 'responds_in_xpath', './/button//*[contains(text(),"Responds")]'),
+            ('justdial', 'enquiries_xpath', './/div[contains(@class,"btnresponse")]'),
+            ('justdial', 'verified_xpath', './/img[contains(@src,"verified")]'),
+            ('google-flights', 'cards_xpath', '//li[contains(@class, "pIav2d")]'),
+            ('google-flights', 'airline_xpath', './/div[contains(@class,"sSHqwe") and contains(@class,"tPgKwe") and contains(@class,"ogfYpf")]/span'),
+            ('google-flights', 'price_xpath_1', './/span[contains(@aria-label, "rupees")]/text()'),
+            ('google-flights', 'price_xpath_2', './/span[contains(@aria-label, "₹")]/text()'),
+            ('google-flights', 'price_xpath_fallback', './/div[contains(@class,"YMlIz")]//span[contains(text(), "₹")]/text()'),
+            ('google-flights', 'departure_time_xpath', './/div[contains(@class,"wtdjmc")]//text()'),
+            ('google-flights', 'arrival_time_xpath', './/div[contains(@class,"XWcVob")]//text()'),
+            ('google-flights', 'duration_xpath', './/div[contains(@class,"gvkrdb")]//text()'),
+            ('google-flights', 'stops_xpath', './/div[contains(@class,"EfT7Ae")]//text()'),
+            ('google-flights', 'emissions_xpath', './/*[contains(text(),"CO2e")]//text()'),
+            ('amazon', 'items_xpath', 'div[data-component-type="s-search-result"][data-asin]'),
+            ('amazon', 'title_xpath', 'h2 span'),
+            ('amazon', 'rating_xpath', 'i.a-icon-star-mini .a-icon-alt'),
+            ('amazon', 'bought_past_month_xpath', '.a-size-base, .a-size-mini'),
+            ('amazon', 'price_xpath', 'span.a-price span.a-offscreen'),
+            ('amazon', 'mrp_xpath', 'span.a-price.a-text-price span.a-offscreen'),
+            ('flipkart', 'items_xpath', 'div[data-id]'),
+            ('flipkart', 'title_xpath', 'a.wjcEIp, a.KzDlHZ, a.WKTcLC, a.IRpwTa, a.Qum9aC, a.atJtCj, div.RG5Slk'),
+            ('flipkart', 'price_xpath', 'div.Nx9bqj, div.hZ3P6w'),
+            ('flipkart', 'mrp_xpath', 'div.yRaY8j, div.kRYCnD'),
+            ('flipkart', 'rating_xpath', 'div.XQDdHH, div.MKiFS6'),
+            ('walmart', 'items_xpath', 'script#__NEXT_DATA__'),
+            ('walmart', 'title_xpath', 'N/A - uses JSON'),
+            ('amazon_product', 'title_xpath', '#productTitle'),
+            ('amazon_product', 'location_xpath', '#glow-ingress-line2'),
+            ('amazon_product', 'breadcrumb_xpath', '#wayfinding-breadcrumbs_container'),
+            ('amazon_product', 'breadcrumb_fallback_xpath', 'ul.a-unordered-list.a-horizontal.a-size-small'),
+            ('amazon_product', 'details_table_xpath', '#productDetails_techSpec_section_1'),
+            ('amazon_product', 'overview_xpath', '#productOverview_feature_div'),
+            ('amazon_product', 'parent_asin_xpath', 'input[id="ASIN"], input[name="ASIN"]'),
+            ('amazon_product', 'description_xpath', '#productDescription'),
+            ('amazon_product', 'prime_xpath', 'i.a-icon-prime'),
+            ('amazon_product', 'aplus_xpath', '#aplus'),
+            ('amazon_product', 'main_image_xpath', 'img#landingImage'),
+            ('amazon_product', 'rating_xpath', 'i.a-icon-star, span[data-hook="rating-out-of-text"]'),
+            ('amazon_product', 'bullets_xpath', '#feature-bullets'),
+            ('amazon_product', 'reviews_count_xpath', 'span#acrCustomerReviewText'),
+            ('amazon_product', 'histogram_xpath', '#histogramTable'),
+            ('amazon_product', 'review_list_xpath', '#cm-cr-dp-review-list'),
+            ('amazon_product', 'review_box_xpath', 'div[data-hook="review"]'),
+            ('amazon_product', 'review_name_xpath', 'span.a-profile-name'),
+            ('amazon_product', 'review_rating_xpath', 'i[data-hook="review-star-rating"], i[data-hook="cmps-review-star-rating"]'),
+            ('amazon_product', 'review_title_xpath', 'a[data-hook="review-title"]'),
+            ('amazon_product', 'review_date_xpath', 'span[data-hook="review-date"]'),
+            ('amazon_product', 'review_snippet_xpath', 'span[data-hook="review-body"]')
+        ON CONFLICT (scraper_name, field_name) DO UPDATE SET 
+            xpath_value = EXCLUDED.xpath_value;
+        """
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(create_table_query)
+            cursor.execute(seed_query)
+            conn.commit()
+            cursor.close()
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"✗ Failed to create/seed scraper_xpaths: {e}", exc_info=True)
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     def create_subscription_plans_tables(self) -> bool:
         """Create monthly and yearly subscription plans tables and seed default pricing plans"""
         drop_old_query = """
@@ -516,21 +626,29 @@ class DatabaseSetup:
         seed_monthly_query = """
         INSERT INTO monthly_subscription_plans (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency)
         VALUES 
-            ('Free', 'free', '$0/mo', 'Rs.0/mo', 500, 2),
-            ('Starter', 'starter', '$19/mo', 'Rs.1599/mo', 3000, 5),
-            ('Growth', 'growth', '$29/mo', 'Rs.2499/mo', 50000, 15),
-            ('Pro', 'pro', '$49/mo', 'Rs.4199/mo', 150000, 25)
-        ON CONFLICT (plan_name) DO NOTHING;
+            ('Free', 'free', '$0/mo', 'Rs.0/mo', 200, 2),
+            ('Starter', 'starter', '$19/mo', 'Rs.1899/mo', 3000, 5),
+            ('Growth', 'growth', '$49/mo', 'Rs.4899/mo', 50000, 15),
+            ('Pro', 'pro', '$149/mo', 'Rs.14899/mo', 150000, 25)
+        ON CONFLICT (plan_name) DO UPDATE SET
+            price_usd = EXCLUDED.price_usd,
+            price_inr = EXCLUDED.price_inr,
+            credits_included = EXCLUDED.credits_included,
+            max_concurrency = EXCLUDED.max_concurrency;
         """
         
         seed_yearly_query = """
         INSERT INTO yearly_subscription_plans (plan_name, plan_key, price_usd, price_inr, credits_included, max_concurrency)
         VALUES 
-            ('Free', 'free', '$0/yr', 'Rs.0/yr', 500, 2),
-            ('Starter', 'starter', '$190/yr', 'Rs.15990/yr', 36000, 5),
-            ('Growth', 'growth', '$290/yr', 'Rs.24990/yr', 600000, 15),
-            ('Pro', 'pro', '$490/yr', 'Rs.41990/yr', 1800000, 25)
-        ON CONFLICT (plan_name) DO NOTHING;
+            ('Free', 'free', '$0/yr', 'Rs.0/yr', 200, 2),
+            ('Starter', 'starter', '$182/yr', 'Rs.18199/yr', 36000, 5),
+            ('Growth', 'growth', '$470/yr', 'Rs.46999/yr', 600000, 15),
+            ('Pro', 'pro', '$1430/yr', 'Rs.142999/yr', 1800000, 25)
+        ON CONFLICT (plan_name) DO UPDATE SET
+            price_usd = EXCLUDED.price_usd,
+            price_inr = EXCLUDED.price_inr,
+            credits_included = EXCLUDED.credits_included,
+            max_concurrency = EXCLUDED.max_concurrency;
         """
         
         conn = None
@@ -1028,6 +1146,7 @@ class DatabaseSetup:
         if not self.create_users_table(): return False
         if not self.create_signup_otps_table(): return False
         if not self.create_api_keys_table(): return False
+        if not self.create_user_cookies_table(): return False
 
         # 2. Crawler & search tables
         if not self.create_crawl_jobs_table(): return False
@@ -1051,6 +1170,7 @@ class DatabaseSetup:
         if not self.create_payment_tables(): return False
         if not self.create_isp_tables(): return False
         if not self.create_custom_requests_table(): return False
+        if not self.create_scraper_xpaths_table(): return False
 
         # 5. Dynamic population of ISP config tables (conditional)
         self.populate_isps_if_keys_exist()
@@ -1066,7 +1186,7 @@ class DatabaseSetup:
             'job_results', 'search_jobs', 'search_errors', 'api_endpoints', 
             'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
-            'admin_error_logs', 'custom_requests', 'admin_emails', 'auto_robots'
+            'admin_error_logs', 'custom_requests', 'admin_emails', 'auto_robots', 'user_cookies', 'scraper_xpaths'
         ]
         
         verify_query = """
@@ -1107,7 +1227,7 @@ class DatabaseSetup:
             'api_keys', 'crawl_errors', 'activity_logs', 'job_results', 'search_jobs', 
             'search_errors', 'api_endpoints', 'monthly_subscription_plans', 'yearly_subscription_plans', 'user_plans', 
             'payment_requests', 'plan_expiry', 'subscriptions', 'nodemaven_isps', 'evomi_isps',
-            'admin_error_logs', 'custom_requests', 'admin_emails', 'auto_robots'
+            'admin_error_logs', 'custom_requests', 'admin_emails', 'auto_robots', 'user_cookies', 'scraper_xpaths'
         ]
         
         conn = None

@@ -10,13 +10,11 @@ from typing import Optional, Dict
 from web_crawler.common.config import CrawlConfig
 from web_crawler.crawler.web_crawler import WebCrawler
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
 
 def main(
     start_url: str,
@@ -44,22 +42,14 @@ def main(
             use_stealth=True
         )
     
-    # Get base directory
-    # Get base directory (web_crawler/)
     BASE_DIR = Path(__file__).resolve().parent.parent
     
-    # Create unique crawl ID and directory
     crawl_id = client_id if client_id else uuid.uuid4().hex
     crawl_dir = BASE_DIR / "crawl_output-api" / f"crawl_{crawl_id}"
-    # crawl_dir.mkdir(parents=True, exist_ok=True) # Removed: Storing directly to Postgres
     
-    # Update config with crawl-specific output directory
     config.output_dir = str(crawl_dir)
     config.rebuild_paths()
     
-    # Removed subdirectory creation since outputs are consolidated into summary.json
-    
-    # Initialize and run crawler
     crawler = WebCrawler(config)
     
     summary = crawler.crawl(
@@ -102,15 +92,11 @@ def main(
                     "from_homepage": summary.get("from_homepage"),
                 }
             )
-    
-    # Add crawl metadata to summary
     summary["crawl_id"] = crawl_id
-    
     return summary
 
 
 if __name__ == "__main__":
-    # Example usage
     config = CrawlConfig(
         max_pages=50,
         max_workers=4,

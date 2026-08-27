@@ -403,7 +403,7 @@ async def get_my_plan(
 
         cursor.execute("""
             SELECT p.plan_type, 
-                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 500) ELSE COALESCE(ms.credits_included, 500) END as total_requests, 
+                   CASE WHEN e.subscript_type = 'YEARLY' THEN COALESCE(ys.credits_included, ms.credits_included, 0) ELSE COALESCE(ms.credits_included, 0) END as total_requests, 
                    p.used_requests, e.expiry_date, e.subscript_type
             FROM user_plans p
             LEFT JOIN plan_expiry e ON p.user_id = e.user_id
