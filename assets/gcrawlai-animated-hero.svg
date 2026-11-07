@@ -1,147 +1,160 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="100%" height="320">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="100%" height="380">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0a0f1d"/>
-      <stop offset="50%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#020617"/>
+    <!-- Background Gradient -->
+    <linearGradient id="termBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
     </linearGradient>
-    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38bdf8">
-        <animate attributeName="stop-color" values="#38bdf8;#818cf8;#c084fc;#38bdf8" dur="6s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="50%" stop-color="#818cf8">
-        <animate attributeName="stop-color" values="#818cf8;#c084fc;#38bdf8;#818cf8" dur="6s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="100%" stop-color="#c084fc">
-        <animate attributeName="stop-color" values="#c084fc;#38bdf8;#818cf8;#c084fc" dur="6s" repeatCount="indefinite"/>
-      </stop>
-    </linearGradient>
-    <linearGradient id="cyanText" x1="0%" y1="0%" x2="100%" y2="0%">
+
+    <!-- Subtle Border Glow -->
+    <linearGradient id="borderStroke" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#a855f7"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
     </linearGradient>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="6" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
+
+    <!-- Typing Clip Path -->
+    <clipPath id="typeClip">
+      <rect x="0" y="0" width="0" height="40">
+        <animate attributeName="width" 
+                 values="0; 0; 620; 620; 620; 0" 
+                 keyTimes="0; 0.05; 0.32; 0.88; 0.95; 1" 
+                 dur="9s" 
+                 repeatCount="indefinite" />
+      </rect>
+    </clipPath>
   </defs>
 
   <style>
-    @keyframes pulseGlow {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 0.8; }
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
     }
-    @keyframes typingText {
-      0%, 15% { width: 0; }
-      40%, 80% { width: 580px; }
-      95%, 100% { width: 0; }
+    @keyframes cursorMove {
+      0%, 5% { transform: translateX(0px); }
+      32%, 88% { transform: translateX(625px); }
+      95%, 100% { transform: translateX(0px); }
     }
-    @keyframes blinkCursor {
-      0%, 50% { opacity: 1; }
-      51%, 100% { opacity: 0; }
+    @keyframes fadeInSpinner {
+      0%, 31% { opacity: 0; }
+      33%, 45% { opacity: 1; }
+      47%, 100% { opacity: 0; }
     }
-    @keyframes flowDot1 {
-      0% { cx: 160; opacity: 0; }
-      20% { opacity: 1; }
-      80% { opacity: 1; }
-      100% { cx: 480; opacity: 0; }
+    @keyframes fadeInResponse {
+      0%, 46% { opacity: 0; }
+      49%, 89% { opacity: 1; }
+      94%, 100% { opacity: 0; }
     }
-    @keyframes flowDot2 {
-      0% { cx: 480; opacity: 0; }
-      20% { opacity: 1; }
-      80% { opacity: 1; }
-      100% { cx: 820; opacity: 0; }
-    }
-    .neon-pulse { animation: pulseGlow 4s ease-in-out infinite; }
-    .cursor-blink { animation: blinkCursor 0.8s infinite; }
-    .type-container {
-      overflow: hidden;
-      white-space: nowrap;
-      display: inline-block;
-      animation: typingText 8s steps(48, end) infinite;
-    }
+    .cursor { animation: blink 0.7s infinite; }
+    .cursor-carrier { animation: cursorMove 9s ease-in-out infinite; }
+    .spinner-phase { animation: fadeInSpinner 9s ease-in-out infinite; }
+    .response-phase { animation: fadeInResponse 9s ease-in-out infinite; }
   </style>
 
-  <!-- Background Card -->
-  <rect x="8" y="8" width="984" height="304" rx="16" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="2"/>
-  
-  <!-- Ambient Background Glow -->
-  <circle cx="150" cy="80" r="90" fill="#38bdf8" opacity="0.12" filter="url(#glow)" class="neon-pulse"/>
-  <circle cx="850" cy="220" r="100" fill="#818cf8" opacity="0.12" filter="url(#glow)" class="neon-pulse"/>
+  <!-- Terminal Window Background -->
+  <rect x="6" y="6" width="948" height="368" rx="14" fill="url(#termBg)" stroke="url(#borderStroke)" stroke-width="1.5"/>
 
-  <!-- Window Control Dots -->
-  <circle cx="36" cy="36" r="6" fill="#ef4444"/>
-  <circle cx="56" cy="36" r="6" fill="#f59e0b"/>
-  <circle cx="76" cy="36" r="6" fill="#10b981"/>
+  <!-- macOS Top Window Bar -->
+  <rect x="6" y="6" width="948" height="42" rx="14" fill="#161b22"/>
+  <rect x="6" y="36" width="948" height="12" fill="#161b22"/>
+  <line x1="6" y1="48" x2="954" y2="48" stroke="#30363d" stroke-width="1"/>
 
-  <!-- Header Title -->
-  <text x="500" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#64748b" text-anchor="middle" letter-spacing="1">
-    GCRAWLAI STEALTH ENGINE — INTERACTIVE SCRAPER RUNTIME
+  <!-- Window Dots -->
+  <circle cx="32" cy="27" r="6" fill="#ff5f56"/>
+  <circle cx="52" cy="27" r="6" fill="#ffbd2e"/>
+  <circle cx="72" cy="27" r="6" fill="#27c93f"/>
+
+  <!-- Window Title -->
+  <text x="480" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#8b949e" text-anchor="middle">
+    bash — gcrawlai instant stealth scrape — 80x24
   </text>
-  
-  <!-- Status Badge Right -->
-  <rect x="830" y="24" width="134" height="24" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <circle cx="844" cy="36" r="4" fill="#10b981">
-    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+
+  <!-- Right Status Tag -->
+  <rect x="790" y="16" width="144" height="22" rx="11" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <circle cx="804" cy="27" r="3.5" fill="#10b981">
+    <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite"/>
   </circle>
-  <text x="856" y="41" font-family="monospace" font-size="11" font-weight="600" fill="#38bdf8">99.8% STEALTH</text>
+  <text x="816" y="31" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11" font-weight="600" fill="#58a6ff">
+    350ms (p90)
+  </text>
 
-  <!-- Divider Line -->
-  <line x1="10" y1="58" x2="990" y2="58" stroke="#1e293b" stroke-width="1.5"/>
+  <!-- TERMINAL CONTENT -->
 
-  <!-- Command Prompt Line -->
-  <g transform="translate(36, 96)">
-    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="15" font-weight="700" fill="#10b981">$</text>
-    <text x="18" y="0" font-family="'Fira Code', monospace" font-size="15" font-weight="600" fill="#94a3b8">curl -X POST https://gcrawlai.com/v1/scrape \</text>
+  <!-- Line 1: Shell Prompt & Typing Command -->
+  <g transform="translate(32, 84)">
+    <text x="0" y="0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" font-weight="700" fill="#3fb950">dev@gcrawlai</text>
+    <text x="110" y="0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#8b949e">:</text>
+    <text x="120" y="0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" font-weight="700" fill="#58a6ff">~</text>
+    <text x="135" y="0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#8b949e">$</text>
+
+    <!-- Typing Text with ClipPath -->
+    <g transform="translate(152, 0)">
+      <g clip-path="url(#typeClip)">
+        <text x="0" y="0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="14" fill="#f0f6fc">curl -X POST https://gcrawlai.com/api/scrape -d '{"url": "https://target-spa.com"}'</text>
+      </g>
+      
+      <!-- Animated Blinking Cursor moving with typing -->
+      <g class="cursor-carrier">
+        <rect x="4" y="-12" width="8" height="15" fill="#58a6ff" class="cursor"/>
+      </g>
+    </g>
   </g>
-  <g transform="translate(56, 124)">
-    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="14" fill="#cbd5e1">
-      -d '{"url": "https://target-spa.com", "stealth": true, "format": "markdown"}'
+
+  <!-- Line 2: Intermediate Spinner Phase (Appears while 'crawling') -->
+  <g class="spinner-phase" transform="translate(32, 118)">
+    <circle cx="8" cy="-5" r="4" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="8,4">
+      <animateTransform attributeName="transform" type="rotate" from="0 8 -5" to="360 8 -5" dur="0.8s" repeatCount="indefinite"/>
+    </circle>
+    <text x="24" y="0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="13" fill="#d29922">
+      Stealth browser cluster routing through US residential IP pool...
     </text>
   </g>
 
-  <!-- Result Box -->
-  <rect x="36" y="146" width="928" height="136" rx="10" fill="#030712" stroke="#1e293b" stroke-width="1"/>
-  
-  <!-- Terminal Response Details -->
-  <g transform="translate(56, 178)">
-    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="13" font-weight="700" fill="#10b981">HTTP/2 200 OK</text>
-    <text x="110" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#64748b">• Latency: </text>
-    <text x="175" y="0" font-family="'Fira Code', monospace" font-size="12" font-weight="700" fill="#38bdf8">348ms (p90)</text>
-    <text x="265" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#64748b">• Token Reduction: </text>
-    <text x="390" y="0" font-family="'Fira Code', monospace" font-size="12" font-weight="700" fill="#a855f7">-82.4%</text>
-    <text x="450" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#64748b">• Cloudflare Turnstile: </text>
-    <text x="600" y="0" font-family="'Fira Code', monospace" font-size="12" font-weight="700" fill="#10b981">BYPASSED ✓</text>
-  </g>
+  <!-- Line 3 to 8: Real Cascade Output (Appears upon 200 OK) -->
+  <g class="response-phase">
+    <!-- Status Header Banner -->
+    <g transform="translate(32, 126)">
+      <rect width="896" height="34" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+      <text x="16" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="700" fill="#3fb950">HTTP/2 200 OK</text>
+      <text x="135" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#8b949e">│</text>
+      <text x="155" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#8b949e">Cloudflare Turnstile: </text>
+      <text x="315" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="700" fill="#3fb950">BYPASSED ✓</text>
+      <text x="415" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#8b949e">│</text>
+      <text x="435" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#8b949e">Duration: </text>
+      <text x="505" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="700" fill="#58a6ff">348ms</text>
+      <text x="565" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#8b949e">│</text>
+      <text x="585" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#8b949e">Token Savings: </text>
+      <text x="700" y="22" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" font-weight="700" fill="#bc8cff">-82.4% (Fit-Markdown)</text>
+    </g>
 
-  <g transform="translate(56, 208)">
-    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"data"</text>
-    <text x="45" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: {</text>
-    <text x="65" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"format"</text>
-    <text x="125" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: </text>
-    <text x="140" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#fde047">"markdown"</text>
-    <text x="215" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">, </text>
-    <text x="230" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"tokens_saved"</text>
-    <text x="330" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: </text>
-    <text x="345" y="0" font-family="'Fira Code', monospace" font-size="13" font-weight="700" fill="#10b981">14820</text>
-    <text x="395" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">, </text>
-    <text x="410" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"pricing"</text>
-    <text x="475" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: </text>
-    <text x="490" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#fde047">"1_request_flat"</text>
-    <text x="605" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">}</text>
-  </g>
+    <!-- Extracted Markdown Box -->
+    <g transform="translate(32, 178)">
+      <rect width="896" height="176" rx="6" fill="#05090f" stroke="#21262d" stroke-width="1"/>
+      
+      <!-- Extracted Markdown Header -->
+      <text x="18" y="26" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="11" font-weight="600" fill="#8b949e">
+        EXTRACTED CLEAN MARKDOWN (READY FOR LLM CONTEXT / RAG PIPELINE):
+      </text>
+      <line x1="18" y1="36" x2="878" y2="36" stroke="#21262d" stroke-width="1"/>
 
-  <g transform="translate(56, 240)">
-    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#475569"># Markdown Output: </text>
-    <text x="140" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#94a3b8"># Enterprise Cloud Pricing | High Concurrency RAG Vector Store...</text>
-  </g>
+      <!-- Extracted Markdown Lines -->
+      <text x="18" y="62" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="13" font-weight="700" fill="#58a6ff"># Enterprise AI Ingestion Platform 2026</text>
+      
+      <text x="18" y="90" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#c9d1d9">
+        Turn any website into structured LLM context without boilerplate or ads.
+      </text>
 
-  <!-- Live Pulse Dot and Label bottom right -->
-  <g transform="translate(820, 266)">
-    <circle cx="0" cy="0" r="4" fill="#a855f7">
-      <animate attributeName="r" values="3;6;3" dur="2s" repeatCount="indefinite"/>
-      <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    <text x="12" y="3" font-family="monospace" font-size="10" font-weight="600" fill="#a855f7">LIVE ENGINE ACTIVE</text>
+      <text x="18" y="118" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#7ee787">
+        * Latency: Sub-second p90 execution across dynamic client-rendered SPAs
+      </text>
+      
+      <text x="18" y="142" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#7ee787">
+        * Anti-Bot Stealth: Autonomous CDP session rotation with residential IPs
+      </text>
+      
+      <text x="18" y="164" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="12" fill="#bc8cff">
+        * Transparent Billing: 1 Request = 1 Scrape (zero credit multiplier penalties)
+      </text>
+    </g>
   </g>
 </svg>
