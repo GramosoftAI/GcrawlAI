@@ -1,0 +1,40 @@
+name: 👑 Corporate Sponsorship & Enterprise Inquiry
+description: Inquire about corporate sponsorship tiers, logo placement, or dedicated enterprise scrapers
+labels: ["sponsorship", "enterprise"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your interest in supporting open-source development! Corporate sponsors get prominent placement on our README, website, and release announcements.
+  - type: input
+    id: company_name
+    attributes:
+      label: Company / Organization Name
+      placeholder: Acme Corp
+    validations:
+      required: true
+  - type: input
+    id: contact_email
+    attributes:
+      label: Contact Email
+      placeholder: partnerships@acme.com
+    validations:
+      required: true
+  - type: dropdown
+    id: sponsorship_tier
+    attributes:
+      label: Desired Sponsorship Level
+      options:
+        - Platinum Sponsor ($1,000/mo - Top Logo on README + Docs + Releases)
+        - Gold Sponsor ($500/mo - Medium Logo on README + Website)
+        - Silver Sponsor ($150/mo - Listed on README & Sponsors page)
+        - Custom Enterprise / Dedicated Scraper Development
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Additional Notes or Requirements
+      placeholder: We are looking to sponsor GcrawlAI and explore custom integration for our AI data pipeline...
+    validations:
+      required: false

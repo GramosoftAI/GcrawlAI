@@ -1,0 +1,9 @@
+# GitHub Sponsors & Funding Configuration for GramosoftAI/GcrawlAI
+
+# GitHub usernames of maintainers eligible for GitHub Sponsors
+github: [shanakiyan20, GramosoftAI]
+
+# Custom sponsorship links (Corporate sponsors, PayPal, OpenCollective)
+custom: 
+  - https://gcrawlai.com/pricing
+  - https://gramosoft.tech

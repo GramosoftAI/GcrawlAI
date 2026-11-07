@@ -1,0 +1,1602 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 16 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R /F4 4 0 R /F5 5 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 6056 >>
+stream
+0.93 0.96 0.99 rg
+40 709.89 515.28 84 re f
+0.027 0.341 0.624 rg
+40 709.89 4 84 re f
+BT
+/F2 8 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 56 773.89 Tm
+(GITHUB GROWTH PLAYBOOK " GRAMOSOFTAI / GCRAWLAI) Tj
+/F2 15 Tf
+0.063 0.094 0.157 rg
+1 0 0 1 56 749.89 Tm
+(How to Grow GcrawlAI on GitHub: The 1,000+ Stars Roadmap) Tj
+/F1 9 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 56 727.89 Tm
+(Actionable 5-pillar strategy for repository optimization, developer adoption, and viral reach.) Tj
+ET
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 693.89 Tm
+(01) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 693.89 Tm
+(Executive Summary: The Open-Source Flywheel) Tj
+ET
+0.85 0.88 0.92 rg
+40 688.89 515.28 1 re f
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 673.89 Tm
+(Developer tools like Firecrawl, Crawl4AI, and ScrapeGraphAI have amassed 15,000+ to 25,000+) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 661.89 Tm
+(GitHub stars not just from their scraping engine, but through relentless positioning around the) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 649.89 Tm
+(AI/RAG boom. Developers are actively seeking web scrapers that output clean Markdown without) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 637.89 Tm
+(burning expensive LLM tokens or suffering from credit multiplier billing.) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 621.89 Tm
+(GcrawlAI has a compelling unfair advantage: transparent 1 Request = 1 Scrape pricing,) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 609.89 Tm
+(sub-second latency \(~350ms\), and automated residential proxy stealth. This playbook translates) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 597.89 Tm
+(these technical strengths into organic developer traction and repository stars.) Tj
+ET
+0.94 0.97 1.0 rg
+40 505.89 515.28 76 re f
+0.027 0.341 0.624 rg
+40 505.89 3.5 76 re f
+BT
+/F2 9 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 52 565.89 Tm
+(The 3 Core Levers That Drive Developer Adoption) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 553.89 Tm
+(1. Zero Friction to Test: Instant copy-paste snippets that work in under 30 seconds.
+2.) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 542.39 Tm
+(Ecosystem Plugs: Direct 3-line integrations for LangChain, LlamaIndex, and Claude/Cursor) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 530.89 Tm
+(MCP.
+3. Transparent Contrast: Clear comparison showing competitors 5x-25x credit multipliers) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 519.39 Tm
+(vs flat 1:1 billing.) Tj
+ET
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 495.89 Tm
+(02) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 495.89 Tm
+(The 5 Strategic Growth Pillars) Tj
+ET
+0.85 0.88 0.92 rg
+40 490.89 515.28 1 re f
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 475.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 475.89 Tm
+(Pillar 1: Repository Metadata & SEO: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 235.6 475.89 Tm
+(Configuring GitHub topics, description, website URL, and social) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 463.39 Tm
+(preview card.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 450.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 450.89 Tm
+(Pillar 2: High-Converting README Overhaul: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 264.4 450.89 Tm
+(Transforming the README into a high-retention technical) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 438.39 Tm
+(landing page.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 425.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 425.89 Tm
+(Pillar 3: Official SDK Releases \(PyPI & npm\): ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 278.79999999999995 425.89 Tm
+(Publishing pip and npm packages to remove all integration) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 413.39 Tm
+(friction.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 400.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 400.89 Tm
+(Pillar 4: Developer Ecosystem Distribution: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 269.2 400.89 Tm
+(Submitting to Awesome Lists, Claude MCP registries, and) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 388.39 Tm
+(LangChain ecosystem.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 375.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 375.89 Tm
+(Pillar 5: Viral Community Launch Execution: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 269.2 375.89 Tm
+(Executing high-impact Show HN, Reddit r/LocalLLaMA, and) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 363.39 Tm
+(Twitter technical demos.) Tj
+ET
+0.063 0.094 0.157 rg
+40 333.89 515.28 17 re f
+BT
+/F2 8 Tf
+1 1 1 rg
+1 0 0 1 46 338.89 Tm
+(Growth Metric) Tj
+1 0 0 1 186 338.89 Tm
+(Current Baseline) Tj
+1 0 0 1 311 338.89 Tm
+(Target \(Month 1\)) Tj
+1 0 0 1 436 338.89 Tm
+(Target \(Month 3\)) Tj
+ET
+0.88 0.9 0.93 rg
+40 316.89 515.28 0.5 re f
+BT
+/F2 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 321.89 Tm
+(GitHub Stars) Tj
+1 0 0 1 186 321.89 Tm
+(Initial \(<50\)) Tj
+1 0 0 1 311 321.89 Tm
+(250 - 500 Stars) Tj
+1 0 0 1 436 321.89 Tm
+(1,000 - 2,500 Stars) Tj
+ET
+0.96 0.98 0.99 rg
+40 299.89 515.28 17 re f
+0.88 0.9 0.93 rg
+40 299.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 304.89 Tm
+(PyPI Monthly Installs) Tj
+1 0 0 1 186 304.89 Tm
+(0 \(Unpublished\)) Tj
+1 0 0 1 311 304.89 Tm
+(1,000+ / mo) Tj
+1 0 0 1 436 304.89 Tm
+(5,000+ / mo) Tj
+ET
+0.88 0.9 0.93 rg
+40 282.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 287.89 Tm
+(npm Monthly Installs) Tj
+1 0 0 1 186 287.89 Tm
+(0 \(Unpublished\)) Tj
+1 0 0 1 311 287.89 Tm
+(1,500+ / mo) Tj
+1 0 0 1 436 287.89 Tm
+(8,000+ / mo) Tj
+ET
+0.96 0.98 0.99 rg
+40 265.89 515.28 17 re f
+0.88 0.9 0.93 rg
+40 265.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 270.89 Tm
+(Active Free API Users) Tj
+1 0 0 1 186 270.89 Tm
+(Existing Userbase) Tj
+1 0 0 1 311 270.89 Tm
+(+500 developers) Tj
+1 0 0 1 436 270.89 Tm
+(+2,500 developers) Tj
+ET
+0.027 0.341 0.624 rg
+0 835.89 595.28 6 re f
+BT
+/F1 8 Tf
+0.4 0.45 0.52 rg
+1 0 0 1 40 817.89 Tm
+(GCRAWLAI " GITHUB REPOSITORY GROWTH & ADOPTION PLAYBOOK) Tj
+ET
+0.89 0.91 0.93 rg
+40 36 515.28 0.75 re f
+BT
+/F1 8 Tf
+0.45 0.5 0.58 rg
+1 0 0 1 40 24 Tm
+(Gramosoft Private Limited " Confidential Growth Roadmap) Tj
+1 0 0 1 505.78 24 Tm
+(Page 1 of 5) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 16 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R /F4 4 0 R /F5 5 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 4929 >>
+stream
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 793.89 Tm
+(03) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 793.89 Tm
+(Pillar 1: GitHub Repository Settings & SEO Optimization) Tj
+ET
+0.85 0.88 0.92 rg
+40 788.89 515.28 1 re f
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 773.89 Tm
+(Over 60% of GitHub tool discoveries originate from internal GitHub search queries, GitHub) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 761.89 Tm
+(Explore, and Google indexing. Missing topics or generic descriptions make the repository) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 749.89 Tm
+(invisible to search engines.) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 733.89 Tm
+(Action 1: Repository About & Topics \(Tags\)) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 718.89 Tm
+(Navigate to github.com/GramosoftAI/GcrawlAI -> Click the Settings Gear icon beside "About".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 702.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 702.89 Tm
+(Recommended Description: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 178 702.89 Tm
+(Open-source web scraping & crawling API for AI Agents & RAG. Markdown output,) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 690.39 Tm
+(JS rendering, and residential proxies with flat 1 Request = 1 Scrape pricing.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 677.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 677.89 Tm
+(Website Field: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 130 677.89 Tm
+(https://gcrawlai.com \(Do not leave this blank; it drives live signups\).) Tj
+ET
+0.94 0.99 0.96 rg
+40 601.39 515.28 64 re f
+0.08 0.6 0.35 rg
+40 601.39 3.5 64 re f
+BT
+/F2 9 Tf
+0.08 0.6 0.35 rg
+1 0 0 1 52 649.39 Tm
+(Mandatory High-Volume GitHub Topics \(Copy-Paste All\)) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 637.39 Tm
+(web-scraping, firecrawl-alternative, crawler, llm, rag, markdown, ai-agent, mcp,) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 625.89 Tm
+(model-context-protocol, langchain, llamaindex, headless-browser, crawling-api, web-crawler,) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 614.39 Tm
+(data-extraction, python, typescript) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 591.39 Tm
+(Action 2: GitHub Social Preview Card \(1280 x 640 px\)) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 576.39 Tm
+(Whenever a GitHub repository URL is shared on Twitter/X, LinkedIn, Discord, or Reddit, GitHub) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 564.39 Tm
+(renders an OpenGraph preview image. A default gray placeholder reduces click-through rates by) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 552.39 Tm
+(up to 75%.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 536.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 536.39 Tm
+(Design Spec: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 120.4 536.39 Tm
+(1280x640 PNG image with dark slate background \(#0f172a\), GcrawlAI logo, and high-contrast) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 523.89 Tm
+(text: "Turn Any Website into LLM-Ready Markdown in 350ms".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 511.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 511.39 Tm
+(Upload Location: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 139.6 511.39 Tm
+(Repo Settings -> General -> Social preview -> Edit -> Upload image.) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 498.89 Tm
+(Action 3: Repository Header Badges) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 483.89 Tm
+(Badges at the top of the README signal active maintenance, open-source trust, and) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 471.89 Tm
+(multi-language support. Include badges for MIT License, Free Tier quota, Python SDK, Node.js) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 459.89 Tm
+(SDK, and MCP support.) Tj
+ET
+0.059 0.090 0.165 rg
+40 377.89 515.28 66 re f
+0.1 0.15 0.25 rg
+40 428.89 515.28 15 re f
+BT
+/F4 7 Tf
+0.6 0.7 0.85 rg
+1 0 0 1 50 432.89 Tm
+(README BADGE MARKDOWN) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 417.89 Tm
+([![License: MIT]\(https://img.shields.io/badge/License-MIT-blue.svg\)]\(https://opensource.org/licenses/MIT\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 406.89 Tm
+([![Free Tier]\(https://img.shields.io/badge/Free%20Tier-200%20Requests%2Fmo-brightgreen\)]\(https://gcrawlai.com/app\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 395.89 Tm
+([![MCP Ready]\(https://img.shields.io/badge/MCP-Claude%20%26%20Cursor-purple\)]\(https://gcrawlai.com/help\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 384.89 Tm
+([![Docs]\(https://img.shields.io/badge/Docs-Help%20Center-blue\)]\(https://gcrawlai.com/help\)) Tj
+ET
+0.027 0.341 0.624 rg
+0 835.89 595.28 6 re f
+BT
+/F1 8 Tf
+0.4 0.45 0.52 rg
+1 0 0 1 40 817.89 Tm
+(GCRAWLAI " GITHUB REPOSITORY GROWTH & ADOPTION PLAYBOOK) Tj
+ET
+0.89 0.91 0.93 rg
+40 36 515.28 0.75 re f
+BT
+/F1 8 Tf
+0.45 0.5 0.58 rg
+1 0 0 1 40 24 Tm
+(Gramosoft Private Limited " Confidential Growth Roadmap) Tj
+1 0 0 1 505.78 24 Tm
+(Page 2 of 5) Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 16 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R /F4 4 0 R /F5 5 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 6144 >>
+stream
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 793.89 Tm
+(04) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 793.89 Tm
+(Pillar 2: The High-Converting README Blueprint) Tj
+ET
+0.85 0.88 0.92 rg
+40 788.89 515.28 1 re f
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 773.89 Tm
+(A world-class README functions as both a technical specification and a developer landing page.) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 761.89 Tm
+(It must answer three questions in under 10 seconds: What is this? Why is it better than what I) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 749.89 Tm
+(use now? How do I run it right now?) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 733.89 Tm
+(1. The Feature & Pricing Matrix \(The Core Differentiator\)) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 718.89 Tm
+(Place this matrix immediately after the hero section. It directly addresses the primary pain) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 706.89 Tm
+(point of developers using Firecrawl and ScrapingBee: credit multipliers.) Tj
+ET
+0.063 0.094 0.157 rg
+40 673.89 515.28 17 re f
+BT
+/F2 8 Tf
+1 1 1 rg
+1 0 0 1 46 678.89 Tm
+(Feature) Tj
+1 0 0 1 176 678.89 Tm
+(GcrawlAI) Tj
+1 0 0 1 311 678.89 Tm
+(Firecrawl) Tj
+1 0 0 1 436 678.89 Tm
+(Crawl4AI) Tj
+ET
+0.88 0.9 0.93 rg
+40 656.89 515.28 0.5 re f
+BT
+/F2 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 661.89 Tm
+(Billing Model) Tj
+1 0 0 1 176 661.89 Tm
+(1 Req = 1 Scrape \(Flat\)) Tj
+1 0 0 1 311 661.89 Tm
+(5x JS Multiplier) Tj
+1 0 0 1 436 661.89 Tm
+(Self-Hosted Server) Tj
+ET
+0.96 0.98 0.99 rg
+40 639.89 515.28 17 re f
+0.88 0.9 0.93 rg
+40 639.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 644.89 Tm
+(Output) Tj
+1 0 0 1 176 644.89 Tm
+(Clean Markdown & JSON) Tj
+1 0 0 1 311 644.89 Tm
+(Markdown & HTML) Tj
+1 0 0 1 436 644.89 Tm
+(Markdown) Tj
+ET
+0.88 0.9 0.93 rg
+40 622.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 627.89 Tm
+(Token Reduction) Tj
+1 0 0 1 176 627.89 Tm
+(Up to 85% Token Savings) Tj
+1 0 0 1 311 627.89 Tm
+(~60%) Tj
+1 0 0 1 436 627.89 Tm
+(~70%) Tj
+ET
+0.96 0.98 0.99 rg
+40 605.89 515.28 17 re f
+0.88 0.9 0.93 rg
+40 605.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 610.89 Tm
+(Residential Proxies) Tj
+1 0 0 1 176 610.89 Tm
+(Included by Default) Tj
+1 0 0 1 311 610.89 Tm
+(Multiplier Add-on) Tj
+1 0 0 1 436 610.89 Tm
+(Bring Your Own) Tj
+ET
+0.88 0.9 0.93 rg
+40 588.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 593.89 Tm
+(p90 Latency) Tj
+1 0 0 1 176 593.89 Tm
+(~350ms) Tj
+1 0 0 1 311 593.89 Tm
+(1.8s - 3.2s) Tj
+1 0 0 1 436 593.89 Tm
+(Hardware Bound) Tj
+ET
+0.96 0.98 0.99 rg
+40 571.89 515.28 17 re f
+0.88 0.9 0.93 rg
+40 571.89 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 576.89 Tm
+(Free Tier) Tj
+1 0 0 1 176 576.89 Tm
+(200 Reqs/mo Renewable) Tj
+1 0 0 1 311 576.89 Tm
+(500 one-time) Tj
+1 0 0 1 436 576.89 Tm
+(N/A) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 559.89 Tm
+(2. Three-Language Quickstart \(cURL, Python, Node.js\)) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 544.89 Tm
+(Provide ready-to-run code snippets for single-page scraping with JS rendering enabled:) Tj
+ET
+0.059 0.090 0.165 rg
+40 385.89 515.28 143 re f
+0.1 0.15 0.25 rg
+40 513.89 515.28 15 re f
+BT
+/F4 7 Tf
+0.6 0.7 0.85 rg
+1 0 0 1 50 517.89 Tm
+(PYTHON & NODE.JS QUICKSTART) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 502.89 Tm
+(# Python \(pip install gcrawlai\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 491.89 Tm
+(from gcrawlai import GcrawlApp) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 480.89 Tm
+(app = GcrawlApp\(api_key="YOUR_API_KEY"\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 469.89 Tm
+(res = app.scrape_url\("https://news.ycombinator.com", render_js=True\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 458.89 Tm
+(print\(res["markdown"]\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 447.89 Tm
+() Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 436.89 Tm
+(// Node.js \(npm install gcrawlai\)) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 425.89 Tm
+(import { GcrawlApp } from "gcrawlai";) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 414.89 Tm
+(const client = new GcrawlApp\({ apiKey: "YOUR_API_KEY" }\);) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 403.89 Tm
+(const res = await client.scrapeUrl\("https://example.com"\);) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 392.89 Tm
+(console.log\(res.markdown\);) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 375.89 Tm
+(3. Ready-to-Use AI & RAG Integrations) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 360.89 Tm
+(Highlight plug-and-play integrations with LangChain and Claude Desktop / Cursor Model Context) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 348.89 Tm
+(Protocol \(MCP\). This positions GcrawlAI as a fundamental component of the modern AI developer) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 336.89 Tm
+(stack.) Tj
+ET
+0.059 0.090 0.165 rg
+40 188.89 515.28 132 re f
+0.1 0.15 0.25 rg
+40 305.89 515.28 15 re f
+BT
+/F4 7 Tf
+0.6 0.7 0.85 rg
+1 0 0 1 50 309.89 Tm
+(CLAUDE DESKTOP & CURSOR MCP CONFIG) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 294.89 Tm
+(// claude_desktop_config.json) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 283.89 Tm
+({) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 272.89 Tm
+(  "mcpServers": {) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 261.89 Tm
+(    "gcrawlai": {) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 250.89 Tm
+(      "command": "npx",) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 239.89 Tm
+(      "args": ["-y", "@gcrawlai/mcp-server"],) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 228.89 Tm
+(      "env": { "GCRAWLAI_API_KEY": "YOUR_API_KEY" }) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 217.89 Tm
+(    }) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 206.89 Tm
+(  }) Tj
+ET
+BT
+/F3 7.5 Tf
+0.92 0.95 0.98 rg
+1 0 0 1 52 195.89 Tm
+(}) Tj
+ET
+0.027 0.341 0.624 rg
+0 835.89 595.28 6 re f
+BT
+/F1 8 Tf
+0.4 0.45 0.52 rg
+1 0 0 1 40 817.89 Tm
+(GCRAWLAI " GITHUB REPOSITORY GROWTH & ADOPTION PLAYBOOK) Tj
+ET
+0.89 0.91 0.93 rg
+40 36 515.28 0.75 re f
+BT
+/F1 8 Tf
+0.45 0.5 0.58 rg
+1 0 0 1 40 24 Tm
+(Gramosoft Private Limited " Confidential Growth Roadmap) Tj
+1 0 0 1 505.78 24 Tm
+(Page 3 of 5) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 16 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R /F4 4 0 R /F5 5 0 R >> >> /Contents 13 0 R >>
+endobj
+13 0 obj
+<< /Length 4856 >>
+stream
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 793.89 Tm
+(05) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 793.89 Tm
+(Pillar 3: Official SDK Distribution \(PyPI & npm\)) Tj
+ET
+0.85 0.88 0.92 rg
+40 788.89 515.28 1 re f
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 773.89 Tm
+(The majority of AI and RAG engineers install libraries directly via pip or npm. Without) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 761.89 Tm
+(official published packages, friction is high. GcrawlAI already has SDK code in sdk/python/ and) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 749.89 Tm
+(sdk/node/ that should be published immediately.) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 733.89 Tm
+(Publishing the Python SDK to PyPI) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 718.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 718.89 Tm
+(Package Name: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 125.2 718.89 Tm
+(gcrawlai \(Check availability at pypi.org/project/gcrawlai\).) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 706.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 706.39 Tm
+(Build Tooling: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 130 706.39 Tm
+(Use standard pyproject.toml or setup.py with setuptools and build tools.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 693.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 693.89 Tm
+(Publish Command: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 139.6 693.89 Tm
+(python -m build && twine upload dist/* \(Requires a free PyPI API token\).) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 681.39 Tm
+(Publishing the Node.js / TypeScript SDK to npm) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 666.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 666.39 Tm
+(Package Name: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 125.2 666.39 Tm
+(gcrawlai \(and @gcrawlai/mcp-server for the Claude/Cursor MCP tool\).) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 653.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 653.89 Tm
+(Package Config: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 134.8 653.89 Tm
+(Set main: "index.js", types: "index.d.ts", license: "MIT" in sdk/node/package.json.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 641.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 641.39 Tm
+(Publish Command: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 139.6 641.39 Tm
+(npm login followed by npm publish --access public.) Tj
+ET
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 628.89 Tm
+(06) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 628.89 Tm
+(Open-Source Governance & Community Files) Tj
+ET
+0.85 0.88 0.92 rg
+40 623.89 515.28 1 re f
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 608.89 Tm
+(Repositories with structured governance files receive higher trust scores on GitHub and convert) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 596.89 Tm
+(casual visitors into contributors.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 580.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 580.89 Tm
+(LICENSE File: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 125.2 580.89 Tm
+(Ensure the MIT license file is in the root directory \(enables commercial use\).) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 568.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 568.39 Tm
+(CONTRIBUTING.md: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 139.6 568.39 Tm
+(Guidelines on how to report bugs, suggest features, and submit pull requests.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 555.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 555.89 Tm
+(Issue Templates: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 139.6 555.89 Tm
+(Create .github/ISSUE_TEMPLATE/ for Bug Report and Feature Request.) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 543.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 543.39 Tm
+(Pull Request Template: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 168.39999999999998 543.39 Tm
+(Create .github/PULL_REQUEST_TEMPLATE.md for clean contributor workflows.) Tj
+ET
+0.94 0.97 1.0 rg
+40 466.89 515.28 64 re f
+0.027 0.341 0.624 rg
+40 466.89 3.5 64 re f
+BT
+/F2 9 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 52 514.89 Tm
+(Why PyPI & npm Downloads Boost GitHub Ranking) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 502.89 Tm
+(GitHub and Google cross-reference npm and PyPI package metrics. When developers run pip) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 491.39 Tm
+(install gcrawlai, it increases domain authority, backlink signals, and stars from active) Tj
+ET
+BT
+/F1 8 Tf
+0.2 0.25 0.3 rg
+1 0 0 1 52 479.89 Tm
+(developers building production pipelines.) Tj
+ET
+0.027 0.341 0.624 rg
+0 835.89 595.28 6 re f
+BT
+/F1 8 Tf
+0.4 0.45 0.52 rg
+1 0 0 1 40 817.89 Tm
+(GCRAWLAI " GITHUB REPOSITORY GROWTH & ADOPTION PLAYBOOK) Tj
+ET
+0.89 0.91 0.93 rg
+40 36 515.28 0.75 re f
+BT
+/F1 8 Tf
+0.45 0.5 0.58 rg
+1 0 0 1 40 24 Tm
+(Gramosoft Private Limited " Confidential Growth Roadmap) Tj
+1 0 0 1 505.78 24 Tm
+(Page 4 of 5) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 16 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 1 0 R /F2 2 0 R /F3 3 0 R /F4 4 0 R /F5 5 0 R >> >> /Contents 15 0 R >>
+endobj
+15 0 obj
+<< /Length 6223 >>
+stream
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 793.89 Tm
+(07) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 793.89 Tm
+(Pillar 4: Developer Ecosystem Distribution) Tj
+ET
+0.85 0.88 0.92 rg
+40 788.89 515.28 1 re f
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 773.89 Tm
+(Curated lists on GitHub generate high-intent traffic from engineers actively building AI) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.25 0.33 rg
+1 0 0 1 40 761.89 Tm
+(agents. Submit pull requests to these top repos:) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 745.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 745.89 Tm
+(awesome-web-scraping: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 163.6 745.89 Tm
+(Submit GcrawlAI under "Cloud APIs & Headless Scrapers".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 733.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 733.39 Tm
+(awesome-mcp-servers: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 158.8 733.39 Tm
+(Submit GcrawlAI under "Web & Search MCP Servers".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 720.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 720.89 Tm
+(awesome-llm / awesome-rag: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 187.6 720.89 Tm
+(Submit under "Data Ingestion & Cleaning Tools".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 708.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 708.39 Tm
+(LangChain & LlamaIndex Community: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 221.2 708.39 Tm
+(Submit community document loaders or integrations.) Tj
+ET
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 695.89 Tm
+(08) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 695.89 Tm
+(Pillar 5: High-Impact Launch Execution Playbook) Tj
+ET
+0.85 0.88 0.92 rg
+40 690.89 515.28 1 re f
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 675.89 Tm
+(1. Hacker News \("Show HN"\) Execution) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 660.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 660.89 Tm
+(Timing: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 96.4 660.89 Tm
+(Tuesday or Wednesday at 8:30 AM EST \(US peak developer reading hours\).) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 648.39 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 648.39 Tm
+(Title Formula: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 130 648.39 Tm
+(Show HN: GcrawlAI - Open-source web scraping for AI agents without credit multipliers) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 635.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 635.89 Tm
+(First Comment Strategy: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 173.2 635.89 Tm
+(Founder story: Explain the real-world frustration with 5x credit multipliers) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 623.39 Tm
+(and Docker crashes, and why you built honest 1:1 request scraping.) Tj
+ET
+BT
+/F2 10 Tf
+0.1 0.15 0.24 rg
+1 0 0 1 40 610.89 Tm
+(2. Reddit Targeted Subreddit Distribution) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 595.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 595.89 Tm
+(r/LocalLLaMA: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 125.2 595.89 Tm
+(Post: "Benchmarking web token reduction: How clean Markdown saved 85% context tokens vs) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 583.39 Tm
+(raw HTML".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 570.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 570.89 Tm
+(r/webscraping: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 130 570.89 Tm
+(Post: "Comparing residential proxy overhead in 2026: Headless Chromium vs Raw DOM) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 58 558.39 Tm
+(Parsers".) Tj
+ET
+BT
+/F2 8.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 46 545.89 Tm
+(>) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 58 545.89 Tm
+(r/LangChain: ) Tj
+ET
+BT
+/F1 8.5 Tf
+0.25 0.3 0.38 rg
+1 0 0 1 120.4 545.89 Tm
+(Post: "How to connect live web scraping to LangChain agents with sub-second latency".) Tj
+ET
+BT
+/F2 12.5 Tf
+0.027 0.341 0.624 rg
+1 0 0 1 40 533.39 Tm
+(09) Tj
+0.063 0.094 0.157 rg
+1 0 0 1 64 533.39 Tm
+(30-Day Step-by-Step Action Checklist) Tj
+ET
+0.85 0.88 0.92 rg
+40 528.39 515.28 1 re f
+0.063 0.094 0.157 rg
+40 496.39 515.28 17 re f
+BT
+/F2 8 Tf
+1 1 1 rg
+1 0 0 1 46 501.39 Tm
+(Timeline) Tj
+1 0 0 1 136 501.39 Tm
+(Key Action Item) Tj
+1 0 0 1 381 501.39 Tm
+(Owner) Tj
+1 0 0 1 471 501.39 Tm
+(Status) Tj
+ET
+0.88 0.9 0.93 rg
+40 479.39 515.28 0.5 re f
+BT
+/F2 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 484.39 Tm
+(Day 1 - 2) Tj
+1 0 0 1 136 484.39 Tm
+(Add GitHub Topics & Upload Social Preview Card) Tj
+1 0 0 1 381 484.39 Tm
+(Maintainer) Tj
+1 0 0 1 471 484.39 Tm
+(Ready to Apply) Tj
+ET
+0.96 0.98 0.99 rg
+40 462.39 515.28 17 re f
+0.88 0.9 0.93 rg
+40 462.39 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 467.39 Tm
+(Day 3 - 5) Tj
+1 0 0 1 136 467.39 Tm
+(Update README.md with comparison table & badges) Tj
+1 0 0 1 381 467.39 Tm
+(Engineering) Tj
+1 0 0 1 471 467.39 Tm
+(Ready to Apply) Tj
+ET
+0.88 0.9 0.93 rg
+40 445.39 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 450.39 Tm
+(Day 6 - 8) Tj
+1 0 0 1 136 450.39 Tm
+(Publish gcrawlai to PyPI and npm registries) Tj
+1 0 0 1 381 450.39 Tm
+(Engineering) Tj
+1 0 0 1 471 450.39 Tm
+(Pending) Tj
+ET
+0.96 0.98 0.99 rg
+40 428.39 515.28 17 re f
+0.88 0.9 0.93 rg
+40 428.39 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 433.39 Tm
+(Day 9 - 14) Tj
+1 0 0 1 136 433.39 Tm
+(Submit PRs to 5+ Awesome Lists on GitHub) Tj
+1 0 0 1 381 433.39 Tm
+(Marketing) Tj
+1 0 0 1 471 433.39 Tm
+(Scheduled) Tj
+ET
+0.88 0.9 0.93 rg
+40 411.39 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 416.39 Tm
+(Day 15 - 20) Tj
+1 0 0 1 136 416.39 Tm
+(Launch Show HN post and monitor comments) Tj
+1 0 0 1 381 416.39 Tm
+(Founder) Tj
+1 0 0 1 471 416.39 Tm
+(Scheduled) Tj
+ET
+0.96 0.98 0.99 rg
+40 394.39 515.28 17 re f
+0.88 0.9 0.93 rg
+40 394.39 515.28 0.5 re f
+BT
+/F1 8 Tf
+0.15 0.2 0.25 rg
+1 0 0 1 46 399.39 Tm
+(Day 21 - 30) Tj
+1 0 0 1 136 399.39 Tm
+(Post technical benchmarks on Reddit and Twitter/X) Tj
+1 0 0 1 381 399.39 Tm
+(Team) Tj
+1 0 0 1 471 399.39 Tm
+(Scheduled) Tj
+ET
+0.027 0.341 0.624 rg
+0 835.89 595.28 6 re f
+BT
+/F1 8 Tf
+0.4 0.45 0.52 rg
+1 0 0 1 40 817.89 Tm
+(GCRAWLAI " GITHUB REPOSITORY GROWTH & ADOPTION PLAYBOOK) Tj
+ET
+0.89 0.91 0.93 rg
+40 36 515.28 0.75 re f
+BT
+/F1 8 Tf
+0.45 0.5 0.58 rg
+1 0 0 1 40 24 Tm
+(Gramosoft Private Limited " Confidential Growth Roadmap) Tj
+1 0 0 1 505.78 24 Tm
+(Page 5 of 5) Tj
+ET
+endstream
+endobj
+16 0 obj
+<< /Type /Pages /Kids [ 6 0 R 8 0 R 10 0 R 12 0 R 14 0 R ] /Count 5 >>
+endobj
+17 0 obj
+<< /Type /Catalog /Pages 16 0 R >>
+endobj
+xref
+0 18
+0000000000 65535 f 
+0000000015 00000 n 
+0000000112 00000 n 
+0000000214 00000 n 
+0000000309 00000 n 
+0000000409 00000 n 
+0000000514 00000 n 
+0000000687 00000 n 
+0000006795 00000 n 
+0000006968 00000 n 
+0000011949 00000 n 
+0000012124 00000 n 
+0000018321 00000 n 
+0000018496 00000 n 
+0000023405 00000 n 
+0000023580 00000 n 
+0000029856 00000 n 
+0000029943 00000 n 
+trailer
+<< /Size 18 /Root 17 0 R >>
+startxref
+29994
+%%EOF

@@ -1,0 +1,30 @@
+name: 💡 Feature Request
+description: Suggest an idea or new extractor for GcrawlAI
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping us improve GcrawlAI! Share your idea for a new feature or improvement.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear description of what the problem is.
+      placeholder: I am always frustrated when scraping dynamic shadow DOM components...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: What would you like GcrawlAI to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've looked at.
+    validations:
+      required: false

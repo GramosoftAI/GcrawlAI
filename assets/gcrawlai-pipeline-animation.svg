@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 220" width="100%" height="220">
+  <defs>
+    <linearGradient id="pipeBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="nodeBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <filter id="glowPipe" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes packetMove1 {
+      0% { cx: 200; opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { cx: 340; opacity: 0; }
+    }
+    @keyframes packetMove2 {
+      0% { cx: 480; opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { cx: 620; opacity: 0; }
+    }
+    @keyframes packetMove3 {
+      0% { cx: 760; opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { cx: 900; opacity: 0; }
+    }
+    .packet1 { animation: packetMove1 2s linear infinite; }
+    .packet2 { animation: packetMove2 2s linear infinite; animation-delay: 0.6s; }
+    .packet3 { animation: packetMove3 2s linear infinite; animation-delay: 1.2s; }
+  </style>
+
+  <!-- Background -->
+  <rect x="4" y="4" width="992" height="212" rx="16" fill="url(#pipeBg)" stroke="#1e293b" stroke-width="1.5"/>
+
+  <!-- Pipeline Connector Lines -->
+  <line x1="200" y1="110" x2="340" y2="110" stroke="#334155" stroke-width="3" stroke-dasharray="6,6"/>
+  <line x1="480" y1="110" x2="620" y2="110" stroke="#334155" stroke-width="3" stroke-dasharray="6,6"/>
+  <line x1="760" y1="110" x2="900" y2="110" stroke="#334155" stroke-width="3" stroke-dasharray="6,6"/>
+
+  <!-- Moving Data Packets -->
+  <circle cy="110" r="5" fill="#38bdf8" filter="url(#glowPipe)" class="packet1"/>
+  <circle cy="110" r="5" fill="#818cf8" filter="url(#glowPipe)" class="packet2"/>
+  <circle cy="110" r="5" fill="#10b981" filter="url(#glowPipe)" class="packet3"/>
+
+  <!-- NODE 1: Target Web -->
+  <g transform="translate(60, 40)">
+    <rect width="140" height="140" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="70" y="45" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="28" text-anchor="middle">🌐</text>
+    <text x="70" y="80" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">Target Web</text>
+    <text x="70" y="100" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#94a3b8" text-anchor="middle">SPAs, React, Next.js</text>
+    <text x="70" y="115" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#ef4444" text-anchor="middle">Turnstile / Bot Shields</text>
+  </g>
+
+  <!-- NODE 2: Stealth Browser -->
+  <g transform="translate(340, 40)">
+    <rect width="140" height="140" rx="12" fill="#0f172a" stroke="#818cf8" stroke-width="2"/>
+    <text x="70" y="45" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="28" text-anchor="middle">🥷</text>
+    <text x="70" y="80" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">Stealth Cluster</text>
+    <text x="70" y="100" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#818cf8" text-anchor="middle">CDP Protocol Steering</text>
+    <text x="70" y="115" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#94a3b8" text-anchor="middle">Residential IP Pool</text>
+    <text x="70" y="130" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#10b981" text-anchor="middle">Fingerprint Cloaking</text>
+  </g>
+
+  <!-- NODE 3: Fit-Markdown Cleaner -->
+  <g transform="translate(620, 40)">
+    <rect width="140" height="140" rx="12" fill="#0f172a" stroke="#a855f7" stroke-width="1.5"/>
+    <text x="70" y="45" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="28" text-anchor="middle">✨</text>
+    <text x="70" y="80" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">Fit-Markdown</text>
+    <text x="70" y="100" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#a855f7" text-anchor="middle">DOM Tree-Shaking</text>
+    <text x="70" y="115" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" fill="#94a3b8" text-anchor="middle">Strip Ads &amp; Menus</text>
+    <text x="70" y="130" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#10b981" text-anchor="middle">82% Token Savings</text>
+  </g>
+
+  <!-- NODE 4: LLMs & Vector Stores -->
+  <g transform="translate(900, 40)">
+    <rect width="90" height="140" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+    <text x="45" y="45" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="28" text-anchor="middle">🧠</text>
+    <text x="45" y="80" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="700" fill="#f8fafc" text-anchor="middle">AI &amp; RAG</text>
+    <text x="45" y="100" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" fill="#10b981" text-anchor="middle">LangChain</text>
+    <text x="45" y="115" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" fill="#94a3b8" text-anchor="middle">LlamaIndex</text>
+    <text x="45" y="130" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" fill="#38bdf8" text-anchor="middle">Pinecone/Qdrant</text>
+  </g>
+</svg>

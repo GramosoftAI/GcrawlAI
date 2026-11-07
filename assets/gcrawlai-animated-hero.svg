@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="100%" height="320">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0f1d"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8">
+        <animate attributeName="stop-color" values="#38bdf8;#818cf8;#c084fc;#38bdf8" dur="6s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="50%" stop-color="#818cf8">
+        <animate attributeName="stop-color" values="#818cf8;#c084fc;#38bdf8;#818cf8" dur="6s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#c084fc">
+        <animate attributeName="stop-color" values="#c084fc;#38bdf8;#818cf8;#c084fc" dur="6s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <linearGradient id="cyanText" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+    @keyframes typingText {
+      0%, 15% { width: 0; }
+      40%, 80% { width: 580px; }
+      95%, 100% { width: 0; }
+    }
+    @keyframes blinkCursor {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    @keyframes flowDot1 {
+      0% { cx: 160; opacity: 0; }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { cx: 480; opacity: 0; }
+    }
+    @keyframes flowDot2 {
+      0% { cx: 480; opacity: 0; }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { cx: 820; opacity: 0; }
+    }
+    .neon-pulse { animation: pulseGlow 4s ease-in-out infinite; }
+    .cursor-blink { animation: blinkCursor 0.8s infinite; }
+    .type-container {
+      overflow: hidden;
+      white-space: nowrap;
+      display: inline-block;
+      animation: typingText 8s steps(48, end) infinite;
+    }
+  </style>
+
+  <!-- Background Card -->
+  <rect x="8" y="8" width="984" height="304" rx="16" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="2"/>
+  
+  <!-- Ambient Background Glow -->
+  <circle cx="150" cy="80" r="90" fill="#38bdf8" opacity="0.12" filter="url(#glow)" class="neon-pulse"/>
+  <circle cx="850" cy="220" r="100" fill="#818cf8" opacity="0.12" filter="url(#glow)" class="neon-pulse"/>
+
+  <!-- Window Control Dots -->
+  <circle cx="36" cy="36" r="6" fill="#ef4444"/>
+  <circle cx="56" cy="36" r="6" fill="#f59e0b"/>
+  <circle cx="76" cy="36" r="6" fill="#10b981"/>
+
+  <!-- Header Title -->
+  <text x="500" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#64748b" text-anchor="middle" letter-spacing="1">
+    GCRAWLAI STEALTH ENGINE — INTERACTIVE SCRAPER RUNTIME
+  </text>
+  
+  <!-- Status Badge Right -->
+  <rect x="830" y="24" width="134" height="24" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <circle cx="844" cy="36" r="4" fill="#10b981">
+    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="856" y="41" font-family="monospace" font-size="11" font-weight="600" fill="#38bdf8">99.8% STEALTH</text>
+
+  <!-- Divider Line -->
+  <line x1="10" y1="58" x2="990" y2="58" stroke="#1e293b" stroke-width="1.5"/>
+
+  <!-- Command Prompt Line -->
+  <g transform="translate(36, 96)">
+    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="15" font-weight="700" fill="#10b981">$</text>
+    <text x="18" y="0" font-family="'Fira Code', monospace" font-size="15" font-weight="600" fill="#94a3b8">curl -X POST https://gcrawlai.com/v1/scrape \</text>
+  </g>
+  <g transform="translate(56, 124)">
+    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="14" fill="#cbd5e1">
+      -d '{"url": "https://target-spa.com", "stealth": true, "format": "markdown"}'
+    </text>
+  </g>
+
+  <!-- Result Box -->
+  <rect x="36" y="146" width="928" height="136" rx="10" fill="#030712" stroke="#1e293b" stroke-width="1"/>
+  
+  <!-- Terminal Response Details -->
+  <g transform="translate(56, 178)">
+    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="13" font-weight="700" fill="#10b981">HTTP/2 200 OK</text>
+    <text x="110" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#64748b">• Latency: </text>
+    <text x="175" y="0" font-family="'Fira Code', monospace" font-size="12" font-weight="700" fill="#38bdf8">348ms (p90)</text>
+    <text x="265" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#64748b">• Token Reduction: </text>
+    <text x="390" y="0" font-family="'Fira Code', monospace" font-size="12" font-weight="700" fill="#a855f7">-82.4%</text>
+    <text x="450" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#64748b">• Cloudflare Turnstile: </text>
+    <text x="600" y="0" font-family="'Fira Code', monospace" font-size="12" font-weight="700" fill="#10b981">BYPASSED ✓</text>
+  </g>
+
+  <g transform="translate(56, 208)">
+    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"data"</text>
+    <text x="45" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: {</text>
+    <text x="65" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"format"</text>
+    <text x="125" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: </text>
+    <text x="140" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#fde047">"markdown"</text>
+    <text x="215" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">, </text>
+    <text x="230" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"tokens_saved"</text>
+    <text x="330" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: </text>
+    <text x="345" y="0" font-family="'Fira Code', monospace" font-size="13" font-weight="700" fill="#10b981">14820</text>
+    <text x="395" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">, </text>
+    <text x="410" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#38bdf8">"pricing"</text>
+    <text x="475" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">: </text>
+    <text x="490" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#fde047">"1_request_flat"</text>
+    <text x="605" y="0" font-family="'Fira Code', monospace" font-size="13" fill="#94a3b8">}</text>
+  </g>
+
+  <g transform="translate(56, 240)">
+    <text x="0" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#475569"># Markdown Output: </text>
+    <text x="140" y="0" font-family="'Fira Code', monospace" font-size="12" fill="#94a3b8"># Enterprise Cloud Pricing | High Concurrency RAG Vector Store...</text>
+  </g>
+
+  <!-- Live Pulse Dot and Label bottom right -->
+  <g transform="translate(820, 266)">
+    <circle cx="0" cy="0" r="4" fill="#a855f7">
+      <animate attributeName="r" values="3;6;3" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="12" y="3" font-family="monospace" font-size="10" font-weight="600" fill="#a855f7">LIVE ENGINE ACTIVE</text>
+  </g>
+</svg>
