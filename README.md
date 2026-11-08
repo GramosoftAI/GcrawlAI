@@ -50,7 +50,7 @@
 </p>
 
 <p align="center">
-  👉 <a href="https://gcrawlai.com/app"><strong>Start Free Cloud Trial (200 Requests)</strong></a> &bull; 
+  👉 <a href="https://gcrawlai.com/app"><strong>Start Free Cloud Trial (50 Requests)</strong></a> &bull; 
   <a href="https://gcrawlai.com/app"><strong>Interactive Playground</strong></a> &bull; 
   <a href="https://gcrawlai.com/help"><strong>User Documentation</strong></a> &bull; 
   <a href="https://github.com/sponsors/GramosoftAI"><strong>Sponsor the Project</strong></a>
@@ -80,7 +80,7 @@
 | **Stealth & Proxies** | **Smart Residential Included** | Included with multiplier | Add-on credits | Bring Your Own Proxies |
 | **Speed (p90)** | **~350ms** | 1.8s - 3.2s | 1.5s - 4s | Depends on local CPU |
 | **Offline Website Bundle** | **Included (Full site to ZIP)** | ❌ No | ❌ No | ❌ No |
-| **Free Requests** | **200 Requests / month** | 500 one-time | 1,000 credits (~40 JS) | Self-hosted |
+| **Free Requests** | **50 Requests / month** | 500 one-time | 1,000 credits (~40 JS) | Self-hosted |
 
 ---
 
@@ -413,7 +413,7 @@ The <code>POST /api/v1/scrape/offline-bundle</code> endpoint downloads target we
 <details>
 <summary><strong>5. Can I self-host GcrawlAI for free, or is there a managed cloud API?</strong></summary>
 <br>
-Both! GcrawlAI is 100% open-source under the <strong>MIT License</strong> and can be deployed freely on your own infrastructure using FastAPI, Celery, Redis, and PostgreSQL. If you prefer zero infrastructure management, you can use the managed cloud API at <a href="https://gcrawlai.com">gcrawlai.com</a> which includes 200 free requests per month.
+Both! GcrawlAI is 100% open-source under the <strong>MIT License</strong> and can be deployed freely on your own infrastructure using FastAPI, Celery, Redis, and PostgreSQL. If you prefer zero infrastructure management, you can use the managed cloud API at <a href="https://gcrawlai.com">gcrawlai.com</a> which includes 50 free requests per month.
 </details>
 
 <details>
